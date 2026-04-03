@@ -15,3 +15,9 @@ export const INITIAL_POCKETS: Pocket[] = [
   { id: '3', name: 'Ocio y Diversión', category: 'Ocio', spent: 220, budget: 200, icon: 'Theater' },
   { id: '4', name: 'Fondo Futuro', category: 'Ahorros', spent: 600, budget: 1000, icon: 'PiggyBank' },
 ];
+
+export const GOOGLE_VISION_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_VISION_API_KEY || '';
+export const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
+export const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+export const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+
