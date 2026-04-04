@@ -14,6 +14,8 @@ import { AnimatedProgressBar } from '../components/AnimatedProgressBar';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { INITIAL_TRANSACTIONS, OPENAI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY } from '../constants';
 import { createClient } from '@supabase/supabase-js';
+import { detectPatterns } from '../utils/patterns';
+import { normalizeMerchant } from '../utils/merchant';
 
 const { width } = Dimensions.get('window');
 
@@ -36,8 +38,12 @@ export const Dashboard = ({ transactions }: { transactions: any[] }) => {
     Animated.spring(slideAnim, { toValue: 0, tension: 50, friction: 7, useNativeDriver: true }).start();
     fetchRules();
     getAiRecommendation();
-    analyzePatterns();
   }, [transactions]);
+
+  // Nueva detección reactiva: Se activa cuando las reglas O las transacciones cambian
+  useEffect(() => {
+    analyzePatterns();
+  }, [transactions, spendingRules]);
 
   const getStrictClient = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -50,36 +56,79 @@ export const Dashboard = ({ transactions }: { transactions: any[] }) => {
     try {
       const client = await getStrictClient();
       const { data } = await client.from('user_spending_rules').select('*');
-      if (data) { setSpendingRules(data); await AsyncStorage.setItem('@spending_rules', JSON.stringify(data)); }
+      if (data) { 
+        setSpendingRules(data); 
+        await AsyncStorage.setItem('@spending_rules', JSON.stringify(data)); 
+      }
     } catch (e) { console.log(e); }
   };
 
   const analyzePatterns = () => {
-    if (transactions.length < 5) return;
-    const counts: Record<string, any[]> = {};
-    transactions.filter(t => t.amount < 0).forEach(tx => {
-      const m = tx.merchant.toLowerCase().trim();
-      if (!counts[m]) counts[m] = [];
-      counts[m].push(tx);
+    if (transactions.length < 3) return; // Bajamos el umbral para mayor reactividad
+    
+    const patterns = detectPatterns(transactions);
+    
+    const newPattern = patterns.find(p => {
+      const canonicalDetected = normalizeMerchant(p.merchant);
+      // SILENCIO DE REGLAS: Si el canonical o el nombre ya tienen regla, no molestar.
+      return !spendingRules.some(rule => 
+        rule.canonical_pattern === canonicalDetected || 
+        normalizeMerchant(rule.pattern) === canonicalDetected ||
+        normalizeMerchant(rule.display_name || '') === canonicalDetected
+      );
     });
-    for (const merchant in counts) {
-      if (counts[merchant].length >= 3 && !spendingRules.some(r => r.pattern.toLowerCase() === merchant)) {
-        setDetectedPattern({ merchant: counts[merchant][0].merchant, cleanMerchant: merchant, count: counts[merchant].length });
-        break;
-      }
+
+    // EVITAR PARPADEO: Solo actualizamos si realmente hay un cambio o si no hay patrón actual
+    if (newPattern && (!detectedPattern || detectedPattern.merchant !== newPattern.merchant)) {
+      setDetectedPattern(newPattern);
+    } else if (!newPattern && detectedPattern) {
+      setDetectedPattern(null);
     }
   };
 
   const saveRule = async (type: 'confidence' | 'monitor' | 'reduce') => {
     if (!detectedPattern) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const merchantName = detectedPattern.merchant;
+    const canonical = normalizeMerchant(merchantName);
+    
+    // Optimistic update para feedback instantáneo
+    setSpendingRules(prev => [...prev, { canonical_pattern: canonical, type, pattern: merchantName }]);
+    setDetectedPattern(null);
+
     try {
       const client = await getStrictClient();
       const { data: { session } } = await supabase.auth.getSession();
-      await client.from('user_spending_rules').upsert({ user_id: session?.user.id, pattern: detectedPattern.merchant, type });
-      setSpendingRules([...spendingRules, { pattern: detectedPattern.merchant, type }]);
-      setDetectedPattern(null);
+      
+      await client.from('user_spending_rules').upsert({ 
+        user_id: session?.user.id, 
+        pattern: merchantName,
+        canonical_pattern: canonical,
+        display_name: merchantName,
+        type 
+      });
+      
+      await client.from('user_events').insert({
+        user_id: session?.user.id,
+        event_type: 'pattern_accepted',
+        event_data: { merchant: merchantName, type }
+      });
+
       getAiRecommendation(true);
+    } catch (e) { console.error('Error saving rule:', e); }
+  };
+
+  const rejectPattern = async () => {
+    if (!detectedPattern) return;
+    try {
+      const client = await getStrictClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      await client.from('user_events').insert({
+        user_id: session?.user.id,
+        event_type: 'pattern_rejected',
+        event_data: { merchant: detectedPattern.merchant }
+      });
+      setDetectedPattern(null);
     } catch (e) { console.log(e); }
   };
 
@@ -94,26 +143,75 @@ export const Dashboard = ({ transactions }: { transactions: any[] }) => {
           if ((Date.now() - timestamp) / 3600000 < 6) { setRecommendation(advice); setIsAnalysing(false); return; }
         }
       }
-      const prompt = transactions.length === 0 ? "Bienvenido" : `Analiza:\n${transactions.slice(0, 10).map(t => `${t.merchant}: $${Math.abs(t.amount)}`).join('\n')}`;
+
+      // Preparar contexto enriquecido para la IA
+      const context = {
+        total_month: currentMonthTotal,
+        today: todayTotal,
+        rules: spendingRules.map(r => ({ name: r.display_name, type: r.type })),
+        recent_tx: transactions.slice(0, 10).map(t => ({ 
+          place: t.merchant, 
+          amount: Math.abs(t.amount), 
+          category: t.category 
+        }))
+      };
+
+      const systemPrompt = `Asistente financiero personal "Save". NO ES PARA NEGOCIOS.
+Habla de forma humana, empática y cercana (Colombia).
+ACTÚA SEGÚN LAS REGLAS DEL USUARIO:
+- confidence: Gastos esenciales. No los critiques, solo confírmalos.
+- monitor: Gastos bajo observación. Menciona tendencias.
+- reduce: Gastos a recortar. Alerta activamente pero sin juzgar.
+
+DIFERENCIACIÓN DE INSIGHTS:
+- Si detectas algo inusual, di: "Se te está yendo plata en..."
+- Si algo mejora, di: "Vas muy bien con..."
+
+JSON: { 
+  mainInsight: string (máx 60 car), 
+  reason: string (explicación empática), 
+  type: "hormiga" | "optimizable" | "necesario", 
+  secondaryInsights: string[] 
+}`;
+
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           response_format: { type: 'json_object' },
-          messages: [{ role: 'system', content: 'Asistente financiero personal "Organic Ledger". NO ES PARA NEGOCIOS. Habla a un ciudadano normal sobre sus gastos diarios (comida, bus, café). Usa tono cercano, empático y hogareño de Colombia. PROHIBIDO usar términos empresariales como "proveedores", "cartera", "clientes", "B2B", "flujo de caja empresarial". Habla de "lugares", "tiendas" o "marcas". JSON: mainInsight, reason, type (hormiga, optimizable, necesario), secondaryInsights (array strings).' }, { role: 'user', content: prompt }]
+          messages: [
+            { role: 'system', content: systemPrompt }, 
+            { role: 'user', content: JSON.stringify(context) }
+          ]
         })
       });
+      
       const data = await response.json();
       const advice = JSON.parse(data.choices[0].message.content);
       setRecommendation(advice);
       await AsyncStorage.setItem('@ai_recomm', JSON.stringify({ advice, timestamp: Date.now() }));
-    } catch (e) { setRecommendation({ mainInsight: "¡Vas por buen camino!", reason: "Analizaré tus gastos cuando tengas más registros.", type: "necesario" }); }
-    finally { setIsAnalysing(false); }
+    } catch (e) { 
+      console.error('AI Error:', e);
+      setRecommendation({ 
+        mainInsight: "¡Vas por buen camino!", 
+        reason: "Analizaré tus gastos cuando tengas más registros para darte consejos únicos.", 
+        type: "necesario" 
+      }); 
+    } finally { setIsAnalysing(false); }
   };
 
+  const todayStr = new Date().toISOString().split('T')[0];
   const currentMonthTotal = transactions.reduce((acc, tx) => acc + (tx.amount < 0 ? Math.abs(tx.amount) : 0), 0);
-  const todayTotal = transactions.filter(tx => new Date().toLocaleDateString() === new Date(tx.date_string || tx.date).toLocaleDateString() && tx.amount < 0).reduce((acc, tx) => acc + Math.abs(tx.amount), 0);
+  
+  const todayTotal = transactions
+    .filter(tx => {
+      const isExpense = tx.amount < 0;
+      const isInvoiceToday = tx.date_string === todayStr;
+      const isCreatedAtToday = tx.created_at && tx.created_at.startsWith(todayStr); // Control de registro hoy
+      return isExpense && (isInvoiceToday || isCreatedAtToday);
+    })
+    .reduce((acc, tx) => acc + Math.abs(tx.amount), 0);
   const displayTransactions = transactions.length > 0 ? transactions : INITIAL_TRANSACTIONS;
 
   return (
@@ -182,6 +280,9 @@ export const Dashboard = ({ transactions }: { transactions: any[] }) => {
                   <Text style={styles.patternHead}>Nueva Regla 🌿</Text>
                   <Text style={styles.patternSub}>¿Cómo clasificas tus gastos en {detectedPattern.merchant}?</Text>
                 </View>
+                <TouchableOpacity onPress={rejectPattern} style={{ padding: 4 }}>
+                   <X size={20} color={theme.colors.onSurfaceVariant} />
+                </TouchableOpacity>
              </View>
              <View style={styles.ruleActionGrid}>
                 {['confidence', 'monitor', 'reduce'].map((type: any) => (

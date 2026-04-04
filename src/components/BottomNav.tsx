@@ -60,10 +60,10 @@ export const BottomNav = ({ activeScreen, setScreen }: { activeScreen: Screen; s
 
           <TouchableOpacity 
             style={styles.navItem} 
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setScreen('profile'); }}
           >
-             <User size={normalize(22)} color="#8D6E63" strokeWidth={1.5} />
-             <Text style={[styles.navLabel, { color: '#8D6E63' }]}>PERFIL</Text>
+             <User size={normalize(22)} color={activeScreen === 'profile' ? theme.colors.primary : '#8D6E63'} strokeWidth={activeScreen === 'profile' ? 2.5 : 1.5} />
+             <Text style={[styles.navLabel, { color: activeScreen === 'profile' ? theme.colors.primary : '#8D6E63' }]}>PERFIL</Text>
           </TouchableOpacity>
 
         </View>

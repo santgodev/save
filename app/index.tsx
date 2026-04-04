@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { supabase } from '../src/lib/supabase';
 import { INITIAL_POCKETS, SUPABASE_URL, SUPABASE_ANON_KEY } from '../src/constants';
 import { theme } from '../src/theme/theme';
@@ -13,6 +14,7 @@ import { Dashboard } from '../src/screens/Dashboard';
 import { Scanner } from '../src/screens/Scanner';
 import { Expenses } from '../src/screens/Expenses';
 import { Pockets } from '../src/screens/Pockets';
+import { Profile } from '../src/screens/Profile';
 import { Auth } from '../src/screens/Auth';
 
 export default function App() {
@@ -161,29 +163,30 @@ export default function App() {
         />
       );
       case 'expenses': return <Expenses transactions={transactions} onRefresh={fetchTransactions} />;
-      case 'pockets': return <Pockets pockets={pockets} transactions={transactions} onBudgetUpdate={(id, amount) => {
-        setPockets(prev => prev.map(p => p.id === id ? { ...p, budget: amount } : p));
-      }} />;
+      case 'pockets': return <Pockets pockets={pockets} transactions={transactions} session={session} onRefresh={() => loadUserData(session?.user?.id)} />;
+      case 'profile': return <Profile session={session} transactions={transactions} pockets={pockets} onRefresh={fetchTransactions} />;
       default: return <Dashboard transactions={transactions} />;
     }
   };
 
   return (
-    <View style={styles.container}>
-      {currentScreen !== 'scanner' && !isInitializing && session && (
-        <TopBar
-          title={currentScreen === 'dashboard' ? 'Save' : currentScreen === 'expenses' ? 'Tus Gastos' : 'Bolsillos'}
-          userAvatar={session.user?.user_metadata?.avatar_url || session.user?.user_metadata?.picture || null}
-          userName={session.user?.user_metadata?.full_name || session.user?.user_metadata?.name || session.user?.email?.split('@')[0] || null}
-        />
-      )}
+    <SafeAreaProvider>
+      <View style={styles.container}>
+        {currentScreen !== 'scanner' && !isInitializing && session && (
+          <TopBar
+            title={currentScreen === 'dashboard' ? 'Save' : currentScreen === 'expenses' ? 'Tus Gastos' : currentScreen === 'pockets' ? 'Bolsillos' : 'Tu Perfil'}
+            userAvatar={session.user?.user_metadata?.avatar_url || session.user?.user_metadata?.picture || null}
+            userName={session.user?.user_metadata?.full_name || session.user?.user_metadata?.name || session.user?.email?.split('@')[0] || null}
+          />
+        )}
 
-      <View style={[styles.mainArea, { backgroundColor: currentScreen === 'scanner' ? '#000' : theme.colors.background }]}>
-        {renderScreen()}
+        <View style={[styles.mainArea, { backgroundColor: currentScreen === 'scanner' ? '#000' : theme.colors.background }]}>
+          {renderScreen()}
+        </View>
+
+        {session && currentScreen !== 'scanner' && <BottomNav activeScreen={currentScreen} setScreen={setCurrentScreen} />}
       </View>
-
-      {session && <BottomNav activeScreen={currentScreen} setScreen={setCurrentScreen} />}
-    </View>
+    </SafeAreaProvider>
   );
 }
 

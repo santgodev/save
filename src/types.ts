@@ -3,10 +3,12 @@ export type Category = 'Comida' | 'Transporte' | 'Ocio' | 'Vivienda' | 'Servicio
 export interface Transaction {
   id: string;
   merchant: string;
+  canonical_merchant?: string;
   amount: number;
   date: string;
   category: Category;
   icon: string;
+  created_at?: string;
 }
 
 export interface Pocket {
@@ -18,4 +20,4 @@ export interface Pocket {
   icon: string;
 }
 
-export type Screen = 'dashboard' | 'scanner' | 'expenses' | 'pockets';
+export type Screen = 'dashboard' | 'scanner' | 'expenses' | 'pockets' | 'profile';
