@@ -21,7 +21,7 @@ export const calculateFinancialProfile = (transactions: any[], rules: any[], bud
 
   const today = new Date();
   const currentMonth = today.getMonth();
-  const currentYear = 2026;
+  const currentYear = new Date().getFullYear();
 
   // 1. Gasto Hormiga: Definimos como < 15,000 COP
   const HORMIGA_THRESHOLD = 15000;

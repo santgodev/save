@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -14,8 +14,9 @@ import {
   Alert
 } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { useTheme } from '../theme/ThemeContext';
 import { theme } from '../theme/theme';
-import { Mail, Lock, LogIn, UserPlus, Apple, Chrome, ChevronRight, CornerDownRight } from 'lucide-react-native';
+import { Mail, Lock, LogIn, UserPlus, Apple, Chrome, Eye, EyeOff, User } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import Animated, { FadeInDown, FadeInUp, Layout } from 'react-native-reanimated';
 import * as WebBrowser from 'expo-web-browser';
@@ -30,16 +31,26 @@ interface AuthProps {
 }
 
 export function Auth({ onLoginSuccess }: AuthProps) {
+  const { theme } = useTheme();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [fullName, setFullName] = useState('');
+
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
 
   const toggleMode = () => setMode(mode === 'login' ? 'signup' : 'login');
 
   const handleAuth = async () => {
     if (!email || !password) {
       Alert.alert('Error', 'Por favor ingresa todos los campos.');
+      return;
+    }
+    if (mode === 'signup' && !fullName.trim()) {
+      Alert.alert('Error', 'Por favor ingresa tu nombre.');
       return;
     }
 
@@ -54,7 +65,7 @@ export function Auth({ onLoginSuccess }: AuthProps) {
             password,
             options: {
               data: {
-                full_name: email.split('@')[0],
+                full_name: fullName.trim(),
               }
             }
         });
@@ -89,12 +100,7 @@ export function Auth({ onLoginSuccess }: AuthProps) {
         if (result.type === 'success') {
           const { url } = result;
           
-          // Debug Alert (para ver qué nos devuelve Safari exactamente)
-          // Alert.alert('DEBUG URL', url);
-
           const params: any = {};
-          
-          // Procesar tanto fragmentos (#) como parámetros (?)
           const parts = url.split(/[#?]/);
           parts.forEach(part => {
             if (part && part.includes('=')) {
@@ -116,7 +122,7 @@ export function Auth({ onLoginSuccess }: AuthProps) {
             if (sessionError) throw sessionError;
             onLoginSuccess();
           } else {
-             Alert.alert('Sesión no encontrada', 'No se pudieron extraer las llaves de acceso. Revisa la consola de Supabase.');
+             Alert.alert('Sesión no encontrada', 'No se pudieron extraer las llaves de acceso.');
           }
         }
       }
@@ -136,7 +142,6 @@ export function Auth({ onLoginSuccess }: AuthProps) {
       style={styles.container}
     >
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Background Gradients/Shapes */}
         <View style={styles.bgCircle1} />
         <View style={styles.bgCircle2} />
 
@@ -164,6 +169,22 @@ export function Auth({ onLoginSuccess }: AuthProps) {
             </Text>
 
             <View style={styles.inputGroup}>
+              {mode === 'signup' && (
+                <View style={styles.inputWrapper}>
+                  <User size={20} color={theme.colors.primary} style={styles.inputIcon} />
+                  <TextInput
+                    placeholder="Tu nombre"
+                    value={fullName}
+                    onChangeText={setFullName}
+                    autoCapitalize="words"
+                    style={styles.input}
+                    placeholderTextColor={theme.colors.onSurfaceVariant}
+                    returnKeyType="next"
+                    onSubmitEditing={() => emailRef.current?.focus()}
+                  />
+                </View>
+              )}
+
               <View style={styles.inputWrapper}>
                 <Mail size={20} color={theme.colors.primary} style={styles.inputIcon} />
                 <TextInput
@@ -174,6 +195,10 @@ export function Auth({ onLoginSuccess }: AuthProps) {
                   keyboardType="email-address"
                   style={styles.input}
                   placeholderTextColor={theme.colors.onSurfaceVariant}
+                  ref={emailRef}
+                  returnKeyType="next"
+                  blurOnSubmit={false}
+                  onSubmitEditing={() => passwordRef.current?.focus()}
                 />
               </View>
 
@@ -183,10 +208,18 @@ export function Auth({ onLoginSuccess }: AuthProps) {
                   placeholder="Contraseña"
                   value={password}
                   onChangeText={setPassword}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
                   style={styles.input}
                   placeholderTextColor={theme.colors.onSurfaceVariant}
+                  ref={passwordRef}
+                  returnKeyType="done"
+                  onSubmitEditing={handleAuth}
                 />
+                <TouchableOpacity onPress={() => setShowPassword(p => !p)} style={{ padding: 6 }}>
+                  {showPassword
+                    ? <EyeOff size={18} color={theme.colors.onSurfaceVariant} />
+                    : <Eye size={18} color={theme.colors.onSurfaceVariant} />}
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -416,6 +449,6 @@ const styles = StyleSheet.create({
   },
   toggleAction: {
     color: theme.colors.primary,
-    fontWeight: '700',
+    fontWeight: '900',
   }
 });

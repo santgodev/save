@@ -1,4 +1,4 @@
-export type Category = 'Comida' | 'Transporte' | 'Ocio' | 'Vivienda' | 'Servicios' | 'Ahorros' | 'Ingresos';
+export type Category = 'Comida' | 'Transporte' | 'Ocio' | 'Vivienda' | 'Servicios' | 'Ahorros' | 'Ingresos' | 'Ingreso';
 
 export interface Transaction {
   id: string;
@@ -20,4 +20,4 @@ export interface Pocket {
   icon: string;
 }
 
-export type Screen = 'dashboard' | 'scanner' | 'expenses' | 'pockets' | 'profile';
+export type Screen = 'dashboard' | 'scanner' | 'expenses' | 'pockets' | 'profile' | 'onboarding' | 'add_income' | 'pocket_transfer';

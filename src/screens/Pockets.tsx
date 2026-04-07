@@ -1,14 +1,17 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, TouchableOpacity, Animated, StyleSheet, ScrollView, Dimensions, Pressable, TextInput, Modal, Alert
+  View, Text, TouchableOpacity, Animated, StyleSheet, ScrollView, Dimensions, Pressable, TextInput, Modal, ActivityIndicator, Alert, Platform
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { 
-  ChevronRight, ChevronLeft, X, Plus, Trash2 
+  ChevronLeft, ChevronRight, Edit3, Save, TrendingUp,
+  Plus, X, Trash2, PieChart, AlertCircle, ShoppingBag, 
+  MapPin, Clock, Calendar, CheckCircle2, ChevronDown, ArrowRight 
 } from 'lucide-react-native';
-import { theme, normalize } from '../theme/theme';
+import { useTheme } from '../theme/ThemeContext';
+import { normalize } from '../theme/theme';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { AnimatedProgressBar } from '../components/AnimatedProgressBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,106 +28,343 @@ const MONTHS = [
   { label: 'Octubre', value: 9 }, { label: 'Noviembre', value: 10 }, { label: 'Diciembre', value: 11 }
 ];
 
-export const Pockets = ({ pockets, transactions, session, onRefresh }: { pockets: any[], transactions: any[], session: any, onRefresh: () => void }) => {
+export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferPress }: { pockets: any[], transactions: any[], session: any, onRefresh: () => void, onTransferPress: (params: { fromId?: string, amount?: number }) => void }) => {
   const insets = useSafeAreaInsets();
+  const { theme } = useTheme();
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: { flex: 1, backgroundColor: theme.colors.background },
+    scrollPadding: { paddingHorizontal: 24 },
+    inlineHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, marginBottom: 32 },
+    monthTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5, color: theme.colors.onSurface },
+    arrow: { 
+      width: 44, 
+      height: 44, 
+      borderRadius: 22, 
+      backgroundColor: theme.colors.surface, 
+      alignItems: 'center', 
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: theme.colors.outlineVariant,
+      ...theme.shadows.soft 
+    },
+    cardHeader: { 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      backgroundColor: theme.colors.surface, 
+      padding: 24, 
+      borderRadius: 32, 
+      marginBottom: 16, 
+      borderWidth: 1, 
+      borderColor: theme.colors.outlineVariant,
+      ...theme.shadows.premium 
+    },
+    topLabel: { 
+      fontSize: 10, 
+      fontWeight: '900', 
+      color: theme.colors.onSurfaceVariant, 
+      marginBottom: 8, 
+      letterSpacing: 1.2, 
+      textTransform: 'uppercase' 
+    },
+    topAmount: { fontSize: 32, fontWeight: '900', letterSpacing: -1, color: theme.colors.onSurface },
+    incomeInput: { fontSize: 32, fontWeight: '900', padding: 0, margin: 0, color: theme.colors.primary },
+    budgetCompareTxt: { fontSize: 13, color: theme.colors.onSurfaceVariant, marginTop: 4, fontWeight: '700' },
+    
+    incomeHistoryRow: { marginTop: 12, marginBottom: 24 },
+    incomeMiniCard: { 
+      backgroundColor: theme.colors.surface, 
+      paddingHorizontal: 16, 
+      paddingVertical: 12, 
+      borderRadius: 20, 
+      marginRight: 12, 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      borderWidth: 1, 
+      borderColor: theme.colors.outlineVariant,
+      ...theme.shadows.soft 
+    },
+    miniCardIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.colors.primaryContainer, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+    miniCardAmt: { fontSize: 15, fontWeight: '900', color: theme.colors.onSurface },
+    miniCardDate: { fontSize: 11, color: theme.colors.onSurfaceVariant, marginTop: 1, fontWeight: '700' },
+    
+    editModeBtn: { 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      gap: 8, 
+      paddingHorizontal: 16, 
+      paddingVertical: 12, 
+      borderRadius: 16, 
+      backgroundColor: theme.colors.surfaceContainerLow,
+      borderWidth: 1, 
+      borderColor: theme.colors.outlineVariant 
+    },
+    editModeTxt: { fontSize: 13, fontWeight: '900', color: theme.colors.onSurfaceVariant },
+    
+    diffAlert: { padding: 18, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24, borderWidth: 1 },
+    diffError: { backgroundColor: theme.colors.error + '10', borderColor: theme.colors.error + '25' },
+    diffSuccess: { backgroundColor: theme.colors.success + '10', borderColor: theme.colors.success + '25' },
+    diffText: { fontSize: 13, fontWeight: '800', flex: 1 },
+    
+    autoLevelBtn: { 
+      paddingHorizontal: 12, 
+      paddingVertical: 8, 
+      borderRadius: 12, 
+      marginTop: 8, 
+      alignSelf: 'flex-start', 
+      borderWidth: 1, 
+      borderColor: theme.colors.outlineVariant,
+      backgroundColor: theme.colors.surface 
+    },
+    autoLevelTxt: { fontSize: 12, fontWeight: '800', color: theme.colors.primary },
+    
+    adjustActions: { flexDirection: 'row', gap: 12, marginTop: 16, paddingHorizontal: 4 },
+    cancelAdjustBtn: { flex: 1, paddingVertical: 16, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.outlineVariant },
+    cancelAdjustTxt: { fontSize: 14, fontWeight: '800', color: theme.colors.onSurfaceVariant },
+    saveAdjustBtn: { flex: 2, paddingVertical: 16, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary, ...theme.shadows.soft },
+    saveAdjustTxt: { fontSize: 14, fontWeight: '900', color: '#FFF' },
+    
+    grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
+    pocketCard: { 
+      width: (width - 62) / 2, 
+      borderRadius: 32, 
+      padding: 20, 
+      backgroundColor: theme.colors.surface, 
+      borderWidth: 1, 
+      borderColor: theme.colors.outlineVariant,
+      ...theme.shadows.premium
+    },
+    pocketTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+    iconCircle: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceContainerLow },
+    weightBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: theme.colors.surfaceContainerHigh },
+    weightTxt: { fontSize: 11, fontWeight: '900', color: theme.colors.primary },
+    
+    inlineEditPct: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, backgroundColor: theme.colors.surfaceContainerHighest },
+    editPctInput: { fontSize: 14, fontWeight: '900', minWidth: 28, textAlign: 'right' },
+    editPctLabel: { fontSize: 11, fontWeight: '800', marginLeft: 2 },
+    
+    pocketName: { fontSize: 16, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 4 },
+    budgetLabel: { fontSize: 13, fontWeight: '700', color: theme.colors.onSurfaceVariant },
+    editBudgetInput: { fontSize: 15, fontWeight: '900', color: theme.colors.onSurface },
+    
+    progressArea: { gap: 8 },
+    remTxt: { fontSize: 11, fontWeight: '900' },
+    
+    addCard: { 
+      borderStyle: 'dashed', 
+      justifyContent: 'center', 
+      alignItems: 'center', 
+      gap: 10, 
+      backgroundColor: 'transparent',
+      borderColor: theme.colors.outlineVariant,
+      minHeight: 180
+    },
+    addTxt: { fontSize: 13, fontWeight: '900' },
+    
+    bottomSheet: { 
+      position: 'absolute', 
+      bottom: 0, 
+      left: 0, 
+      right: 0, 
+      height: height * 0.75, 
+      borderTopLeftRadius: 40, 
+      borderTopRightRadius: 40, 
+      padding: 32, 
+      backgroundColor: theme.colors.surface,
+      ...theme.shadows.premium 
+    },
+    sheetHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 32 },
+    sheetTitle: { flex: 1, fontSize: 24, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -0.5 },
+    
+    quickStats: { 
+      flexDirection: 'row', 
+      gap: 20, 
+      padding: 24, 
+      borderRadius: 28, 
+      marginBottom: 32, 
+      backgroundColor: theme.colors.surfaceContainerLow,
+      borderWidth: 1,
+      borderColor: theme.colors.outlineVariant 
+    },
+    qStat: { flex: 1 },
+    qLabel: { fontSize: 10, fontWeight: '900', color: theme.colors.onSurfaceVariant, marginBottom: 6, letterSpacing: 1 },
+    qVal: { fontSize: 18, fontWeight: '900', color: theme.colors.onSurface },
+    
+    overspentAlertContainer: { marginBottom: 32, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: theme.colors.error + '30' },
+    overspentAlert: { padding: 20, flexDirection: 'row', alignItems: 'center', gap: 16, backgroundColor: theme.colors.error },
+    overspentTitle: { color: '#FFF', fontSize: 16, fontWeight: '900' },
+    overspentMsg: { color: 'rgba(255,255,255,0.9)', fontSize: 13, fontWeight: '600', marginTop: 4, lineHeight: 18 },
+    fixOverspentBtn: { paddingVertical: 18, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.colors.surface },
+    fixOverspentTxt: { fontSize: 14, fontWeight: '900', color: theme.colors.primary },
+    
+    txRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: theme.colors.outlineVariant },
+    txMerchant: { fontSize: 16, fontWeight: '800', color: theme.colors.onSurface },
+    txDate: { fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 2 },
+    txAmt: { fontSize: 16, fontWeight: '900', color: theme.colors.onSurface },
+    
+    deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, padding: 20, marginTop: 32 },
+    delTxt: { fontSize: 14, fontWeight: '800' },
+    
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.82)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+    modalContent: { width: '100%', borderRadius: 36, padding: 32, backgroundColor: theme.colors.surface, ...theme.shadows.premium },
+    modalTitle: { fontSize: 22, fontWeight: '900', marginBottom: 24, color: theme.colors.onSurface },
+    modalIn: { 
+      borderRadius: 20, 
+      padding: 18, 
+      fontSize: 16, 
+      marginBottom: 16, 
+      borderWidth: 1, 
+      borderColor: theme.colors.outlineVariant, 
+      backgroundColor: theme.colors.surfaceContainerLow,
+      color: theme.colors.onSurface,
+      fontWeight: '700'
+    },
+    modalBtns: { flexDirection: 'row', justifyContent: 'flex-end', gap: 16, marginTop: 12 },
+    modalCancel: { padding: 16 },
+    cancelTxt: { color: theme.colors.onSurfaceVariant, fontWeight: '800' },
+    save: { paddingVertical: 14, paddingHorizontal: 32, borderRadius: 20, backgroundColor: theme.colors.primary, ...theme.shadows.soft },
+    saveTxt: { color: '#FFF', fontWeight: '900' },
+    
+    incomeAlert: { 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      gap: 12, 
+      padding: 20, 
+      borderRadius: 24, 
+      marginBottom: 24, 
+      borderWidth: 1.5,
+      backgroundColor: theme.colors.primaryContainer + '20',
+      borderColor: theme.colors.primary + '30'
+    },
+    incomeAlertText: { flex: 1, fontSize: 13, lineHeight: 20 },
+    backdrop: { ...StyleSheet.absoluteFillObject },
+    backdropTint: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
+  }), [theme]);
+
   const [selectedPocket, setSelectedPocket] = useState<any | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [monthlyIncome, setMonthlyIncome] = useState(0);
   
-  // Custom Modals State
+  const [isAdjustMode, setIsAdjustMode] = useState(false);
+  const [tempBudgets, setTempBudgets] = useState<Record<string, number>>({});
+  const [tempPercentages, setTempPercentages] = useState<Record<string, number>>({});
+  const [tempIncome, setTempIncome] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
+
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
   const [newBudget, setNewBudget] = useState('100000');
-  
-  const [editBudgetModal, setEditBudgetModal] = useState(false);
-  const [editVal, setEditVal] = useState('');
-  
-  const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
-  const [pocketToDelete, setPocketToDelete] = useState<string | null>(null);
 
   const sheetAnim = useRef(new Animated.Value(height)).current;
 
-  // Reactively sync selected pocket with updated props after a DB refresh
-  useEffect(() => {
-    if (selectedPocket) {
-      const updated = pockets.find(p => p.id === selectedPocket.id);
-      if (updated) setSelectedPocket(updated);
-    }
-  }, [pockets]);
+  useEffect(() => { fetchMonthlyIncome(); }, [selectedMonth]);
 
-  // -- CRUD ACTIONS --
-  const updatePocketBudget = async (id: string, budgetStr: string) => {
-     try {
-       const budget = parseFloat(budgetStr.replace(/[^0-9]/g, '')) || 0;
-       const activeAccessToken = session?.access_token || '';
-       const strictClient = activeAccessToken ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-         global: { headers: { Authorization: `Bearer ${activeAccessToken}` } }
-       }) : supabase;
-       
-       await strictClient.from('pockets').update({ budget }).eq('id', id);
-       setEditVal(budget.toString());
-       onRefresh();
-       setEditBudgetModal(false);
-       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-     } catch (e) {
-       console.log('Error updating pocket:', e);
-     }
-  };
-
-  const deletePocket = async (id: string) => {
-    try {
-      const activeAccessToken = session?.access_token || '';
-      const strictClient = activeAccessToken ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        global: { headers: { Authorization: `Bearer ${activeAccessToken}` } }
-      }) : supabase;
-      
-      await strictClient.from('pockets').delete().eq('id', id);
-      onRefresh();
-      closePocket();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    } catch (e) {
-      console.log('Error deleting pocket:', e);
+  const fetchMonthlyIncome = async () => {
+    const currentYear = new Date().getFullYear();
+    const { data } = await supabase
+      .from('user_monthly_income')
+      .select('income')
+      .eq('user_id', session.user.id)
+      .eq('year', currentYear)
+      .eq('month', selectedMonth)
+      .single();
+    
+    if (!data?.income) {
+      const { data: recent } = await supabase
+        .from('user_monthly_income')
+        .select('income')
+        .eq('user_id', session.user.id)
+        .eq('year', currentYear)
+        .order('month', { ascending: false })
+        .limit(1)
+        .single();
+      const val = recent?.income || 0;
+      setMonthlyIncome(0);
+      setTempIncome(val);
+    } else {
+      setMonthlyIncome(data.income);
+      setTempIncome(data.income);
     }
   };
 
-  const confirmDelete = (id: string | undefined) => {
-    if(!id) return;
-    setPocketToDelete(id);
-    setDeleteConfirmVisible(true);
+  const startAdjustMode = () => {
+    const budgets: Record<string, number> = {};
+    const percents: Record<string, number> = {};
+    pockets.forEach(p => {
+      budgets[p.id] = p.budget;
+      percents[p.id] = p.target_percentage || 0;
+    });
+    setTempBudgets(budgets);
+    setTempPercentages(percents);
+    setTempIncome(monthlyIncome || 0);
+    setIsAdjustMode(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
-  const syncPocketToCloud = async () => {
+  const saveBatchBudget = async () => {
+    setIsSaving(true);
     try {
-      if(!newName) return;
-      const budget = parseFloat(newBudget.replace(/[^0-9]/g, '')) || 0;
-      const activeAccessToken = session?.access_token || '';
-      const strictClient = activeAccessToken ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        global: { headers: { Authorization: `Bearer ${activeAccessToken}` } }
-      }) : supabase;
-      
-      await strictClient.from('pockets').insert({
-        user_id: session?.user?.id,
-        name: newName,
-        category: 'Otros',
-        budget,
-        icon: 'Tag'
+      const strictClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: `Bearer ${session.access_token}` } }
       });
-      
-      setNewName('');
-      setAddModalVisible(false);
+      await strictClient.from('user_monthly_income').upsert({
+        user_id: session.user.id,
+        year: new Date().getFullYear(),
+        month: selectedMonth,
+        income: tempIncome
+      });
+      const updates = Object.entries(tempBudgets).map(([id, budget]) => {
+        const pct = tempPercentages[id] || 0;
+        return strictClient.from('pockets').update({ budget, target_percentage: pct }).eq('id', id);
+      });
+      await Promise.all(updates);
+      setIsAdjustMode(false);
       onRefresh();
+      fetchMonthlyIncome();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (e) {
-      console.log('Error creating pocket:', e);
-    }
+    } catch (e) { console.error(e); } finally { setIsSaving(false); }
   };
 
-  // -- CALCULATIONS --
+  const deletePocket = async (id: string) => {
+    const pocket = pockets.find(p => p.id === id);
+    Alert.alert(`Eliminar "${pocket?.name}"`, "¿Seguro? Esta acción ajustará tus balances.", [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Eliminar', style: 'destructive', onPress: async () => {
+          const strictClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            global: { headers: { Authorization: `Bearer ${session.access_token}` } }
+          });
+          await strictClient.from('pockets').delete().eq('id', id);
+          onRefresh();
+          closePocket();
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        }
+      }
+    ]);
+  };
+
+  const syncPocketToCloud = async () => {
+    if(!newName) return;
+    const budget = parseFloat(newBudget.replace(/[^0-9]/g, '')) || 0;
+    const strictClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${session.access_token}` } }
+    });
+    await strictClient.from('pockets').insert({
+      user_id: session.user.id,
+      name: newName,
+      category: 'Otros',
+      budget,
+      icon: 'tag'
+    });
+    setNewName('');
+    setAddModalVisible(false);
+    onRefresh();
+  };
+
   const getPocketSpending = (category: string) => {
     return transactions
       .filter(tx => {
         const txDate = new Date(tx.date_string || tx.created_at);
-        return tx.category === category && txDate.getMonth() === selectedMonth && txDate.getFullYear() === 2026;
+        return tx.category === category && txDate.getMonth() === selectedMonth;
       })
       .reduce((acc, tx) => acc + Math.abs(parseFloat(tx.amount || 0)), 0);
   };
@@ -132,23 +372,21 @@ export const Pockets = ({ pockets, transactions, session, onRefresh }: { pockets
   const getPocketTransactions = (category: string) => {
     return transactions.filter(tx => {
       const txDate = new Date(tx.date_string || tx.created_at);
-      return tx.category === category && txDate.getMonth() === selectedMonth && txDate.getFullYear() === 2026;
+      return tx.category === category && txDate.getMonth() === selectedMonth;
     }).sort((a, b) => new Date(b.date_string || b.created_at).getTime() - new Date(a.date_string || a.created_at).getTime());
   };
 
-  const totalBudget = pockets.reduce((acc, p) => acc + (p.budget || 0), 0);
-  const totalSpent = pockets.reduce((acc, p) => acc + getPocketSpending(p.category), 0);
+  const incomeTransactions = transactions.filter(tx => {
+    const txDate = new Date(tx.date_string || tx.created_at);
+    return tx.category === 'Ingreso' && txDate.getMonth() === selectedMonth;
+  });
 
-  const changeMonth = (dir: 'next' | 'prev') => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (dir === 'next') setSelectedMonth((prev) => (prev + 1) % 12);
-    else setSelectedMonth((prev) => (prev - 1 + 12) % 12);
-  };
+  const totalInvoicedIncome = incomeTransactions.reduce((acc, tx) => acc + Math.abs(parseFloat(tx.amount || 0)), 0);
+  const diff = tempIncome - Object.values(tempBudgets).reduce((a, b) => a + b, 0);
 
   const openPocket = (pocket: any) => {
+    if (isAdjustMode) return;
     setSelectedPocket(pocket);
-    setEditVal(pocket.budget.toString());
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 50, friction: 8 }).start();
   };
 
@@ -156,364 +394,214 @@ export const Pockets = ({ pockets, transactions, session, onRefresh }: { pockets
     Animated.timing(sheetAnim, { toValue: height, duration: 250, useNativeDriver: true }).start(() => setSelectedPocket(null));
   };
 
-  const POCKET_COLORS: Record<string, string[]> = {
-    'Comida': ['#7D907E', '#5B6259'],
-    'Transporte': ['#6B8E9B', '#415A63'],
-    'Ocio': ['#C9A959', '#8C753E'],
-    'Otros': ['#5B6259', '#2D3436'],
-    'Ahorros': ['#A28D7F', '#6D5D54'],
-    'default': ['#7D907E', '#6B8E9B']
-  };
-
   return (
     <View style={styles.container}>
-      <ScrollView 
-        contentContainerStyle={[styles.scrollPadding, { paddingTop: normalize(120) }]} 
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.intelligentMonthPickerInline}>
-          <TouchableOpacity onPress={() => changeMonth('prev')} style={styles.monthArrow}>
-             <ChevronLeft size={20} color={theme.colors.onSurfaceVariant} />
-          </TouchableOpacity>
-          <View style={styles.monthIndicator}>
-             <Text style={styles.monthDisplayLabel}>{MONTHS[selectedMonth].label}</Text>
-             {selectedMonth === new Date().getMonth() && <View style={styles.currentMonthDot} />}
-          </View>
-          <TouchableOpacity onPress={() => changeMonth('next')} style={styles.monthArrow}>
-             <ChevronRight size={20} color={theme.colors.onSurfaceVariant} />
-          </TouchableOpacity>
+      <ScrollView contentContainerStyle={[styles.scrollPadding, { paddingTop: Math.max(insets.top, 16) + 104, paddingBottom: Math.max(insets.bottom, 16) + normalize(76) + 24 }]} showsVerticalScrollIndicator={false}>
+        <View style={styles.inlineHeader}>
+          <TouchableOpacity onPress={() => setSelectedMonth(prev => (prev - 1 + 12) % 12)} style={styles.arrow}><ChevronLeft size={18} color={theme.colors.onSurface} /></TouchableOpacity>
+          <Text style={styles.monthTitle}>{MONTHS[selectedMonth].label}</Text>
+          <TouchableOpacity onPress={() => setSelectedMonth(prev => (prev + 1) % 12)} style={styles.arrow}><ChevronRight size={18} color={theme.colors.onSurface} /></TouchableOpacity>
         </View>
 
-        <View style={styles.topStats}>
-           <Text style={styles.topLabel}>PRESUPUESTO EN {MONTHS[selectedMonth].label.toUpperCase()}</Text>
-           <Text style={styles.topAmount}>$ {totalBudget.toLocaleString('es-CO')}</Text>
-           <View style={styles.globalProgressWrapper}>
-             <AnimatedProgressBar 
-                percent={Math.min((totalSpent / (totalBudget || 1)) * 100, 100)} 
-                color={theme.colors.primary} 
-                bgColor="rgba(0,0,0,0.05)" 
-              />
-              <View style={styles.progressLabelRow}>
-                 <Text style={styles.progressText}>$ {totalSpent.toLocaleString('es-CO')} usados</Text>
-                 <Text style={styles.progressPct}>{Math.round((totalSpent / (totalBudget || 1)) * 100)}%</Text>
-              </View>
+        <View style={styles.cardHeader}>
+           <View style={{flex: 1}}>
+             <Text style={styles.topLabel}>TOTAL INGRESADO ESTE MES</Text>
+             {isAdjustMode ? (
+               <TextInput 
+                 style={styles.incomeInput}
+                 keyboardType="numeric"
+                 value={tempIncome.toString()}
+                 onChangeText={(v) => setTempIncome(parseInt(v.replace(/[^0-9]/g, '')) || 0)}
+                 autoFocus
+               />
+             ) : (
+               <Text style={styles.topAmount}>$ {totalInvoicedIncome.toLocaleString('es-CO')}</Text>
+             )}
+             {!isAdjustMode && totalInvoicedIncome !== monthlyIncome && (
+               <Text style={styles.budgetCompareTxt}>Objetivo: ${monthlyIncome.toLocaleString('es-CO')}</Text>
+             )}
            </View>
+           <TouchableOpacity 
+             style={[styles.editModeBtn, isAdjustMode && { backgroundColor: theme.colors.onSurface }]} 
+             onPress={isAdjustMode ? saveBatchBudget : startAdjustMode}
+             disabled={isSaving || (isAdjustMode && diff !== 0)}
+           >
+              {isSaving ? <ActivityIndicator size="small" color="#FFF" /> : (
+                <>
+                  {isAdjustMode ? <Save size={18} color="#FFF" /> : <Edit3 size={18} color={theme.colors.primary} />}
+                  <Text style={[styles.editModeTxt, isAdjustMode && { color: "#FFF" }]}>{isAdjustMode ? 'Guardar' : 'Ajustar'}</Text>
+                </>
+              )}
+           </TouchableOpacity>
         </View>
 
-        <View style={styles.gridHeader}>
-           <Text style={styles.gridTitle}>Bolsillos</Text>
-        </View>
-
-        <View style={styles.pocketGrid}>
-           {pockets.map((pocket, i) => {
-              const spent = getPocketSpending(pocket.category);
-              const remaining = Math.max((pocket.budget || 0) - spent, 0);
-              const colors = POCKET_COLORS[pocket.category] || POCKET_COLORS.default;
-              
-              return (
-                <TouchableOpacity key={pocket.id || i} style={styles.pocketCardContainer} activeOpacity={0.8} onPress={() => openPocket(pocket)}>
-                  <LinearGradient colors={colors as any} style={styles.pocketCard} start={{x:0, y:0}} end={{x:1, y:1}}>
-                    <View style={styles.pocketIconBox}>
-                        <CategoryIcon iconName={pocket.icon} size={normalize(18)} color="#FFF" />
-                    </View>
-                    <Text style={styles.pocketName}>{pocket.name}</Text>
-                    <BlurView intensity={20} tint="light" style={styles.pocketOverlayStatus}>
-                      <Text style={styles.statusText} numberOfLines={1}>{remaining > 0 ? `$${remaining.toLocaleString('es-CO')}` : 'Límite'}</Text>
-                      <ChevronRight size={12} color="#FFF" />
-                    </BlurView>
-                  </LinearGradient>
-                </TouchableOpacity>
-              );
-            })}
-
-            {/* ADD POCKET BUTTON Card */}
-            <TouchableOpacity 
-              style={styles.pocketCardContainer} 
-              activeOpacity={0.8} 
-              onPress={() => setAddModalVisible(true)}
-            >
-              <View style={[styles.pocketCard, styles.addPocketCard]}>
-                <View style={styles.addIconCircle}>
-                   <Plus size={24} color={theme.colors.primary} />
+        {incomeTransactions.length > 0 && !isAdjustMode && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.incomeHistoryRow} contentContainerStyle={{ paddingHorizontal: 20 }}>
+            {incomeTransactions.map((tx, idx) => (
+              <View key={tx.id || idx} style={styles.incomeMiniCard}>
+                <View style={styles.miniCardIcon}><TrendingUp size={16} color={theme.colors.primary} /></View>
+                <View>
+                  <Text style={styles.miniCardAmt}>+${Math.abs(tx.amount).toLocaleString('es-CO')}</Text>
+                  <Text style={styles.miniCardDate}>{new Date(tx.date_string || tx.created_at).toLocaleDateString()}</Text>
                 </View>
-                <Text style={styles.addPocketText}>Nueva categoría</Text>
               </View>
+            ))}
+          </ScrollView>
+        )}
+
+        {isAdjustMode && (
+          <View style={[styles.diffAlert, diff !== 0 ? styles.diffError : styles.diffSuccess]}>
+             <AlertCircle size={20} color={diff === 0 ? theme.colors.success : theme.colors.error} />
+             <Text style={[styles.diffText, { color: diff === 0 ? theme.colors.success : theme.colors.error }]}>
+               {diff === 0 ? '¡Presupuesto equilibrado!' : diff > 0 ? `Quedan $${diff.toLocaleString('es-CO')} por asignar` : `Faltan $${Math.abs(diff).toLocaleString('es-CO')}`}
+             </Text>
+             
+             {diff > 0 && (
+                <TouchableOpacity style={styles.autoLevelBtn} onPress={() => {
+                    const ahorros = pockets.find(p => p.category === 'Ahorros');
+                    if (ahorros) setTempBudgets(prev => ({ ...prev, [ahorros.id]: (prev[ahorros.id] || 0) + diff }));
+                }}>
+                  <Text style={styles.autoLevelTxt}>Nivelar Ahorro</Text>
+                </TouchableOpacity>
+             )}
+          </View>
+        )}
+
+        {isAdjustMode && (
+          <View style={styles.adjustActions}>
+            <TouchableOpacity style={styles.cancelAdjustBtn} onPress={() => setIsAdjustMode(false)}><Text style={styles.cancelAdjustTxt}>Cerrar</Text></TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.saveAdjustBtn, diff !== 0 && { opacity: 0.5 }]} 
+              onPress={saveBatchBudget}
+              disabled={isSaving || diff !== 0}
+            >
+              {isSaving ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.saveAdjustTxt}>Guardar Presupuesto</Text>}
             </TouchableOpacity>
+          </View>
+        )}
+
+        {totalInvoicedIncome === 0 && !isAdjustMode && (
+          <TouchableOpacity style={styles.incomeAlert} onPress={startAdjustMode}>
+            <PieChart size={20} color={theme.colors.primary} />
+            <Text style={[styles.incomeAlertText, { color: theme.colors.onSurfaceVariant }]}>
+              Define tu presupuesto ideal. Toca <Text style={{ fontWeight: '900', color: theme.colors.primary }}>Ajustar</Text> para organizar tu capital.
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        <View style={styles.grid}>
+           {[...pockets].sort((a,b) => (b.target_percentage || 0) - (a.target_percentage || 0)).map((p, i) => {
+             const spent = getPocketSpending(p.category);
+             const budget = isAdjustMode ? tempBudgets[p.id] : (p.budget || 0);
+             const targetPct = isAdjustMode ? (tempPercentages[p.id] || 0) : (p.target_percentage || 0);
+             const isOverspent = spent > budget;
+             const pctUsage = Math.min((spent / (budget || 1)) * 100, 100);
+
+             return (
+               <TouchableOpacity key={p.id || i} style={styles.pocketCard} activeOpacity={0.9} onPress={() => openPocket(p)}>
+                  <View style={styles.pocketTop}>
+                    <View style={styles.iconCircle}><CategoryIcon iconName={p.icon} size={20} color={theme.colors.onSurface} /></View>
+                    <View style={styles.weightBadge}><Text style={styles.weightTxt}>{targetPct}%</Text></View>
+                  </View>
+                  
+                  <View style={{ marginBottom: 16 }}>
+                    <Text style={styles.pocketName}>{p.name}</Text>
+                    {isAdjustMode ? (
+                      <View style={styles.inlineEditPct}>
+                         <TextInput 
+                           style={styles.editPctInput} keyboardType="numeric" value={targetPct.toString()}
+                           onChangeText={(v) => {
+                             const val = Math.min(parseInt(v.replace(/[^0-9]/g, '')) || 0, 100);
+                             setTempPercentages(pvs => ({...pvs, [p.id]: val}));
+                             if (tempIncome > 0) setTempBudgets(pvs => ({...pvs, [p.id]: Math.round(tempIncome * (val/100))}));
+                           }}
+                         />
+                         <Text style={styles.editPctLabel}>%</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.budgetLabel}>$ {budget.toLocaleString('es-CO')}</Text>
+                    )}
+                  </View>
+
+                  <View style={styles.progressArea}>
+                     <AnimatedProgressBar percent={pctUsage} color={isOverspent ? theme.colors.error : theme.colors.primary} bgColor={theme.colors.surfaceContainerLow} />
+                     <Text style={[styles.remTxt, { color: isOverspent ? theme.colors.error : theme.colors.onSurfaceVariant }]}>
+                       {isOverspent ? `-$${(spent - budget).toLocaleString('es-CO')}` : `$${(budget - spent).toLocaleString('es-CO')} libres`}
+                     </Text>
+                  </View>
+               </TouchableOpacity>
+             );
+           })}
+           <TouchableOpacity style={[styles.pocketCard, styles.addCard]} onPress={() => setAddModalVisible(true)}>
+              <Plus size={32} color={theme.colors.onSurfaceVariant} strokeWidth={1} />
+              <Text style={[styles.addTxt, { color: theme.colors.onSurfaceVariant }]}>Nueva Categoría</Text>
+           </TouchableOpacity>
         </View>
-        <View style={{ height: normalize(120) }} />
       </ScrollView>
 
-      {/* CUSTOM ADD MODAL */}
-      <Modal visible={addModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Nuevo Bolsillo</Text>
-            <TextInput 
-              style={styles.modalInput} 
-              placeholder="Nombre (ej. Suscripciones)"
-              value={newName}
-              onChangeText={setNewName}
-            />
-            <TextInput 
-              style={styles.modalInput} 
-              placeholder="Presupuesto"
-              keyboardType="numeric"
-              value={newBudget}
-              onChangeText={setNewBudget}
-            />
-            <View style={styles.modalActions}>
-               <TouchableOpacity onPress={() => setAddModalVisible(false)} style={styles.modalCancel}><Text style={styles.modalCancelTxt}>Cancelar</Text></TouchableOpacity>
-               <TouchableOpacity onPress={syncPocketToCloud} style={styles.modalSave}><Text style={styles.modalSaveTxt}>Crear</Text></TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* CUSTOM EDIT BUDGET MODAL */}
-      <Modal visible={editBudgetModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-               <Text style={styles.modalTitle}>Gestionar Bolsillo</Text>
-               <TouchableOpacity onPress={() => confirmDelete(selectedPocket?.id)}>
-                  <Trash2 size={20} color={theme.colors.error} />
-               </TouchableOpacity>
-            </View>
-            
-            <Text style={styles.modalLabel}>Nuevo tope para {selectedPocket?.name}:</Text>
-            <TextInput 
-              style={styles.modalInput} 
-              keyboardType="numeric"
-              value={editVal}
-              onChangeText={setEditVal}
-              autoFocus
-            />
-            <View style={styles.modalActions}>
-               <TouchableOpacity onPress={() => setEditBudgetModal(false)} style={styles.modalCancel}><Text style={styles.modalCancelTxt}>Cancelar</Text></TouchableOpacity>
-               <TouchableOpacity onPress={() => updatePocketBudget(selectedPocket?.id, editVal)} style={styles.modalSave}><Text style={styles.modalSaveTxt}>Guardar Cambios</Text></TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* MODAL DE CONFIRMACIÓN PREMIUM (DANGER ZONE) */}
-      <Modal visible={deleteConfirmVisible} transparent animationType="fade" statusBarTranslucent>
-        <View style={styles.modalOverlay}>
-          <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFill} />
-          <View style={[styles.modalContent, { 
-             alignSelf: 'center', 
-             width: width * 0.85, 
-             paddingHorizontal: 28, 
-             paddingVertical: 32, 
-             borderRadius: 35,
-             backgroundColor: '#FFF',
-             alignItems: 'center'
-          }]}>
-            <View style={{ backgroundColor: 'rgba(160, 62, 64, 0.08)', width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
-               <Trash2 size={28} color={theme.colors.error} />
-            </View>
-            
-            <Text style={[styles.modalTitle, { textAlign: 'center', fontSize: normalize(19), lineHeight: 26, marginBottom: 8 }]}>¿Seguro que quieres eliminar este bolsillo?</Text>
-            <Text style={[styles.modalLabel, { textAlign: 'center', fontSize: normalize(12), opacity: 0.5, marginBottom: 28, color: theme.colors.onSurfaceVariant }]}>Esta acción borrará todo el historial y configuraciones permanentemente de Save.</Text>
-            
-            <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
-               <TouchableOpacity 
-                  onPress={() => setDeleteConfirmVisible(false)} 
-                  style={[styles.modalCancel, { flex: 1, height: 54, borderWidth: 0, backgroundColor: theme.colors.surfaceContainerLow, borderRadius: 20, justifyContent: 'center', alignItems: 'center' }]}
-               >
-                  <Text style={[styles.modalCancelTxt, { color: theme.colors.onSurfaceVariant, fontSize: normalize(14), fontWeight: '700' }]}>Atrás</Text>
-               </TouchableOpacity>
-
-               <TouchableOpacity 
-                  onPress={() => {
-                    if (pocketToDelete) {
-                      deletePocket(pocketToDelete);
-                      setDeleteConfirmVisible(false);
-                      setEditBudgetModal(false);
-                    }
-                  }} 
-                  style={[styles.modalSave, { flex: 1, height: 54, backgroundColor: theme.colors.error, borderRadius: 20, justifyContent: 'center', alignItems: 'center' }]}
-               >
-                  <Text style={[styles.modalSaveTxt, { fontSize: normalize(14), fontWeight: '800' }]}>Sí, eliminar</Text>
-               </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* DETALLE Bottom Sheet */}
       {selectedPocket && (
         <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
           <Pressable style={styles.backdrop} onPress={closePocket}>
              <Animated.View style={[styles.backdropTint, { opacity: sheetAnim.interpolate({ inputRange: [0, height], outputRange: [1, 0] }) }]} />
           </Pressable>
           <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: sheetAnim }] }]}>
-             <View style={styles.sheetHandle} />
              <View style={styles.sheetHeader}>
-                <View style={styles.sheetTitleContainer}>
-                   <View style={[styles.pocketIconBox, { backgroundColor: (POCKET_COLORS[selectedPocket.category] || POCKET_COLORS.default)[0], marginBottom: 0 }]}>
-                      <CategoryIcon iconName={selectedPocket.icon} size={normalize(20)} color="#FFF" />
-                   </View>
-                   <View style={{ marginLeft: 15 }}>
-                      <Text style={styles.sheetTitle}>{selectedPocket.name}</Text>
-                      <Text style={styles.sheetSubtitle}>Historial de {MONTHS[selectedMonth].label} 2026</Text>
-                   </View>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                   <TouchableOpacity 
-                     onPress={() => confirmDelete(selectedPocket.id)} 
-                     style={[styles.closeBtn, { backgroundColor: 'rgba(160, 62, 64, 0.08)' }]}
-                   >
-                     <Trash2 size={18} color={theme.colors.error} />
-                   </TouchableOpacity>
-                   <TouchableOpacity onPress={closePocket} style={styles.closeBtn}>
-                     <X size={20} color={theme.colors.onSurfaceVariant} />
-                   </TouchableOpacity>
-                </View>
+                <CategoryIcon iconName={selectedPocket.icon} size={24} color={theme.colors.primary} />
+                <Text style={styles.sheetTitle}>{selectedPocket.name}</Text>
+                <TouchableOpacity onPress={closePocket} style={{ padding: 8 }}><X size={24} color={theme.colors.onSurfaceVariant} /></TouchableOpacity>
+             </View>
+             
+             <View style={styles.quickStats}>
+                <View style={styles.qStat}><Text style={styles.qLabel}>PAGOS REALIZADOS</Text><Text style={styles.qVal}>$ {getPocketSpending(selectedPocket.category).toLocaleString('es-CO')}</Text></View>
+                <View style={styles.qStat}><Text style={styles.qLabel}>REMANENTE</Text><Text style={[styles.qVal, { color: theme.colors.primary }]}>$ {Math.max(0, selectedPocket.budget - getPocketSpending(selectedPocket.category)).toLocaleString('es-CO')}</Text></View>
              </View>
 
-             <View style={styles.sheetStats}>
-                <TouchableOpacity 
-                   style={styles.sheetStatItem}
-                   onPress={() => setEditBudgetModal(true)}
-                >
-                   <Text style={styles.sheetStatLabel}>ASIGNADO (Toca para editar)</Text>
-                   <Text style={styles.sheetStatValue}>$ {(selectedPocket.budget || 0).toLocaleString('es-CO')}</Text>
-                </TouchableOpacity>
-                <View style={styles.sheetStatItem}>
-                   <Text style={styles.sheetStatLabel}>EFECTUADO</Text>
-                   <Text style={[styles.sheetStatValue, { color: theme.colors.error }]}>$ {getPocketSpending(selectedPocket.category).toLocaleString('es-CO')}</Text>
-                </View>
-             </View>
-
-             <ScrollView style={styles.historyList} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
-                {getPocketTransactions(selectedPocket.category).length === 0 ? (
-                   <View style={styles.emptyContainer}>
-                      <Text style={styles.noData}>Nada para {MONTHS[selectedMonth].label}</Text>
-                   </View>
-                ) : (
-                  getPocketTransactions(selectedPocket.category).map((tx, idx) => (
-                    <View key={tx.id || idx} style={styles.txItem}>
-                       <View style={styles.txInfo}>
-                          <Text style={styles.txMerchant}>{tx.merchant}</Text>
-                          <Text style={styles.txDate}>{new Date(tx.date_string || tx.created_at).toLocaleDateString()}</Text>
-                       </View>
-                       <Text style={styles.txAmount}>$ {Math.abs(tx.amount).toLocaleString('es-CO')}</Text>
+             {getPocketSpending(selectedPocket.category) > selectedPocket.budget && (
+                <View style={styles.overspentAlertContainer}>
+                  <View style={styles.overspentAlert}>
+                    <AlertCircle size={22} color="#FFF" />
+                    <View style={{flex:1}}>
+                      <Text style={styles.overspentTitle}>Límite excedido</Text>
+                      <Text style={styles.overspentMsg}>Has gastado ${(getPocketSpending(selectedPocket.category) - selectedPocket.budget).toLocaleString('es-CO')} por encima del presupuesto.</Text>
                     </View>
-                  ))
-                )}
+                  </View>
+                  <TouchableOpacity style={styles.fixOverspentBtn} onPress={() => { closePocket(); onTransferPress({ fromId: selectedPocket.id, amount: getPocketSpending(selectedPocket.category) - selectedPocket.budget }); }}>
+                    <Text style={styles.fixOverspentTxt}>Mover fondos ahora mismo</Text>
+                    <ArrowRight size={18} color={theme.colors.primary} />
+                  </TouchableOpacity>
+                </View>
+             )}
+
+             <ScrollView style={{flex: 1}} showsVerticalScrollIndicator={false}>
+                {getPocketTransactions(selectedPocket.category).map((tx, idx) => (
+                  <View key={tx.id || idx} style={styles.txRow}>
+                      <View style={{flex:1}}><Text style={styles.txMerchant}>{tx.merchant}</Text><Text style={styles.txDate}>{new Date(tx.date_string || tx.created_at).toLocaleDateString('es-CO')}</Text></View>
+                      <Text style={styles.txAmt}>$ {Math.abs(tx.amount).toLocaleString('es-CO')}</Text>
+                  </View>
+                ))}
              </ScrollView>
 
+             <TouchableOpacity style={styles.deleteBtn} onPress={() => deletePocket(selectedPocket.id)}>
+                <Trash2 size={18} color={theme.colors.error} />
+                <Text style={[styles.delTxt, { color: theme.colors.error }]}>Eliminar este bolsillo</Text>
+             </TouchableOpacity>
           </Animated.View>
         </View>
       )}
+
+      <Modal visible={addModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Nuevo Bolsillo</Text>
+            <TextInput style={styles.modalIn} placeholder="Nombre de categoría" value={newName} onChangeText={setNewName} placeholderTextColor={theme.colors.onSurfaceVariant + '80'} />
+            <TextInput style={styles.modalIn} placeholder="Monto objetivo ($)" keyboardType="numeric" value={newBudget} onChangeText={setNewBudget} placeholderTextColor={theme.colors.onSurfaceVariant + '80'} />
+            <View style={styles.modalBtns}>
+              <TouchableOpacity onPress={() => setAddModalVisible(false)} style={styles.modalCancel}><Text style={styles.cancelTxt}>Cerrar</Text></TouchableOpacity>
+              <TouchableOpacity onPress={syncPocketToCloud} style={styles.save}><Text style={styles.saveTxt}>Confirmar</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.background },
-  intelligentMonthPickerInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 20,
-    backgroundColor: '#FFF',
-    marginHorizontal: 10,
-    paddingVertical: 12,
-    borderRadius: 20,
-    marginBottom: 20,
-    ...theme.shadows.soft,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.05)'
-  },
-  monthArrow: { width: 36, height: 36, borderRadius: 18, backgroundColor: theme.colors.surfaceContainerLow, alignItems: 'center', justifyContent: 'center' },
-  monthIndicator: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 15 },
-  monthDisplayLabel: { fontSize: normalize(16), fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -0.5 },
-  currentMonthDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.colors.primary, marginLeft: 8 },
-
-  scrollPadding: { paddingHorizontal: normalize(24), paddingBottom: 120 },
-  topStats: { marginBottom: normalize(32) },
-  topLabel: { fontSize: normalize(9), fontWeight: '900', color: theme.colors.primary, opacity: 0.8 },
-  topAmount: { fontSize: normalize(44), fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -2, marginVertical: normalize(8) },
-  globalProgressWrapper: { marginTop: normalize(16) },
-  progressLabelRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
-  progressText: { fontSize: normalize(13), color: theme.colors.onSurfaceVariant, fontWeight: '600', opacity: 0.7 },
-  progressPct: { fontSize: normalize(13), color: theme.colors.primary, fontWeight: '900' },
-
-  gridHeader: { marginBottom: normalize(20) },
-  gridTitle: { fontSize: normalize(22), fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -0.5 },
-
-  pocketGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: normalize(16) },
-  pocketCardContainer: { width: (width - normalize(48) - normalize(16)) / 2 },
-  pocketCard: { borderRadius: normalize(28), padding: normalize(18), height: normalize(160), overflow: 'hidden', ...theme.shadows.soft },
-  pocketIconBox: { width: normalize(42), height: normalize(42), borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', marginBottom: normalize(16) },
-  pocketName: { fontSize: normalize(15), fontWeight: '900', color: '#FFF' },
-  pocketOverlayStatus: { position: 'absolute', bottom: 10, left: 10, right: 10, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  statusText: { fontSize: normalize(10), color: '#FFF', fontWeight: '900' },
-
-  addPocketCard: { 
-    backgroundColor: theme.colors.surfaceContainerLow, 
-    borderWidth: 2, 
-    borderColor: theme.colors.outlineVariant, 
-    borderStyle: 'dashed',
-    justifyContent: 'center',
-    alignItems: 'center', 
-    gap: 12 
-  },
-  addIconCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFF', alignItems: 'center', justifyContent: 'center', ...theme.shadows.soft },
-  addPocketText: { fontSize: normalize(12), fontWeight: '800', color: theme.colors.onSurfaceVariant, textAlign: 'center' },
-
-  backdrop: { ...StyleSheet.absoluteFillObject },
-  backdropTint: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
-  bottomSheet: { position: 'absolute', bottom: 0, left: 0, right: 0, height: height * 0.75, backgroundColor: '#FFF', borderTopLeftRadius: 40, borderTopRightRadius: 40, padding: 25, ...theme.shadows.premium },
-  sheetHandle: { width: 40, height: 4, backgroundColor: theme.colors.outlineVariant, borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
-  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 30 },
-  sheetTitleContainer: { flexDirection: 'row', alignItems: 'center' },
-  sheetTitle: { fontSize: normalize(24), fontWeight: '900', color: theme.colors.onSurface },
-  sheetSubtitle: { fontSize: normalize(12), color: theme.colors.onSurfaceVariant, fontWeight: '600' },
-  closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.surfaceContainerLow, alignItems: 'center', justifyContent: 'center' },
-  sheetStats: { flexDirection: 'row', gap: 15, marginBottom: 30, backgroundColor: theme.colors.surfaceContainerLow, padding: 15, borderRadius: 25 },
-  sheetStatItem: { flex: 1 },
-  sheetStatLabel: { fontSize: normalize(8), fontWeight: '900', color: theme.colors.onSurfaceVariant, opacity: 0.6, marginBottom: 4 },
-  sheetStatValue: { fontSize: normalize(14), fontWeight: '900', color: theme.colors.onSurface },
-
-  historyList: { flex: 1 },
-  txItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  txInfo: { flex: 1 },
-  txMerchant: { fontSize: normalize(14), fontWeight: '800', color: theme.colors.onSurface },
-  txDate: { fontSize: normalize(11), color: theme.colors.onSurfaceVariant, opacity: 0.7 },
-  txAmount: { fontSize: normalize(15), fontWeight: '900', color: theme.colors.onSurface },
-  
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 25 },
-  modalContent: { width: '100%', backgroundColor: '#FFF', borderRadius: 30, padding: 25, ...theme.shadows.premium },
-  modalTitle: { fontSize: normalize(20), fontWeight: '900', color: theme.colors.onSurface, marginBottom: 20 },
-  modalLabel: { fontSize: normalize(12), color: theme.colors.onSurfaceVariant, marginBottom: 10, fontWeight: '600' },
-  modalInput: { backgroundColor: theme.colors.surfaceContainerLow, borderRadius: 15, padding: 15, fontSize: normalize(16), color: theme.colors.onSurface, marginBottom: 20, borderWidth: 1, borderColor: theme.colors.outlineVariant },
-  modalActions: { flexDirection: 'row', gap: 15, justifyContent: 'flex-end' },
-  modalCancel: { padding: 15 },
-  modalCancelTxt: { color: theme.colors.onSurfaceVariant, fontWeight: '700' },
-  modalSave: { backgroundColor: theme.colors.primary, paddingVertical: 12, paddingHorizontal: 25, borderRadius: 15 },
-  modalSaveTxt: { color: '#FFF', fontWeight: '900' },
-
-  emptyContainer: { alignItems: 'center', marginTop: 40 },
-  noData: { fontSize: normalize(13), color: theme.colors.onSurfaceVariant, fontStyle: 'italic', marginTop: 10, textAlign: 'center' },
-  deletePocketBtn: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    padding: 16, 
-    borderRadius: 16, 
-    backgroundColor: 'rgba(160, 62, 64, 0.05)',
-    gap: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(160, 62, 64, 0.1)',
-    marginTop: 20
-  },
-  deletePocketTxt: { 
-    color: theme.colors.error, 
-    fontSize: normalize(14), 
-    fontWeight: '800',
-    letterSpacing: -0.3
-  }
-});

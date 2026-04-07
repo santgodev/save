@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Animated, Dimensions, Alert
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Animated, Dimensions, Alert, Image, Platform
 } from 'react-native';
 import { 
   Settings, LogOut, Trash2, Bell, ShieldCheck, 
   TrendingUp, Target, Sparkles, ChevronRight,
-  Shield, Eye, Octagon, Fingerprint, Info
+  Shield, Eye, Octagon, Fingerprint, Info,
+  Palette, Heart
 } from 'lucide-react-native';
-import { theme, normalize } from '../theme/theme';
+import { useTheme } from '../theme/ThemeContext';
+import { normalize } from '../theme/theme';
 import { supabase } from '../lib/supabase';
 import { calculateFinancialProfile, ProfileData } from '../utils/profileUtils';
 import * as Haptics from 'expo-haptics';
@@ -17,6 +19,173 @@ const { width } = Dimensions.get('window');
 
 export const Profile = ({ session, transactions, pockets, onRefresh }: { session: any, transactions: any[], pockets: any[], onRefresh: () => void }) => {
   const insets = useSafeAreaInsets();
+  const { theme, mode, setThemeMode } = useTheme();
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: { flex: 1, backgroundColor: theme.colors.background },
+    scrollContent: { 
+      paddingTop: Math.max(insets.top, 16) + 120, 
+      paddingBottom: 120,
+      paddingHorizontal: 24 
+    },
+    
+    // --- INSIGHT SECTION ---
+    aiBriefSection: { marginBottom: 28 },
+    aiBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+    aiLabel: { fontSize: 10, fontWeight: '900', color: theme.colors.primary, letterSpacing: 1.5, textTransform: 'uppercase' },
+    aiBriefText: { fontSize: 18, fontWeight: '800', color: theme.colors.onSurface, lineHeight: 26, letterSpacing: -0.3 },
+
+    // --- SCORE CARD ---
+    section: { marginTop: 24 },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
+    sectionTitle: { fontSize: 16, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -0.5 },
+
+    premiumScoreCard: { 
+      backgroundColor: theme.colors.surface, 
+      borderRadius: 32, 
+      padding: 24, 
+      borderWidth: 1, 
+      borderColor: theme.colors.outlineVariant,
+      ...theme.shadows.premium 
+    },
+    scoreHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+    scoreTitle: { fontSize: 13, fontWeight: '900', color: theme.colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 1 },
+    statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+    statusText: { fontSize: 11, fontWeight: '900', textTransform: 'uppercase' },
+
+    scoreMainRow: { flexDirection: 'row', alignItems: 'center', gap: 24 },
+    scoreCircle: { 
+      width: 80, 
+      height: 80, 
+      borderRadius: 40, 
+      borderWidth: 8, 
+      borderColor: theme.colors.surfaceContainerHigh, 
+      alignItems: 'center', 
+      justifyContent: 'center' 
+    },
+    scoreValue: { fontSize: 24, fontWeight: '900' },
+    scoreMax: { fontSize: 10, color: theme.colors.onSurfaceVariant, fontWeight: '800', marginTop: -2 },
+    
+    scoreInfoBox: { flex: 1, gap: 12 },
+    scoreExplanation: { fontSize: 13, color: theme.colors.onSurfaceVariant, lineHeight: 18, fontWeight: '600' },
+    
+    metricItem: { gap: 8 },
+    metricLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    miniLabel: { fontSize: 10, fontWeight: '900', color: theme.colors.onSurfaceVariant, letterSpacing: 1 },
+    miniVal: { fontSize: 12, fontWeight: '900', color: theme.colors.primary },
+    metricBarContainer: { height: 8, borderRadius: 4, backgroundColor: theme.colors.surfaceContainerHigh, overflow: 'hidden' },
+    metricBar: { height: '100%', borderRadius: 4 },
+
+    // --- HABITS ---
+    habitsWrapper: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    pillHabit: { 
+      backgroundColor: theme.colors.primaryContainer + '40', 
+      paddingHorizontal: 18, 
+      paddingVertical: 10, 
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: theme.colors.primary + '15'
+    },
+    pillHabitText: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },
+
+    // --- RULES ---
+    compactRuleCard: { 
+      backgroundColor: theme.colors.surface, 
+      borderRadius: 24, 
+      padding: 16, 
+      flexDirection: 'row', 
+      justifyContent: 'space-between', 
+      alignItems: 'center', 
+      marginBottom: 12, 
+      borderWidth: 1, 
+      borderColor: theme.colors.outlineVariant,
+      ...theme.shadows.soft 
+    },
+    ruleBrandInfo: { flex: 1, gap: 4 },
+    ruleBrandName: { fontSize: 15, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -0.2 },
+    ruleTypeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    typeIndicator: { width: 8, height: 8, borderRadius: 4 },
+    ruleTypeText: { fontSize: 11, color: theme.colors.onSurfaceVariant, fontWeight: '800', textTransform: 'uppercase' },
+    
+    ruleActionContainer: { flexDirection: 'row', gap: 8 },
+    actionBtnLabeled: { 
+      paddingHorizontal: 10, 
+      paddingVertical: 8, 
+      borderRadius: 12, 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      backgroundColor: theme.colors.surfaceContainerLow, 
+      gap: 4, 
+      minWidth: 64,
+      borderWidth: 1,
+      borderColor: theme.colors.outlineVariant
+    },
+    actionBtnLabelText: { fontSize: 9, fontWeight: '900', color: theme.colors.onSurfaceVariant, textTransform: 'uppercase' },
+
+    // --- THEME SELECTOR ---
+    themeSelectorGrid: { flexDirection: 'row', gap: 16 },
+    themeCard: { 
+      flex: 1, 
+      backgroundColor: theme.colors.surface, 
+      borderRadius: 28, 
+      padding: 20, 
+      alignItems: 'center', 
+      borderWidth: 1.5, 
+      borderColor: theme.colors.outlineVariant,
+      ...theme.shadows.soft
+    },
+    themeCardActive: { 
+      borderColor: theme.colors.primary, 
+      borderWidth: 2, 
+      backgroundColor: theme.mode === 'honey' ? '#FFFDF0' : '#F0F5F2'
+    },
+    colorCircle: { 
+      width: 48, 
+      height: 48, 
+      borderRadius: 24, 
+      marginBottom: 14, 
+      borderWidth: 3, 
+      borderColor: '#FFF', 
+      ...Platform.select({
+        ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 6 },
+        android: { elevation: 4 }
+      })
+    },
+    themeCardName: { fontSize: 15, fontWeight: '900', marginBottom: 4 },
+    themeCardDesc: { fontSize: 11, fontWeight: '700', color: theme.colors.onSurfaceVariant, opacity: 0.6 },
+
+    // --- SETTINGS LIST ---
+    settingsCard: { 
+      backgroundColor: theme.colors.surface, 
+      borderRadius: 28, 
+      paddingVertical: 10, 
+      paddingHorizontal: 16, 
+      borderWidth: 1,
+      borderColor: theme.colors.outlineVariant,
+      ...theme.shadows.soft 
+    },
+    settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16 },
+    settingTitleCol: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    settingText: { fontSize: 15, fontWeight: '800', color: theme.colors.onSurface },
+    divider: { height: 1.5, backgroundColor: theme.colors.outlineVariant, opacity: 0.5 },
+
+    // --- FOOTER ---
+    dangerAction: { 
+      flexDirection: 'row', 
+      alignItems: 'center', 
+      gap: 12, 
+      padding: 20, 
+      backgroundColor: theme.colors.error + '10', 
+      borderRadius: 24, 
+      justifyContent: 'center', 
+      borderWidth: 1.5, 
+      borderColor: theme.colors.error + '25',
+      marginTop: 16
+    },
+    dangerText: { fontSize: 16, fontWeight: '900', color: theme.colors.error },
+    versionLabel: { alignSelf: 'center', marginTop: 32, fontSize: 11, fontWeight: '800', color: theme.colors.onSurfaceVariant, opacity: 0.4 }
+  }), [theme, mode]);
+
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [rules, setRules] = useState<any[]>([]);
   const [notifs, setNotifs] = useState({ alerts_high: true, alerts_hormiga: true, daily_tips: true });
@@ -43,74 +212,66 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
     } catch (e) { console.log(e); }
   };
 
-  const handleLogout = () => {
-    Alert.alert("Cerrar Sesión", "¿Seguro que quieres salir de Save?", [
-      { text: "Cancelar", style: "cancel" },
-      { text: "Salir", style: "destructive", onPress: () => supabase.auth.signOut() }
-    ]);
-  };
-
   const scoreColor = (score: number) => {
-    if (score > 80) return theme.colors.primary;
-    if (score > 50) return theme.colors.warning;
+    if (score > 80) return theme.colors.success;
+    if (score > 50) return theme.colors.primary;
     return theme.colors.error;
   };
 
-  const capitalize = (text: string) => text.toLowerCase().split(' ').map(s => s.charAt(0).toUpperCase() + s.substring(1)).join(' ');
+  const capitalize = (text: string) => text?.toLowerCase().split(' ').map(s => s.charAt(0).toUpperCase() + s.substring(1)).join(' ');
 
   return (
     <ScrollView 
       style={styles.container} 
       showsVerticalScrollIndicator={false} 
-      contentContainerStyle={{ paddingTop: normalize(140), paddingBottom: 140 }}
+      contentContainerStyle={styles.scrollContent}
     >
-      {/* 1. MENSAJE INTELIGENTE (Sutil) */}
       <View style={styles.aiBriefSection}>
          <View style={styles.aiBadge}>
-            <Sparkles size={14} color={theme.colors.primary} />
+            <Sparkles size={16} color={theme.colors.primary} fill={theme.colors.primary} />
             <Text style={styles.aiLabel}>SAVE INSIGHT</Text>
          </View>
          <Text style={styles.aiBriefText}>{profileData?.scoreMessage}</Text>
       </View>
 
-      {/* 2. CORE SCORE CARD (Interpretada) */}
       <View style={styles.section}>
          <View style={styles.premiumScoreCard}>
             <View style={styles.scoreHeader}>
-               <Text style={styles.scoreTitle}>Tu Salud de Ahorro</Text>
-               <View style={[styles.trendRow, { backgroundColor: scoreColor(profileData?.score || 0) + '20' }]}>
-                  <Text style={[styles.trendText, { color: scoreColor(profileData?.score || 0) }]}>
-                    { (profileData?.score || 0) > 80 ? 'Excelente' : (profileData?.score || 0) > 40 ? 'Estable' : 'Por Mejorar' }
+               <Text style={styles.scoreTitle}>Salud Patrimonial</Text>
+               <View style={[styles.statusBadge, { backgroundColor: scoreColor(profileData?.score || 0) + '20' }]}>
+                  <Text style={[styles.statusText, { color: scoreColor(profileData?.score || 0) }]}>
+                    { (profileData?.score || 0) > 80 ? 'Excelente' : (profileData?.score || 0) > 40 ? 'Progresando' : 'Crítico' }
                   </Text>
                </View>
             </View>
             
             <View style={styles.scoreMainRow}>
-               <View style={styles.scoreCircle}>
+               <View style={[styles.scoreCircle, { borderColor: scoreColor(profileData?.score || 0) + '30' }]}>
                   <Text style={[styles.scoreValue, { color: scoreColor(profileData?.score || 0) }]}>{profileData?.score}</Text>
-                  <Text style={styles.scoreMax}>puntos</Text>
+                  <Text style={styles.scoreMax}>/ 100</Text>
                </View>
                <View style={styles.scoreInfoBox}>
                   <Text style={styles.scoreExplanation}>
-                    Métrica calculada por tu disciplina de registro y control de gastos hormiga.
+                    Tu disciplina de registro y control de gastos hormiga define esta métrica.
                   </Text>
                   <View style={styles.metricItem}>
                      <View style={styles.metricLabelRow}>
                         <Text style={styles.miniLabel}>DISCIPLINA</Text>
                         <Text style={styles.miniVal}>{profileData?.score}%</Text>
                      </View>
-                     <View style={[styles.metricBar, { backgroundColor: theme.colors.primary, width: `${profileData?.score ?? 0}%` }]} />
+                     <View style={styles.metricBarContainer}>
+                        <View style={[styles.metricBar, { backgroundColor: scoreColor(profileData?.score || 0), width: `${profileData?.score ?? 0}%` }]} />
+                     </View>
                   </View>
                </View>
             </View>
          </View>
       </View>
 
-      {/* 3. HABITS (Chips Premium) */}
       <View style={styles.section}>
          <View style={styles.sectionHeader}>
-            <Target size={18} color={theme.colors.onSurface} strokeWidth={2} />
-            <Text style={styles.sectionTitle}>Hábitos Frecuentes</Text>
+            <Target size={18} color={theme.colors.primary} strokeWidth={2.5} />
+            <Text style={styles.sectionTitle}>Patrones Detectados</Text>
          </View>
          <View style={styles.habitsWrapper}>
             {profileData?.topHabits.map((habit, i) => (
@@ -118,137 +279,88 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
                   <Text style={styles.pillHabitText}>{capitalize(habit)}</Text>
                </View>
             ))}
-            {profileData?.topHabits.length === 0 && <Text style={styles.emptyText}>Registra gastos para detectar patrones.</Text>}
+            {(!profileData || profileData.topHabits.length === 0) && (
+              <Text style={{ fontStyle: 'italic', color: theme.colors.onSurfaceVariant, fontSize: 13 }}>Escaneando hábitos...</Text>
+            )}
          </View>
       </View>
 
-      {/* 4. RULES (Simplified) */}
       <View style={styles.section}>
          <View style={styles.sectionHeader}>
-            <Settings size={18} color={theme.colors.onSurface} strokeWidth={2} />
-            <Text style={styles.sectionTitle}>Reglas de Consumo</Text>
+            <Palette size={18} color={theme.colors.primary} strokeWidth={2.5} />
+            <Text style={styles.sectionTitle}>Escoge tu Estética</Text>
          </View>
-         {rules.slice(0, 4).map((rule) => (
-            <View key={rule.id} style={styles.compactRuleCard}>
-               <View style={styles.ruleBrandInfo}>
-                  <Text style={styles.ruleBrandName} numberOfLines={1}>{capitalize(rule.display_name || rule.pattern)}</Text>
-                  <View style={styles.ruleTypeRow}>
-                     <View style={[styles.typeIndicator, { backgroundColor: rule.type === 'reduce' ? theme.colors.error : rule.type === 'monitor' ? theme.colors.warning : theme.colors.primary }]} />
-                     <Text style={styles.ruleTypeText}>{rule.type === 'confidence' ? 'Confianza' : rule.type === 'monitor' ? 'Vigilar' : 'Reducir'}</Text>
-                  </View>
-               </View>
-               <View style={styles.ruleActionContainer}>
-                  <TouchableOpacity onPress={() => updateRule(rule.id, 'confidence')} style={[styles.actionBtn, rule.type === 'confidence' && styles.actionConfActive]}>
-                     <Shield size={14} color={rule.type === 'confidence' ? '#FFF' : theme.colors.onSurfaceVariant} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => updateRule(rule.id, 'monitor')} style={[styles.actionBtn, rule.type === 'monitor' && styles.actionMonActive]}>
-                     <Eye size={14} color={rule.type === 'monitor' ? '#FFF' : theme.colors.onSurfaceVariant} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => updateRule(rule.id, 'reduce')} style={[styles.actionBtn, rule.type === 'reduce' && styles.actionRedActive]}>
-                     <Octagon size={14} color={rule.type === 'reduce' ? '#FFF' : theme.colors.onSurfaceVariant} />
-                  </TouchableOpacity>
-               </View>
-            </View>
-         ))}
+         <View style={styles.themeSelectorGrid}>
+            <TouchableOpacity 
+              activeOpacity={0.8}
+              style={[styles.themeCard, mode === 'sage' && styles.themeCardActive]} 
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setThemeMode('sage'); }}
+            >
+               <View style={[styles.colorCircle, { backgroundColor: '#2E7D32' }]} />
+               <Text style={[styles.themeCardName, { color: mode === 'sage' ? theme.colors.primary : theme.colors.onSurface }]}>Sage</Text>
+               <Text style={styles.themeCardDesc}>Orgánico & Calmo</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              activeOpacity={0.8}
+              style={[styles.themeCard, mode === 'honey' && styles.themeCardActive]} 
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setThemeMode('honey'); }}
+            >
+               <View style={[styles.colorCircle, { backgroundColor: '#B8860B' }]} />
+               <Text style={[styles.themeCardName, { color: mode === 'honey' ? theme.colors.primary : theme.colors.onSurface }]}>Honey</Text>
+               <Text style={styles.themeCardDesc}>Dorado & Premium</Text>
+            </TouchableOpacity>
+         </View>
       </View>
 
-      {/* 5. APP SETTINGS */}
       <View style={styles.section}>
-         <View style={styles.settingsSheet}>
+         <View style={styles.sectionHeader}>
+            <Settings size={18} color={theme.colors.primary} strokeWidth={2.5} />
+            <Text style={styles.sectionTitle}>Configuración de Cuenta</Text>
+         </View>
+         <View style={styles.settingsCard}>
             <View style={styles.settingRow}>
                <View style={styles.settingTitleCol}>
-                  <Bell size={18} color={theme.colors.onSurface} strokeWidth={2} />
-                  <Text style={styles.settingText}>Alertas Predicativas</Text>
+                  <Bell size={20} color={theme.colors.onSurfaceVariant} />
+                  <Text style={styles.settingText}>Guardian de Gastos</Text>
                </View>
                <Switch 
                  value={notifs.alerts_high} 
                  onValueChange={(val) => setNotifs({...notifs, alerts_high: val})} 
-                 trackColor={{ true: theme.colors.primary }}
-                 ios_backgroundColor="#E9E9EB"
+                 trackColor={{ true: theme.colors.primary, false: theme.colors.surfaceContainerHighest }}
+                 thumbColor="#FFF"
                />
             </View>
             <View style={styles.divider} />
             <View style={styles.settingRow}>
                <View style={styles.settingTitleCol}>
-                  <Fingerprint size={18} color={theme.colors.onSurface} strokeWidth={2} />
+                  <Fingerprint size={20} color={theme.colors.onSurfaceVariant} />
                   <Text style={styles.settingText}>Seguridad Biométrica</Text>
                </View>
-               <Switch value={true} trackColor={{ true: theme.colors.primary }} />
+               <View style={{ backgroundColor: theme.colors.surfaceContainerHigh, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 }}>
+                 <Text style={{ fontSize: 9, fontWeight: '900', color: theme.colors.onSurfaceVariant }}>PRÓXIMAMENTE</Text>
+               </View>
             </View>
          </View>
       </View>
 
-      {/* 6. LOGOUT SECTION */}
-      <View style={[styles.section, { marginTop: 40 }]}>
-         <TouchableOpacity style={styles.dangerAction} onPress={handleLogout}>
+      <View style={[styles.section, { paddingBottom: 40 }]}>
+         <TouchableOpacity 
+           activeOpacity={0.7}
+           style={styles.dangerAction} 
+           onPress={() => {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              Alert.alert("Cerrar Sesión", "¿Seguro que quieres salir?", [
+                { text: "Cancelar", style: "cancel" },
+                { text: "Salir", style: "destructive", onPress: () => supabase.auth.signOut() }
+              ]);
+           }}
+         >
             <LogOut size={18} color={theme.colors.error} />
-            <Text style={styles.dangerText}>Cerrar Sesión</Text>
+            <Text style={styles.dangerText}>Finalizar Sesión</Text>
          </TouchableOpacity>
-         
-         <TouchableOpacity style={styles.ghostAction}>
-            <Text style={styles.ghostText}>Versión 1.0.4 Premium</Text>
-         </TouchableOpacity>
+         <Text style={styles.versionLabel}>SAVE FINTECH v1.2.0 • PREMIUM EDITION</Text>
       </View>
     </ScrollView>
   );
 };
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: theme.colors.background },
-  aiBriefSection: { paddingHorizontal: 25, marginBottom: 20 },
-  aiBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
-  aiLabel: { fontSize: normalize(9), fontWeight: '900', color: theme.colors.primary, letterSpacing: 1 },
-  aiBriefText: { fontSize: normalize(15), fontWeight: '700', color: theme.colors.onSurface, lineHeight: 22 },
-
-  section: { paddingHorizontal: 20, marginTop: normalize(20) },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 15, paddingHorizontal: 5 },
-  sectionTitle: { fontSize: normalize(15), fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -0.3 },
-
-  premiumScoreCard: { backgroundColor: '#FFF', borderRadius: 28, padding: 22, ...theme.shadows.soft, borderWidth: 1, borderColor: theme.colors.surfaceContainerHigh },
-  scoreHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  scoreTitle: { fontSize: normalize(13), fontWeight: '800', color: theme.colors.onSurfaceVariant },
-  trendRow: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: theme.colors.surfaceContainerLow, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
-  trendText: { fontSize: normalize(10), fontWeight: '700', color: theme.colors.primary },
-
-  scoreMainRow: { flexDirection: 'row', alignItems: 'center', gap: 25 },
-  scoreCircle: { width: 74, height: 74, borderRadius: 37, borderWidth: 6, borderColor: theme.colors.surfaceContainerLow, alignItems: 'center', justifyContent: 'center' },
-  scoreValue: { fontSize: normalize(22), fontWeight: '900' },
-  scoreMax: { fontSize: normalize(9), color: theme.colors.onSurfaceVariant, fontWeight: '700' },
-  
-  scoreInfoBox: { flex: 1, gap: 10 },
-  scoreExplanation: { fontSize: normalize(11), color: theme.colors.onSurfaceVariant, lineHeight: 16, opacity: 0.8 },
-  
-  metricItem: { gap: 6, marginTop: 4 },
-  metricLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  miniLabel: { fontSize: normalize(9), fontWeight: '900', color: theme.colors.onSurfaceVariant, letterSpacing: 0.5 },
-  miniVal: { fontSize: normalize(10), fontWeight: '800', color: theme.colors.primary },
-  metricBar: { height: 6, borderRadius: 3 },
-
-  habitsWrapper: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  pillHabit: { backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
-  pillHabitText: { fontSize: normalize(11), fontWeight: '800', color: theme.colors.onPrimaryContainer },
-
-  compactRuleCard: { backgroundColor: '#FFF', borderRadius: 20, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, borderWidth: 1, borderColor: theme.colors.surfaceContainerHigh },
-  ruleBrandInfo: { flex: 1, gap: 4 },
-  ruleBrandName: { fontSize: normalize(14), fontWeight: '800', color: theme.colors.onSurface },
-  ruleTypeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  typeIndicator: { width: 6, height: 6, borderRadius: 3 },
-  ruleTypeText: { fontSize: normalize(10), color: theme.colors.onSurfaceVariant, fontWeight: '700' },
-  ruleActionContainer: { flexDirection: 'row', gap: 8 },
-  actionBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceContainerLow },
-  actionConfActive: { backgroundColor: theme.colors.primary },
-  actionMonActive: { backgroundColor: theme.colors.warning },
-  actionRedActive: { backgroundColor: theme.colors.error },
-
-  settingsSheet: { backgroundColor: '#FFF', borderRadius: 24, paddingVertical: 10, paddingHorizontal: 16, ...theme.shadows.soft },
-  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14 },
-  settingTitleCol: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  settingText: { fontSize: normalize(14), fontWeight: '700', color: theme.colors.onSurface },
-  divider: { height: 1, backgroundColor: theme.colors.surfaceContainerHigh },
-
-  dangerAction: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 18, backgroundColor: '#FFF', borderRadius: 20, justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.error + '20' },
-  dangerText: { fontSize: normalize(15), fontWeight: '900', color: theme.colors.error },
-  ghostAction: { alignSelf: 'center', marginTop: 20 },
-  ghostText: { fontSize: normalize(10), fontWeight: '700', color: theme.colors.onSurfaceVariant, opacity: 0.4 },
-  emptyText: { fontStyle: 'italic', color: theme.colors.onSurfaceVariant, fontSize: normalize(12), padding: 10 }
-});
