@@ -1,9 +1,10 @@
 import React, { useState, useRef, useMemo } from 'react';
-import {
+import { 
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   Dimensions, Animated, ActivityIndicator,
   KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, ScrollView, Pressable, LayoutAnimation, UIManager
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
   ArrowRight, ArrowLeft, Percent, CheckCircle, Plus, X, Sparkles, Brain, Target, ShieldCheck 
@@ -270,57 +271,68 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
              )}
 
              {step === 2 && (
-                <View style={{ flex: 1 }}>
-                   <View style={styles.addBox}>
-                      <TextInput 
-                        style={styles.addInput} 
-                        placeholder="ej: Suscripciones" 
-                        value={customCatName}
-                        onChangeText={setCustomCatName}
-                      />
-                      <TouchableOpacity style={styles.addBtn} onPress={() => { if(customCatName) { setSelectedCats([...selectedCats, customCatName]); setCustomCatName(''); } }}>
-                         <Plus size={24} color="#FFF" />
-                      </TouchableOpacity>
-                   </View>
-                   <ScrollView showsVerticalScrollIndicator={false}>
-                      {selectedCats.map(id => (
-                         <View key={id} style={[styles.pocketPill, id === 'Ahorros' && styles.pocketPillActive]}>
-                            <Text style={styles.pocketName}>{id === 'Ahorros' ? 'Ahorro Seguro' : id}</Text>
-                            {id === 'Ahorros' ? <Brain size={18} color={theme.colors.primary} /> : <TouchableOpacity onPress={() => setSelectedCats(selectedCats.filter(c => c !== id))}><X size={18} color={theme.colors.onSurfaceVariant} /></TouchableOpacity>}
-                         </View>
-                      ))}
-                      <Text style={[styles.infoTitle, { marginTop: 24 }]}>SUGERENCIAS</Text>
-                      <View style={styles.chipRow}>
-                         {CATEGORIES.filter(c => !selectedCats.includes(c.id)).map(c => (
-                            <TouchableOpacity key={c.id} style={styles.chipSugg} onPress={() => setSelectedCats([...selectedCats, c.id])}>
-                               <Plus size={14} color={theme.colors.primary} />
-                               <Text style={styles.chipSuggTxt}>{c.name}</Text>
-                            </TouchableOpacity>
-                         ))}
-                      </View>
-                   </ScrollView>
-                </View>
-             )}
+                 <View style={{ flex: 1 }}>
+                    <View style={styles.addBox}>
+                       <TextInput 
+                         style={styles.addInput} 
+                         placeholder="ej: Suscripciones" 
+                         value={customCatName}
+                         onChangeText={setCustomCatName}
+                         placeholderTextColor={theme.colors.onSurfaceVariant + '60'}
+                       />
+                       <TouchableOpacity style={styles.addBtn} onPress={() => { if(customCatName) { setSelectedCats([...selectedCats, customCatName]); setCustomCatName(''); } }}>
+                          <LinearGradient colors={theme.colors.brandGradient as any} style={styles.addBtn} start={{x:0, y:0}} end={{x:1, y:1}}>
+                             <Plus size={24} color="#FFF" />
+                          </LinearGradient>
+                       </TouchableOpacity>
+                    </View>
+                    <ScrollView showsVerticalScrollIndicator={false}>
+                       {selectedCats.map(id => (
+                          <View key={id} style={[styles.pocketPill, id === 'Ahorros' && styles.pocketPillActive]}>
+                             <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: (theme.colors.categoryColors[id] || theme.colors.categoryColors['Otros'])[0] + '15', alignItems: 'center', justifyContent: 'center' }}>
+                                <Target size={20} color={(theme.colors.categoryColors[id] || theme.colors.categoryColors['Otros'])[0]} />
+                             </View>
+                             <Text style={styles.pocketName}>{id === 'Ahorros' ? 'Ahorro Seguro' : id}</Text>
+                             {id === 'Ahorros' ? <ShieldCheck size={18} color={theme.colors.primary} /> : <TouchableOpacity onPress={() => setSelectedCats(selectedCats.filter(c => c !== id))}><X size={18} color={theme.colors.onSurfaceVariant} /></TouchableOpacity>}
+                          </View>
+                       ))}
+                       <Text style={[styles.infoTitle, { marginTop: 24 }]}>SUGERENCIAS ESTRATÉGICAS</Text>
+                       <View style={styles.chipRow}>
+                          {CATEGORIES.filter(c => !selectedCats.includes(c.id)).map(c => (
+                             <TouchableOpacity key={c.id} style={styles.chipSugg} onPress={() => setSelectedCats([...selectedCats, c.id])}>
+                                <Plus size={14} color={theme.colors.primary} />
+                                <Text style={styles.chipSuggTxt}>{c.name}</Text>
+                             </TouchableOpacity>
+                          ))}
+                       </View>
+                    </ScrollView>
+                 </View>
+              )}
 
-             {step === 3 && (
-                <View>
-                   <View style={styles.allocBanner}>
-                      <View style={styles.allocBar}>
-                         <View style={{ flex: 0.2, backgroundColor: theme.colors.primary }} />
-                         <View style={{ flex: 0.8, backgroundColor: theme.colors.surfaceContainerHighest }} />
-                      </View>
-                      <Text style={[styles.allocStatus, { color: theme.colors.primary }]}>Distribución Sugerida por la IA activa</Text>
-                   </View>
-                   <ScrollView>
-                      {selectedCats.map(id => (
-                         <View key={id} style={styles.distCard}>
-                            <Text style={styles.distLabel}>{id}</Text>
-                            <Text style={styles.distVal}>{id === 'Ahorros' ? '20%' : (distributions[id]?.value || 10) + '%'}</Text>
-                         </View>
-                      ))}
-                   </ScrollView>
-                </View>
-             )}
+              {step === 3 && (
+                 <View>
+                    <View style={styles.allocBanner}>
+                       <View style={styles.allocBar}>
+                          <LinearGradient colors={theme.colors.brandGradient as any} style={{ flex: 1 }} start={{x:0, y:0}} end={{x:1, y:0}} />
+                       </View>
+                       <Text style={[styles.allocStatus, { color: theme.colors.primary }]}>Blindaje Sugerido por la IA activa</Text>
+                    </View>
+                    <ScrollView>
+                       {selectedCats.map(id => {
+                         const catColor = (theme.colors.categoryColors[id] || theme.colors.categoryColors['Otros'])[0];
+                         return (
+                          <View key={id} style={styles.distCard}>
+                             <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: catColor + '15', alignItems: 'center', justifyContent: 'center' }}>
+                                <Percent size={18} color={catColor} />
+                             </View>
+                             <Text style={styles.distLabel}>{id === 'Ahorros' ? 'Ahorro Seguro' : id}</Text>
+                             <Text style={styles.distVal}>{id === 'Ahorros' ? '20%' : (distributions[id]?.value || 10) + '%'}</Text>
+                          </View>
+                         );
+                       })}
+                    </ScrollView>
+                 </View>
+              )}
           </View>
        </Animated.View>
 
@@ -335,6 +347,7 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
             onPress={() => step < 3 ? transition(step + 1) : handleFinish()}
             disabled={step === 1 && !isIncomeValid}
           >
+             <LinearGradient colors={theme.colors.brandGradient as any} style={[styles.btnNext, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 24 }]} start={{x: 0, y: 0}} end={{x: 1, y: 1}} />
              {loading ? <ActivityIndicator color="#FFF" /> : (
                 <>
                   <Text style={{ color: '#FFF', fontSize: 18, fontWeight: '900' }}>{step === 3 ? 'Comenzar Blindaje' : 'Continuar'}</Text>

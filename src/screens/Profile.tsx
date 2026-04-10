@@ -41,15 +41,15 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
     sectionTitle: { fontSize: 16, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -0.5 },
 
     premiumScoreCard: { 
-      backgroundColor: theme.colors.surface, 
+      backgroundColor: theme.colors.glassWhite, 
       borderRadius: 32, 
       padding: 24, 
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
+      borderWidth: 1.5, 
+      borderColor: 'rgba(255,255,255,0.8)',
       ...theme.shadows.premium 
     },
     scoreHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-    scoreTitle: { fontSize: 13, fontWeight: '900', color: theme.colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 1 },
+    scoreTitle: { fontSize: 13, fontWeight: '900', color: theme.colors.primary, textTransform: 'uppercase', letterSpacing: 1 },
     statusBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
     statusText: { fontSize: 11, fontWeight: '900', textTransform: 'uppercase' },
 
@@ -59,7 +59,7 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
       height: 80, 
       borderRadius: 40, 
       borderWidth: 8, 
-      borderColor: theme.colors.surfaceContainerHigh, 
+      borderColor: 'rgba(71, 173, 162, 0.1)', 
       alignItems: 'center', 
       justifyContent: 'center' 
     },
@@ -73,24 +73,24 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
     metricLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     miniLabel: { fontSize: 10, fontWeight: '900', color: theme.colors.onSurfaceVariant, letterSpacing: 1 },
     miniVal: { fontSize: 12, fontWeight: '900', color: theme.colors.primary },
-    metricBarContainer: { height: 8, borderRadius: 4, backgroundColor: theme.colors.surfaceContainerHigh, overflow: 'hidden' },
+    metricBarContainer: { height: 8, borderRadius: 4, backgroundColor: 'rgba(71, 173, 162, 0.1)', overflow: 'hidden' },
     metricBar: { height: '100%', borderRadius: 4 },
 
     // --- HABITS ---
     habitsWrapper: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
     pillHabit: { 
-      backgroundColor: theme.colors.primaryContainer + '40', 
+      backgroundColor: theme.colors.primaryContainer, 
       paddingHorizontal: 18, 
       paddingVertical: 10, 
       borderRadius: 16,
       borderWidth: 1,
-      borderColor: theme.colors.primary + '15'
+      borderColor: 'rgba(255,255,255,0.5)'
     },
     pillHabitText: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },
 
     // --- RULES ---
     compactRuleCard: { 
-      backgroundColor: theme.colors.surface, 
+      backgroundColor: theme.colors.glassWhite, 
       borderRadius: 24, 
       padding: 16, 
       flexDirection: 'row', 
@@ -98,7 +98,7 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
       alignItems: 'center', 
       marginBottom: 12, 
       borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
+      borderColor: theme.colors.divider,
       ...theme.shadows.soft 
     },
     ruleBrandInfo: { flex: 1, gap: 4 },
@@ -114,30 +114,30 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
       borderRadius: 12, 
       alignItems: 'center', 
       justifyContent: 'center', 
-      backgroundColor: theme.colors.surfaceContainerLow, 
+      backgroundColor: theme.colors.primaryContainer, 
       gap: 4, 
       minWidth: 64,
       borderWidth: 1,
-      borderColor: theme.colors.outlineVariant
+      borderColor: 'rgba(255,255,255,0.5)'
     },
-    actionBtnLabelText: { fontSize: 9, fontWeight: '900', color: theme.colors.onSurfaceVariant, textTransform: 'uppercase' },
+    actionBtnLabelText: { fontSize: 9, fontWeight: '900', color: theme.colors.primary, textTransform: 'uppercase' },
 
     // --- THEME SELECTOR ---
     themeSelectorGrid: { flexDirection: 'row', gap: 16 },
     themeCard: { 
       flex: 1, 
-      backgroundColor: theme.colors.surface, 
+      backgroundColor: theme.colors.glassWhite, 
       borderRadius: 28, 
       padding: 20, 
       alignItems: 'center', 
       borderWidth: 1.5, 
-      borderColor: theme.colors.outlineVariant,
+      borderColor: 'rgba(255,255,255,0.7)',
       ...theme.shadows.soft
     },
     themeCardActive: { 
       borderColor: theme.colors.primary, 
       borderWidth: 2, 
-      backgroundColor: theme.mode === 'honey' ? '#FFFDF0' : '#F0F5F2'
+      backgroundColor: theme.colors.primaryContainer
     },
     colorCircle: { 
       width: 48, 
@@ -146,28 +146,25 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
       marginBottom: 14, 
       borderWidth: 3, 
       borderColor: '#FFF', 
-      ...Platform.select({
-        ios: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 6 },
-        android: { elevation: 4 }
-      })
+      ...theme.shadows.soft
     },
     themeCardName: { fontSize: 15, fontWeight: '900', marginBottom: 4 },
     themeCardDesc: { fontSize: 11, fontWeight: '700', color: theme.colors.onSurfaceVariant, opacity: 0.6 },
 
     // --- SETTINGS LIST ---
     settingsCard: { 
-      backgroundColor: theme.colors.surface, 
+      backgroundColor: theme.colors.glassWhite, 
       borderRadius: 28, 
       paddingVertical: 10, 
       paddingHorizontal: 16, 
-      borderWidth: 1,
-      borderColor: theme.colors.outlineVariant,
+      borderWidth: 1.5,
+      borderColor: 'rgba(255,255,255,0.8)',
       ...theme.shadows.soft 
     },
     settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16 },
     settingTitleCol: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     settingText: { fontSize: 15, fontWeight: '800', color: theme.colors.onSurface },
-    divider: { height: 1.5, backgroundColor: theme.colors.outlineVariant, opacity: 0.5 },
+    divider: { height: 1.5, backgroundColor: theme.colors.divider },
 
     // --- FOOTER ---
     dangerAction: { 
@@ -175,15 +172,15 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
       alignItems: 'center', 
       gap: 12, 
       padding: 20, 
-      backgroundColor: theme.colors.error + '10', 
+      backgroundColor: theme.colors.errorContainer, 
       borderRadius: 24, 
       justifyContent: 'center', 
-      borderWidth: 1.5, 
+      borderWidth: 1, 
       borderColor: theme.colors.error + '25',
       marginTop: 16
     },
     dangerText: { fontSize: 16, fontWeight: '900', color: theme.colors.error },
-    versionLabel: { alignSelf: 'center', marginTop: 32, fontSize: 11, fontWeight: '800', color: theme.colors.onSurfaceVariant, opacity: 0.4 }
+    versionLabel: { alignSelf: 'center', marginTop: 32, fontSize: 11, fontWeight: '800', color: theme.colors.primary, opacity: 0.4 }
   }), [theme, mode]);
 
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
@@ -282,34 +279,6 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
             {(!profileData || profileData.topHabits.length === 0) && (
               <Text style={{ fontStyle: 'italic', color: theme.colors.onSurfaceVariant, fontSize: 13 }}>Escaneando hábitos...</Text>
             )}
-         </View>
-      </View>
-
-      <View style={styles.section}>
-         <View style={styles.sectionHeader}>
-            <Palette size={18} color={theme.colors.primary} strokeWidth={2.5} />
-            <Text style={styles.sectionTitle}>Escoge tu Estética</Text>
-         </View>
-         <View style={styles.themeSelectorGrid}>
-            <TouchableOpacity 
-              activeOpacity={0.8}
-              style={[styles.themeCard, mode === 'sage' && styles.themeCardActive]} 
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setThemeMode('sage'); }}
-            >
-               <View style={[styles.colorCircle, { backgroundColor: '#2E7D32' }]} />
-               <Text style={[styles.themeCardName, { color: mode === 'sage' ? theme.colors.primary : theme.colors.onSurface }]}>Sage</Text>
-               <Text style={styles.themeCardDesc}>Orgánico & Calmo</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              activeOpacity={0.8}
-              style={[styles.themeCard, mode === 'honey' && styles.themeCardActive]} 
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setThemeMode('honey'); }}
-            >
-               <View style={[styles.colorCircle, { backgroundColor: '#B8860B' }]} />
-               <Text style={[styles.themeCardName, { color: mode === 'honey' ? theme.colors.primary : theme.colors.onSurface }]}>Honey</Text>
-               <Text style={styles.themeCardDesc}>Dorado & Premium</Text>
-            </TouchableOpacity>
          </View>
       </View>
 

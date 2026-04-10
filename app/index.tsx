@@ -131,9 +131,9 @@ function MainApp() {
     // 1. Initial boot or session authentication in progress
     if (isInitializing) {
       return (
-        <View style={[styles.loadingContainer, { backgroundColor: theme.colors.background }]}>
+        <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={[styles.loadingText, { color: theme.colors.onSurfaceVariant }]}>Preparando tu experiencia Premium...</Text>
+          <Text style={styles.loadingText}>Cargando...</Text>
         </View>
       );
     }
@@ -144,12 +144,9 @@ function MainApp() {
     // 3. Logged in but data not yet synced -> Premium Loading
     if (!isDataReady || !currentScreen) {
       return (
-        <View style={[styles.loadingContainer, { backgroundColor: theme.colors.background }]}>
-           <View style={{ backgroundColor: theme.colors.primary + '10', padding: 24, borderRadius: 100, marginBottom: 20 }}>
-              <Sparkles size={48} color={theme.colors.primary} />
-           </View>
-          <Text style={[styles.loadingText, { color: theme.colors.onSurface, fontSize: 18, fontWeight: '900' }]}>Blindando tus Datos</Text>
-          <Text style={{ color: theme.colors.onSurfaceVariant, fontWeight: '700', marginTop: 4 }}>Sincronizando con la red...</Text>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={styles.loadingText}>Cargando...</Text>
         </View>
       );
     }
@@ -189,29 +186,29 @@ function MainApp() {
       {actionMenuVisible && (
         <Animated.View style={[styles.actionMenu, { opacity: fadeAnim }]}>
            <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => toggleActionMenu(false)} />
-           <Animated.View style={[styles.menuContent, { transform: [{ translateY: slideAnim }], backgroundColor: theme.colors.surface }]}>
-              <View style={[styles.menuHandle, { backgroundColor: theme.colors.outlineVariant }]} />
+           <Animated.View style={[styles.menuContent, { transform: [{ translateY: slideAnim }], backgroundColor: theme.colors.background }]}>
+              <View style={[styles.menuHandle, { backgroundColor: theme.colors.divider }]} />
               <Text style={[styles.menuTitle, { color: theme.colors.onSurface }]}>Centro de Comando</Text>
               
               <View style={styles.menuGrid}>
                  <TouchableOpacity activeOpacity={0.8} style={styles.menuItem} onPress={() => { toggleActionMenu(false); setCurrentScreen('add_income'); }}>
-                    <View style={[styles.menuIcon, { backgroundColor: theme.colors.primaryContainer + '40' }]}><TrendingUp size={28} color={theme.colors.primary} /></View>
+                    <View style={[styles.menuIcon, { backgroundColor: theme.colors.primaryContainer }]}><TrendingUp size={28} color={theme.colors.primary} /></View>
                     <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Inyectar Capital</Text>
                  </TouchableOpacity>
 
                  <TouchableOpacity activeOpacity={0.8} style={styles.menuItem} onPress={() => { toggleActionMenu(false); setCurrentScreen('scanner'); }}>
-                    <View style={[styles.menuIcon, { backgroundColor: theme.colors.secondaryContainer + '40' }]}><Camera size={28} color={theme.colors.secondary} /></View>
+                    <View style={[styles.menuIcon, { backgroundColor: theme.colors.secondaryContainer }]}><Camera size={28} color={theme.colors.secondary} /></View>
                     <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Auditoría Directa</Text>
                  </TouchableOpacity>
 
                  <TouchableOpacity activeOpacity={0.8} style={styles.menuItem} onPress={() => { toggleActionMenu(false); setCurrentScreen('pocket_transfer'); }}>
-                    <View style={[styles.menuIcon, { backgroundColor: theme.colors.tertiaryContainer + '40' }]}><Repeat size={28} color={theme.colors.tertiary} /></View>
+                    <View style={[styles.menuIcon, { backgroundColor: theme.colors.tertiaryContainer }]}><Repeat size={28} color={theme.colors.tertiary} /></View>
                     <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Transferir Fondos</Text>
                  </TouchableOpacity>
               </View>
 
-              <TouchableOpacity style={[styles.closeMenu, { backgroundColor: theme.colors.surfaceContainerLow }]} onPress={() => toggleActionMenu(false)}>
-                 <Text style={[styles.closeMenuTxt, { color: theme.colors.onSurfaceVariant }]}>Cerrar panel</Text>
+              <TouchableOpacity style={[styles.closeMenu, { backgroundColor: theme.colors.primaryContainer }]} onPress={() => toggleActionMenu(false)}>
+                 <Text style={[styles.closeMenuTxt, { color: theme.colors.primary }]}>Cerrar panel</Text>
               </TouchableOpacity>
            </Animated.View>
         </Animated.View>

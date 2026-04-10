@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { X, CheckCircle2, Circle, ArrowRight, Plus, Wallet, PieChart, LayoutGrid } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -33,35 +34,35 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pocke
       paddingHorizontal: 24, 
       paddingBottom: 20, 
       zIndex: 100, 
-      backgroundColor: theme.mode === 'honey' ? 'rgba(252, 250, 238, 0.95)' : 'rgba(247, 247, 242, 0.95)',
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.outlineVariant
+      backgroundColor: theme.colors.glassWhite,
+      borderBottomWidth: 1.5,
+      borderBottomColor: theme.colors.divider
     },
     closeBtn: { 
       width: 48, 
       height: 48, 
       borderRadius: 24, 
-      backgroundColor: theme.colors.surface, 
+      backgroundColor: theme.colors.glassWhite, 
       alignItems: 'center', 
       justifyContent: 'center', 
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
+      borderWidth: 1.5, 
+      borderColor: 'rgba(255,255,255,0.8)',
       ...theme.shadows.soft 
     },
-    title: { fontSize: 20, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -0.5 },
+    title: { fontSize: 20, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -0.5, fontFamily: theme.fonts.headline },
     scroll: { paddingHorizontal: 24, paddingBottom: 140 },
     
     // --- MAIN CARD ---
     card: { 
-      backgroundColor: theme.colors.surface, 
+      backgroundColor: theme.colors.glassWhite, 
       padding: 28, 
       borderRadius: 36, 
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
+      borderWidth: 1.5, 
+      borderColor: 'rgba(255,255,255,0.8)',
       marginBottom: 32,
       ...theme.shadows.premium 
     },
-    label: { fontSize: 11, fontWeight: '900', color: theme.colors.onSurfaceVariant, textTransform: 'uppercase', marginBottom: 16, letterSpacing: 1.2 },
+    label: { fontSize: 11, fontWeight: '900', color: theme.colors.primary, textTransform: 'uppercase', marginBottom: 16, letterSpacing: 1.2 },
     inputWrap: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 3, borderBottomColor: theme.colors.primary, paddingBottom: 12 },
     currencySymbol: { fontSize: 36, fontWeight: '900', color: theme.colors.primary, marginRight: 10 },
     amountInput: { fontSize: 48, fontWeight: '900', color: theme.colors.onSurface, flex: 1, letterSpacing: -2 },
@@ -71,16 +72,16 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pocke
     distRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
     distBtn: { 
       width: width * 0.35, 
-      backgroundColor: theme.colors.surface, 
+      backgroundColor: theme.colors.glassWhite, 
       padding: 20, 
       borderRadius: 24, 
       borderWidth: 1.5, 
-      borderColor: theme.colors.outlineVariant,
+      borderColor: 'rgba(255,255,255,0.7)',
       ...theme.shadows.soft 
     },
     distBtnActive: { 
       borderColor: theme.colors.primary, 
-      backgroundColor: theme.colors.primaryContainer + '20',
+      backgroundColor: theme.colors.primaryContainer,
       borderWidth: 2
     },
     distBtnTitle: { fontSize: 16, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 6 },
@@ -93,13 +94,13 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pocke
       flexDirection: 'row', 
       alignItems: 'center', 
       gap: 8, 
-      backgroundColor: theme.colors.surface, 
+      backgroundColor: theme.colors.glassWhite, 
       paddingHorizontal: 16, 
       paddingVertical: 12, 
       borderRadius: 16, 
       marginRight: 12, 
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
+      borderWidth: 1.5, 
+      borderColor: 'rgba(255,255,255,0.7)',
       ...theme.shadows.soft 
     },
     manualChipTxt: { fontSize: 13, fontWeight: '800', color: theme.colors.onSurface },
@@ -111,47 +112,47 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pocke
       alignItems: 'center', 
       padding: 20, 
       borderRadius: 28, 
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
+      backgroundColor: theme.colors.glassWhite,
+      borderWidth: 1.5, 
+      borderColor: 'rgba(255,255,255,0.7)',
       ...theme.shadows.soft 
     },
     pocketItemSelected: { 
       borderColor: theme.colors.primary, 
-      backgroundColor: theme.colors.primaryContainer + '10',
-      borderWidth: 1.5
+      backgroundColor: theme.colors.primaryContainer,
+      borderWidth: 2
     },
     pocketName: { fontSize: 17, fontWeight: '900', color: theme.colors.onSurface },
     
     manualInputBox: { 
       flexDirection: 'row', 
       alignItems: 'center', 
-      backgroundColor: theme.colors.surfaceContainerLow, 
+      backgroundColor: theme.colors.primaryContainer, 
       borderRadius: 16, 
       paddingHorizontal: 14, 
       borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant 
+      borderColor: 'rgba(255,255,255,0.5)' 
     },
     manualPrefix: { fontSize: 18, fontWeight: '800', color: theme.colors.primary, marginRight: 4 },
     manualInput: { fontSize: 18, fontWeight: '900', color: theme.colors.onSurface, width: 120, paddingVertical: 10 },
     
-    previewTag: { backgroundColor: theme.colors.primaryContainer + '50', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14 },
+    previewTag: { backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14 },
     previewTagTxt: { color: theme.colors.primary, fontSize: 15, fontWeight: '900' },
     
     statusBox: { padding: 16, borderRadius: 20, alignItems: 'center', marginTop: 16, borderWidth: 1 },
     statusTxt: { fontSize: 14, fontWeight: '900' },
 
-    footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 24, paddingBottom: 40, backgroundColor: 'transparent' },
+    footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 24, paddingBottom: 40 },
     saveBtn: { 
       flexDirection: 'row', 
       alignItems: 'center', 
       justifyContent: 'center', 
       height: 68, 
       borderRadius: 28, 
-      backgroundColor: theme.colors.primary,
+      overflow: 'hidden',
       ...theme.shadows.premium 
     },
-    saveBtnDisabled: { backgroundColor: theme.colors.surfaceContainerHighest, opacity: 0.6 },
+    saveBtnDisabled: { opacity: 0.6 },
     saveBtnTxt: { color: '#FFF', fontSize: 18, fontWeight: '900', letterSpacing: -0.5 }
   }), [theme]);
 
@@ -246,25 +247,21 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pocke
 
     setIsSaving(true);
     try {
-      const { error: txError } = await supabase.from('transactions').insert({
-        user_id: session.user.id,
-        merchant: 'Depósito de Capital',
-        amount: val,
-        date_string: new Date().toISOString().split('T')[0],
-        category: 'Ingreso',
-        icon: 'trending-up',
-        metadata: { distribution: preview, type: 'income_distributed', mode: distType }
+      const { error } = await supabase.rpc('register_income', {
+        p_user_id: session.user.id,
+        p_amount: val,
+        p_distribution: preview,
+        p_mode: distType
       });
-      if (txError) throw txError;
-      const updates = Object.entries(preview).map(([id, addAmount]) => {
-        const p = pockets.find(pk => pk.id === id);
-        return supabase.from('pockets').update({ budget: (p.budget || 0) + addAmount }).eq('id', id);
-      });
-      await Promise.all(updates);
+
+      if (error) throw error;
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onSaveSuccess();
     } catch(e: any) {
+      console.error(e);
       alert('Error guardando el ingreso.');
+    } finally {
       setIsSaving(false);
     }
   };
@@ -407,6 +404,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pocke
           onPress={handleSave} 
           disabled={isSaving || !amount || selectedPockets.length === 0 || isManualMismatch}
         >
+          <LinearGradient colors={theme.colors.brandGradient as any} style={[StyleSheet.absoluteFill, { borderRadius: 28 }]} start={{x:0, y:0}} end={{x:1, y:0}} />
           {isSaving ? <ActivityIndicator color="#FFF" /> : (
             <>
               <Text style={styles.saveBtnTxt}>Blindar Ingreso de Capital</Text>

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { 
   View, 
   Text, 
@@ -15,9 +15,9 @@ import {
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../theme/ThemeContext';
-import { theme } from '../theme/theme';
 import { Mail, Lock, LogIn, UserPlus, Apple, Chrome, Eye, EyeOff, User } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown, FadeInUp, Layout } from 'react-native-reanimated';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
@@ -41,6 +41,188 @@ export function Auth({ onLoginSuccess }: AuthProps) {
 
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
+
+  const styles = useMemo(() => StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: theme.colors.background,
+    },
+    scrollContent: {
+      flexGrow: 1,
+      paddingHorizontal: 24,
+      paddingTop: height * 0.1,
+      paddingBottom: 40,
+    },
+    bgCircle1: {
+      position: 'absolute',
+      top: -50,
+      right: -50,
+      width: 250,
+      height: 250,
+      borderRadius: 125,
+      backgroundColor: theme.colors.primaryContainer,
+      opacity: 0.1,
+    },
+    bgCircle2: {
+      position: 'absolute',
+      bottom: 50,
+      left: -50,
+      width: 300,
+      height: 300,
+      borderRadius: 150,
+      backgroundColor: theme.colors.secondaryContainer,
+      opacity: 0.05,
+    },
+    headerContainer: {
+      alignItems: 'center',
+      marginBottom: 40,
+    },
+    appNameContainer: {
+      alignItems: 'center',
+      marginBottom: 10,
+    },
+    logoImage: {
+      width: 120,
+      height: 120,
+      marginBottom: 20,
+    },
+    appName: {
+      fontSize: 48,
+      fontWeight: '900',
+      color: theme.colors.primary,
+      fontFamily: theme.fonts.headline,
+      letterSpacing: 10,
+      textTransform: 'uppercase',
+    },
+    appNameUnderline: {
+      width: 44,
+      height: 6,
+      backgroundColor: (theme.colors as any).pastel.yellow,
+      borderRadius: 10,
+      marginTop: 2,
+    },
+    tagline: {
+      fontSize: 16,
+      color: theme.colors.onSurfaceVariant,
+      textAlign: 'center',
+      marginTop: 8,
+      lineHeight: 22,
+      maxWidth: '80%',
+    },
+    formCard: {
+      borderRadius: 32,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: 'rgba(255, 255, 255, 0.5)',
+      elevation: 4,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.05,
+      shadowRadius: 30,
+    },
+    blurContainer: {
+      padding: 32,
+    },
+    formTitle: {
+      fontSize: 24,
+      fontWeight: '700',
+      color: theme.colors.onBackground,
+      marginBottom: 32,
+      textAlign: 'center',
+    },
+    inputGroup: {
+      gap: 16,
+    },
+    inputWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#fff',
+      borderRadius: 16,
+      paddingHorizontal: 16,
+      height: 60,
+      borderWidth: 1,
+      borderColor: theme.colors.outlineVariant,
+    },
+    inputIcon: {
+      marginRight: 12,
+    },
+    input: {
+      flex: 1,
+      fontSize: 16,
+      color: theme.colors.onSurface,
+    },
+    forgotBtn: {
+      alignSelf: 'flex-end',
+      marginTop: 12,
+    },
+    forgotText: {
+      color: theme.colors.primary,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    mainBtn: {
+      height: 60,
+      borderRadius: 16,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: 32,
+      gap: 12,
+      elevation: 4,
+      shadowColor: theme.colors.primary,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.3,
+      shadowRadius: 15,
+    },
+    mainBtnText: {
+      color: '#fff',
+      fontSize: 18,
+      fontWeight: '700',
+    },
+    divider: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginVertical: 32,
+    },
+    line: {
+      flex: 1,
+      height: 1,
+      backgroundColor: theme.colors.outlineVariant,
+      opacity: 0.5,
+    },
+    dividerText: {
+      marginHorizontal: 16,
+      color: theme.colors.onSurfaceVariant,
+      fontSize: 13,
+    },
+    socialGroup: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 20,
+    },
+    socialBtn: {
+      width: 64,
+      height: 64,
+      borderRadius: 20,
+      backgroundColor: '#fff',
+      borderWidth: 1,
+      borderColor: theme.colors.outlineVariant,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    toggleBtn: {
+      marginTop: 32,
+      alignItems: 'center',
+    },
+    toggleText: {
+      fontSize: 15,
+      color: theme.colors.onSurfaceVariant,
+    },
+    toggleAction: {
+      color: theme.colors.primary,
+      fontWeight: '900',
+    }
+  }), [theme]);
 
   const toggleMode = () => setMode(mode === 'login' ? 'signup' : 'login');
 
@@ -149,8 +331,13 @@ export function Auth({ onLoginSuccess }: AuthProps) {
           entering={FadeInDown.delay(200).duration(800)}
           style={styles.headerContainer}
         >
+          <Image 
+            source={require('../../assets/images/logo.png')} 
+            style={styles.logoImage} 
+            resizeMode="contain" 
+          />
           <View style={styles.appNameContainer}>
-            <Text style={styles.appName}>SA<Text style={{color: theme.colors.primary}}>V</Text>E</Text>
+            <Text style={styles.appName}>SAVE</Text>
             <View style={styles.appNameUnderline} />
           </View>
           <Text style={styles.tagline}>
@@ -237,12 +424,12 @@ export function Auth({ onLoginSuccess }: AuthProps) {
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <Text style={styles.mainBtnText}>
                     {mode === 'login' ? 'Entrar' : 'Registrarse'}
                   </Text>
                   {mode === 'login' ? <LogIn size={20} color="#fff" /> : <UserPlus size={20} color="#fff" />}
-                </>
+                </View>
               )}
             </TouchableOpacity>
 
@@ -275,180 +462,3 @@ export function Auth({ onLoginSuccess }: AuthProps) {
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.colors.background,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: height * 0.1,
-    paddingBottom: 40,
-  },
-  bgCircle1: {
-    position: 'absolute',
-    top: -50,
-    right: -50,
-    width: 250,
-    height: 250,
-    borderRadius: 125,
-    backgroundColor: theme.colors.primaryContainer,
-    opacity: 0.1,
-  },
-  bgCircle2: {
-    position: 'absolute',
-    bottom: 50,
-    left: -50,
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: theme.colors.secondaryContainer,
-    opacity: 0.05,
-  },
-  headerContainer: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  appNameContainer: {
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  appName: {
-    fontSize: 48,
-    fontWeight: '900',
-    color: theme.colors.onBackground,
-    fontFamily: theme.fonts.headline,
-    letterSpacing: 8,
-    textTransform: 'uppercase',
-  },
-  appNameUnderline: {
-    width: 40,
-    height: 4,
-    backgroundColor: theme.colors.primary,
-    borderRadius: 2,
-    marginTop: -4,
-  },
-  tagline: {
-    fontSize: 16,
-    color: theme.colors.onSurfaceVariant,
-    textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 22,
-    maxWidth: '80%',
-  },
-  formCard: {
-    borderRadius: 32,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.05,
-    shadowRadius: 30,
-  },
-  blurContainer: {
-    padding: 32,
-  },
-  formTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: theme.colors.onBackground,
-    marginBottom: 32,
-    textAlign: 'center',
-  },
-  inputGroup: {
-    gap: 16,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    height: 60,
-    borderWidth: 1,
-    borderColor: theme.colors.outlineVariant,
-  },
-  inputIcon: {
-    marginRight: 12,
-  },
-  input: {
-    flex: 1,
-    fontSize: 16,
-    color: theme.colors.onSurface,
-  },
-  forgotBtn: {
-    alignSelf: 'flex-end',
-    marginTop: 12,
-  },
-  forgotText: {
-    color: theme.colors.primary,
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  mainBtn: {
-    height: 60,
-    borderRadius: 16,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 32,
-    gap: 12,
-    elevation: 4,
-    shadowColor: theme.colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 15,
-  },
-  mainBtnText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 32,
-  },
-  line: {
-    flex: 1,
-    height: 1,
-    backgroundColor: theme.colors.outlineVariant,
-    opacity: 0.5,
-  },
-  dividerText: {
-    marginHorizontal: 16,
-    color: theme.colors.onSurfaceVariant,
-    fontSize: 13,
-  },
-  socialGroup: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 20,
-  },
-  socialBtn: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: theme.colors.outlineVariant,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  toggleBtn: {
-    marginTop: 32,
-    alignItems: 'center',
-  },
-  toggleText: {
-    fontSize: 15,
-    color: theme.colors.onSurfaceVariant,
-  },
-  toggleAction: {
-    color: theme.colors.primary,
-    fontWeight: '900',
-  }
-});

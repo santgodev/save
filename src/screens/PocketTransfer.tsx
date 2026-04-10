@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { X, ArrowRightLeft, ArrowRight, CheckCircle2, ChevronDown, Repeat } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -106,17 +107,17 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
       borderColor: theme.colors.primary + '20'
     },
 
-    footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 24, paddingBottom: 40, backgroundColor: 'transparent' },
+    footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 24, paddingBottom: 40 },
     saveBtn: { 
       flexDirection: 'row', 
       alignItems: 'center', 
       justifyContent: 'center', 
       height: 68, 
       borderRadius: 28, 
-      backgroundColor: theme.colors.primary,
+      overflow: 'hidden',
       ...theme.shadows.premium 
     },
-    saveBtnDisabled: { backgroundColor: theme.colors.surfaceContainerHighest, opacity: 0.6 },
+    saveBtnDisabled: { opacity: 0.6 },
     saveBtnTxt: { color: '#FFF', fontSize: 18, fontWeight: '900', letterSpacing: -0.5 }
   }), [theme]);
 
@@ -139,24 +140,23 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
     if (!fromPocketId || !toPocketId) return alert('Bolsillos incompletos.');
     if (fromPocketId === toPocketId) return alert('Origen y destino deben ser distintos.');
 
-    const fromPocket = pockets.find(p => p.id === fromPocketId);
-    if (fromPocket.budget < val) return alert(`Saldo insuficiente en ${fromPocket.name}.`);
-
     setIsSaving(true);
     try {
-      const toPocket = pockets.find(p => p.id === toPocketId);
-      await Promise.all([
-        supabase.from('pockets').update({ budget: fromPocket.budget - val }).eq('id', fromPocketId),
-        supabase.from('pockets').update({ budget: toPocket.budget + val }).eq('id', toPocketId),
-        supabase.from('transactions').insert([
-          { user_id: session.user.id, merchant: `Hacia ${toPocket.name}`, amount: -val, category: fromPocket.category, icon: 'repeat' },
-          { user_id: session.user.id, merchant: `Desde ${fromPocket.name}`, amount: val, category: toPocket.category, icon: 'repeat' }
-        ])
-      ]);
+      const { error } = await supabase.rpc('transfer_between_pockets', {
+        p_user_id: session.user.id,
+        p_from_id: fromPocketId,
+        p_to_id: toPocketId,
+        p_amount: val
+      });
+
+      if (error) throw error;
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onSaveSuccess();
     } catch(e) {
+      console.error(e);
       alert('Error en el traspaso.');
+    } finally {
       setIsSaving(false);
     }
   };
@@ -236,6 +236,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
           onPress={handleSave} 
           disabled={isSaving || !amount || fromPocketId === toPocketId}
         >
+          <LinearGradient colors={theme.colors.brandGradient as any} style={[StyleSheet.absoluteFill, { borderRadius: 28 }]} start={{x:0, y:0}} end={{x:1, y:0}} />
           {isSaving ? <ActivityIndicator color="#FFF" /> : (
             <>
               <Text style={styles.saveBtnTxt}>Confirmar Traspaso</Text>

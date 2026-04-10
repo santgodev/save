@@ -8,7 +8,7 @@ import { BlurView } from 'expo-blur';
 import { 
   ChevronLeft, ChevronRight, Edit3, Save, TrendingUp,
   Plus, X, Trash2, PieChart, AlertCircle, ShoppingBag, 
-  MapPin, Clock, Calendar, CheckCircle2, ChevronDown, ArrowRight 
+  MapPin, Clock, Calendar, CheckCircle2, ChevronDown, ArrowRight, Target, Sparkles 
 } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { normalize } from '../theme/theme';
@@ -28,6 +28,8 @@ const MONTHS = [
   { label: 'Octubre', value: 9 }, { label: 'Noviembre', value: 10 }, { label: 'Diciembre', value: 11 }
 ];
 
+// Replaced hardcoded POCKET_COLORS with theme-aware colors from ThemeContext
+
 export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferPress }: { pockets: any[], transactions: any[], session: any, onRefresh: () => void, onTransferPress: (params: { fromId?: string, amount?: number }) => void }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
@@ -36,28 +38,52 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     container: { flex: 1, backgroundColor: theme.colors.background },
     scrollPadding: { paddingHorizontal: 24 },
     inlineHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, marginBottom: 32 },
-    monthTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5, color: theme.colors.onSurface },
+    monthTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5, color: theme.colors.onSurface, fontFamily: theme.fonts.headline },
     arrow: { 
       width: 44, 
       height: 44, 
       borderRadius: 22, 
-      backgroundColor: theme.colors.surface, 
+      backgroundColor: theme.colors.glassWhite, 
       alignItems: 'center', 
       justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: theme.colors.outlineVariant,
+      borderWidth: 1.5,
+      borderColor: 'rgba(255,255,255,0.8)',
       ...theme.shadows.soft 
+    },
+    title: { 
+      ...theme.typography.title, 
+      fontSize: 15,
+      fontWeight: '900',
+      color: theme.colors.onSurface,
+      opacity: 0.9,
+    },
+    userBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 14,
+      backgroundColor: theme.colors.glassWhite,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.6)',
+    },
+    userName: {
+      ...theme.typography.label,
+      fontSize: 10,
+      color: theme.colors.primary,
     },
     cardHeader: { 
       flexDirection: 'row', 
       alignItems: 'center', 
-      backgroundColor: theme.colors.surface, 
-      padding: 24, 
-      borderRadius: 32, 
-      marginBottom: 16, 
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
-      ...theme.shadows.premium 
+      backgroundColor: theme.colors.glassWhite, 
+      paddingHorizontal: 24, 
+      paddingVertical: 28, 
+      borderRadius: theme.radius.xl, 
+      marginBottom: 24, 
+      borderWidth: 1.5, 
+      borderColor: 'rgba(255,255,255,0.8)',
+      ...theme.shadows.md 
     },
     topLabel: { 
       fontSize: 10, 
@@ -71,23 +97,6 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     incomeInput: { fontSize: 32, fontWeight: '900', padding: 0, margin: 0, color: theme.colors.primary },
     budgetCompareTxt: { fontSize: 13, color: theme.colors.onSurfaceVariant, marginTop: 4, fontWeight: '700' },
     
-    incomeHistoryRow: { marginTop: 12, marginBottom: 24 },
-    incomeMiniCard: { 
-      backgroundColor: theme.colors.surface, 
-      paddingHorizontal: 16, 
-      paddingVertical: 12, 
-      borderRadius: 20, 
-      marginRight: 12, 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
-      ...theme.shadows.soft 
-    },
-    miniCardIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.colors.primaryContainer, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
-    miniCardAmt: { fontSize: 15, fontWeight: '900', color: theme.colors.onSurface },
-    miniCardDate: { fontSize: 11, color: theme.colors.onSurfaceVariant, marginTop: 1, fontWeight: '700' },
-    
     editModeBtn: { 
       flexDirection: 'row', 
       alignItems: 'center', 
@@ -95,28 +104,16 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
       paddingHorizontal: 16, 
       paddingVertical: 12, 
       borderRadius: 16, 
-      backgroundColor: theme.colors.surfaceContainerLow,
+      backgroundColor: theme.colors.primaryContainer,
       borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant 
+      borderColor: 'rgba(255,255,255,0.5)' 
     },
-    editModeTxt: { fontSize: 13, fontWeight: '900', color: theme.colors.onSurfaceVariant },
+    editModeTxt: { fontSize: 13, fontWeight: '900', color: theme.colors.primary },
     
-    diffAlert: { padding: 18, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24, borderWidth: 1 },
-    diffError: { backgroundColor: theme.colors.error + '10', borderColor: theme.colors.error + '25' },
-    diffSuccess: { backgroundColor: theme.colors.success + '10', borderColor: theme.colors.success + '25' },
-    diffText: { fontSize: 13, fontWeight: '800', flex: 1 },
-    
-    autoLevelBtn: { 
-      paddingHorizontal: 12, 
-      paddingVertical: 8, 
-      borderRadius: 12, 
-      marginTop: 8, 
-      alignSelf: 'flex-start', 
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
-      backgroundColor: theme.colors.surface 
-    },
-    autoLevelTxt: { fontSize: 12, fontWeight: '800', color: theme.colors.primary },
+    diffAlert: { padding: theme.spacing.md, borderRadius: theme.radius.lg, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, marginBottom: theme.spacing.lg, borderWidth: 1 },
+    diffError: { backgroundColor: theme.colors.errorContainer, borderColor: theme.colors.error + '25' },
+    diffSuccess: { backgroundColor: theme.colors.successContainer, borderColor: theme.colors.success + '25' },
+    diffText: { ...theme.typography.bodyMedium, fontWeight: '800', flex: 1 },
     
     adjustActions: { flexDirection: 'row', gap: 12, marginTop: 16, paddingHorizontal: 4 },
     cancelAdjustBtn: { flex: 1, paddingVertical: 16, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.outlineVariant },
@@ -126,40 +123,42 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     
     grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
     pocketCard: { 
-      width: (width - 62) / 2, 
-      borderRadius: 32, 
-      padding: 20, 
-      backgroundColor: theme.colors.surface, 
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
-      ...theme.shadows.premium
+      width: (width - (24 * 2 + 14)) / 2, 
+      borderRadius: theme.radius.xl, 
+      padding: 0, 
+      backgroundColor: theme.colors.glassWhite, 
+      borderWidth: 1.5, 
+      borderColor: 'rgba(255,255,255,0.8)',
+      overflow: 'hidden',
+      ...theme.shadows.md
     },
+    cardGradient: { flex: 1, padding: 20 },
     pocketTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-    iconCircle: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceContainerLow },
-    weightBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: theme.colors.surfaceContainerHigh },
-    weightTxt: { fontSize: 11, fontWeight: '900', color: theme.colors.primary },
+    iconCircle: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.2)' },
+    weightBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.15)' },
+    weightTxt: { fontSize: 11, fontWeight: '900', color: '#FFF' },
     
-    inlineEditPct: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, backgroundColor: theme.colors.surfaceContainerHighest },
-    editPctInput: { fontSize: 14, fontWeight: '900', minWidth: 28, textAlign: 'right' },
-    editPctLabel: { fontSize: 11, fontWeight: '800', marginLeft: 2 },
+    inlineEditPct: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.2)' },
+    editPctInput: { fontSize: 14, fontWeight: '900', minWidth: 28, textAlign: 'right', color: '#FFF' },
+    editPctLabel: { fontSize: 11, fontWeight: '800', marginLeft: 2, color: '#FFF' },
     
-    pocketName: { fontSize: 16, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 4 },
-    budgetLabel: { fontSize: 13, fontWeight: '700', color: theme.colors.onSurfaceVariant },
-    editBudgetInput: { fontSize: 15, fontWeight: '900', color: theme.colors.onSurface },
+    pocketName: { fontSize: 16, fontWeight: '900', color: '#FFF', marginBottom: 4 },
+    budgetLabel: { fontSize: 13, fontWeight: '800', color: 'rgba(255,255,255,0.8)' },
     
     progressArea: { gap: 8 },
-    remTxt: { fontSize: 11, fontWeight: '900' },
+    remTxt: { fontSize: 11, fontWeight: '900', color: 'rgba(255,255,255,0.9)' },
     
     addCard: { 
       borderStyle: 'dashed', 
       justifyContent: 'center', 
       alignItems: 'center', 
       gap: 10, 
-      backgroundColor: 'transparent',
-      borderColor: theme.colors.outlineVariant,
-      minHeight: 180
+      backgroundColor: 'rgba(255,255,255,0.2)',
+      borderColor: theme.colors.primary + '40',
+      minHeight: 180,
+      padding: 20
     },
-    addTxt: { fontSize: 13, fontWeight: '900' },
+    addTxt: { fontSize: 13, fontWeight: '900', color: theme.colors.primary },
     
     bottomSheet: { 
       position: 'absolute', 
@@ -170,7 +169,9 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
       borderTopLeftRadius: 40, 
       borderTopRightRadius: 40, 
       padding: 32, 
-      backgroundColor: theme.colors.surface,
+      backgroundColor: theme.colors.background,
+      borderTopWidth: 1,
+      borderColor: theme.colors.divider,
       ...theme.shadows.premium 
     },
     sheetHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 32 },
@@ -182,9 +183,9 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
       padding: 24, 
       borderRadius: 28, 
       marginBottom: 32, 
-      backgroundColor: theme.colors.surfaceContainerLow,
-      borderWidth: 1,
-      borderColor: theme.colors.outlineVariant 
+      backgroundColor: theme.colors.primaryContainer,
+      borderWidth: 1.5,
+      borderColor: 'rgba(255,255,255,0.6)' 
     },
     qStat: { flex: 1 },
     qLabel: { fontSize: 10, fontWeight: '900', color: theme.colors.onSurfaceVariant, marginBottom: 6, letterSpacing: 1 },
@@ -197,7 +198,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     fixOverspentBtn: { paddingVertical: 18, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: theme.colors.surface },
     fixOverspentTxt: { fontSize: 14, fontWeight: '900', color: theme.colors.primary },
     
-    txRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: theme.colors.outlineVariant },
+    txRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1.5, borderBottomColor: theme.colors.divider },
     txMerchant: { fontSize: 16, fontWeight: '800', color: theme.colors.onSurface },
     txDate: { fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 2 },
     txAmt: { fontSize: 16, fontWeight: '900', color: theme.colors.onSurface },
@@ -206,16 +207,16 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     delTxt: { fontSize: 14, fontWeight: '800' },
     
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.82)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-    modalContent: { width: '100%', borderRadius: 36, padding: 32, backgroundColor: theme.colors.surface, ...theme.shadows.premium },
+    modalContent: { width: '100%', borderRadius: 36, padding: 32, backgroundColor: theme.colors.background, borderWidth: 1, borderColor: theme.colors.divider, ...theme.shadows.premium },
     modalTitle: { fontSize: 22, fontWeight: '900', marginBottom: 24, color: theme.colors.onSurface },
     modalIn: { 
       borderRadius: 20, 
       padding: 18, 
       fontSize: 16, 
       marginBottom: 16, 
-      borderWidth: 1, 
+      borderWidth: 1.5, 
       borderColor: theme.colors.outlineVariant, 
-      backgroundColor: theme.colors.surfaceContainerLow,
+      backgroundColor: theme.colors.glassWhite,
       color: theme.colors.onSurface,
       fontWeight: '700'
     },
@@ -396,33 +397,42 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.scrollPadding, { paddingTop: Math.max(insets.top, 16) + 104, paddingBottom: Math.max(insets.bottom, 16) + normalize(76) + 24 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        contentContainerStyle={[styles.scrollPadding, { paddingTop: Math.max(insets.top, 16) + 104, paddingBottom: Math.max(insets.bottom, 16) + normalize(76) + 24 }]} 
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.inlineHeader}>
-          <TouchableOpacity onPress={() => setSelectedMonth(prev => (prev - 1 + 12) % 12)} style={styles.arrow}><ChevronLeft size={18} color={theme.colors.onSurface} /></TouchableOpacity>
+          <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedMonth(prev => (prev - 1 + 12) % 12); }} style={styles.arrow}><ChevronLeft size={18} color={theme.colors.onSurface} /></TouchableOpacity>
           <Text style={styles.monthTitle}>{MONTHS[selectedMonth].label}</Text>
-          <TouchableOpacity onPress={() => setSelectedMonth(prev => (prev + 1) % 12)} style={styles.arrow}><ChevronRight size={18} color={theme.colors.onSurface} /></TouchableOpacity>
+          <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedMonth(prev => (prev + 1) % 12); }} style={styles.arrow}><ChevronRight size={18} color={theme.colors.onSurface} /></TouchableOpacity>
         </View>
 
         <View style={styles.cardHeader}>
            <View style={{flex: 1}}>
-             <Text style={styles.topLabel}>TOTAL INGRESADO ESTE MES</Text>
+             <Text style={styles.topLabel}>PRESUPUESTO DISPONIBLE</Text>
              {isAdjustMode ? (
                <TextInput 
                  style={styles.incomeInput}
                  keyboardType="numeric"
-                 value={tempIncome.toString()}
-                 onChangeText={(v) => setTempIncome(parseInt(v.replace(/[^0-9]/g, '')) || 0)}
+                 value={tempIncome.toLocaleString('es-CO')}
+                 onChangeText={(v) => {
+                   const val = parseInt(v.replace(/[^0-9]/g, '')) || 0;
+                   setTempIncome(val);
+                 }}
                  autoFocus
                />
              ) : (
                <Text style={styles.topAmount}>$ {totalInvoicedIncome.toLocaleString('es-CO')}</Text>
              )}
              {!isAdjustMode && totalInvoicedIncome !== monthlyIncome && (
-               <Text style={styles.budgetCompareTxt}>Objetivo: ${monthlyIncome.toLocaleString('es-CO')}</Text>
+               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                  <Target size={12} color={theme.colors.onSurfaceVariant} />
+                  <Text style={styles.budgetCompareTxt}>Meta: ${monthlyIncome.toLocaleString('es-CO')}</Text>
+               </View>
              )}
            </View>
            <TouchableOpacity 
-             style={[styles.editModeBtn, isAdjustMode && { backgroundColor: theme.colors.onSurface }]} 
+             style={[styles.editModeBtn, isAdjustMode && { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }]} 
              onPress={isAdjustMode ? saveBatchBudget : startAdjustMode}
              disabled={isSaving || (isAdjustMode && diff !== 0)}
            >
@@ -435,58 +445,46 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
            </TouchableOpacity>
         </View>
 
-        {incomeTransactions.length > 0 && !isAdjustMode && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.incomeHistoryRow} contentContainerStyle={{ paddingHorizontal: 20 }}>
-            {incomeTransactions.map((tx, idx) => (
-              <View key={tx.id || idx} style={styles.incomeMiniCard}>
-                <View style={styles.miniCardIcon}><TrendingUp size={16} color={theme.colors.primary} /></View>
-                <View>
-                  <Text style={styles.miniCardAmt}>+${Math.abs(tx.amount).toLocaleString('es-CO')}</Text>
-                  <Text style={styles.miniCardDate}>{new Date(tx.date_string || tx.created_at).toLocaleDateString()}</Text>
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-        )}
-
         {isAdjustMode && (
           <View style={[styles.diffAlert, diff !== 0 ? styles.diffError : styles.diffSuccess]}>
              <AlertCircle size={20} color={diff === 0 ? theme.colors.success : theme.colors.error} />
-             <Text style={[styles.diffText, { color: diff === 0 ? theme.colors.success : theme.colors.error }]}>
-               {diff === 0 ? '¡Presupuesto equilibrado!' : diff > 0 ? `Quedan $${diff.toLocaleString('es-CO')} por asignar` : `Faltan $${Math.abs(diff).toLocaleString('es-CO')}`}
-             </Text>
-             
-             {diff > 0 && (
-                <TouchableOpacity style={styles.autoLevelBtn} onPress={() => {
-                    const ahorros = pockets.find(p => p.category === 'Ahorros');
-                    if (ahorros) setTempBudgets(prev => ({ ...prev, [ahorros.id]: (prev[ahorros.id] || 0) + diff }));
-                }}>
-                  <Text style={styles.autoLevelTxt}>Nivelar Ahorro</Text>
-                </TouchableOpacity>
-             )}
+             <View style={{ flex: 1 }}>
+               <Text style={[styles.diffText, { color: diff === 0 ? theme.colors.success : theme.colors.error }]}>
+                 {diff === 0 ? '¡Presupuesto perfectamente equilibrado!' : diff > 0 ? `Quedan $${diff.toLocaleString('es-CO')} sin asignar` : `Exceso de $${Math.abs(diff).toLocaleString('es-CO')} en la distribución`}
+               </Text>
+               
+               {diff > 0 && (
+                 <TouchableOpacity 
+                   style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 }}
+                   onPress={() => {
+                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                     const ahorros = pockets.find(p => p.category === 'Ahorros' || p.name.includes('Ahorro'));
+                     if (ahorros) {
+                       setTempBudgets(prev => ({ ...prev, [ahorros.id]: (prev[ahorros.id] || 0) + diff }));
+                     } else if (pockets.length > 0) {
+                       setTempBudgets(prev => ({ ...prev, [pockets[0].id]: (prev[pockets[0].id] || 0) + diff }));
+                     }
+                   }}
+                 >
+                   <Sparkles size={14} color={theme.colors.primary} />
+                   <Text style={{ fontSize: 12, fontWeight: '900', color: theme.colors.primary }}>Sugerencia AI: Blindar Ahorros</Text>
+                 </TouchableOpacity>
+               )}
+             </View>
           </View>
         )}
 
         {isAdjustMode && (
           <View style={styles.adjustActions}>
-            <TouchableOpacity style={styles.cancelAdjustBtn} onPress={() => setIsAdjustMode(false)}><Text style={styles.cancelAdjustTxt}>Cerrar</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.cancelAdjustBtn} onPress={() => setIsAdjustMode(false)}><Text style={styles.cancelAdjustTxt}>Cancelar todo</Text></TouchableOpacity>
             <TouchableOpacity 
               style={[styles.saveAdjustBtn, diff !== 0 && { opacity: 0.5 }]} 
               onPress={saveBatchBudget}
               disabled={isSaving || diff !== 0}
             >
-              {isSaving ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.saveAdjustTxt}>Guardar Presupuesto</Text>}
+              {isSaving ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.saveAdjustTxt}>Confirmar Estructura</Text>}
             </TouchableOpacity>
           </View>
-        )}
-
-        {totalInvoicedIncome === 0 && !isAdjustMode && (
-          <TouchableOpacity style={styles.incomeAlert} onPress={startAdjustMode}>
-            <PieChart size={20} color={theme.colors.primary} />
-            <Text style={[styles.incomeAlertText, { color: theme.colors.onSurfaceVariant }]}>
-              Define tu presupuesto ideal. Toca <Text style={{ fontWeight: '900', color: theme.colors.primary }}>Ajustar</Text> para organizar tu capital.
-            </Text>
-          </TouchableOpacity>
         )}
 
         <View style={styles.grid}>
@@ -495,48 +493,86 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
              const budget = isAdjustMode ? tempBudgets[p.id] : (p.budget || 0);
              const targetPct = isAdjustMode ? (tempPercentages[p.id] || 0) : (p.target_percentage || 0);
              const isOverspent = spent > budget;
-             const pctUsage = Math.min((spent / (budget || 1)) * 100, 100);
+             const pctUsage = Math.min((spent / (Math.max(budget, 1))) * 100, 100);
 
              return (
-               <TouchableOpacity key={p.id || i} style={styles.pocketCard} activeOpacity={0.9} onPress={() => openPocket(p)}>
-                  <View style={styles.pocketTop}>
-                    <View style={styles.iconCircle}><CategoryIcon iconName={p.icon} size={20} color={theme.colors.onSurface} /></View>
-                    <View style={styles.weightBadge}><Text style={styles.weightTxt}>{targetPct}%</Text></View>
-                  </View>
-                  
-                  <View style={{ marginBottom: 16 }}>
-                    <Text style={styles.pocketName}>{p.name}</Text>
-                    {isAdjustMode ? (
-                      <View style={styles.inlineEditPct}>
-                         <TextInput 
-                           style={styles.editPctInput} keyboardType="numeric" value={targetPct.toString()}
-                           onChangeText={(v) => {
-                             const val = Math.min(parseInt(v.replace(/[^0-9]/g, '')) || 0, 100);
-                             setTempPercentages(pvs => ({...pvs, [p.id]: val}));
-                             if (tempIncome > 0) setTempBudgets(pvs => ({...pvs, [p.id]: Math.round(tempIncome * (val/100))}));
-                           }}
-                         />
-                         <Text style={styles.editPctLabel}>%</Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.budgetLabel}>$ {budget.toLocaleString('es-CO')}</Text>
-                    )}
-                  </View>
-
-                  <View style={styles.progressArea}>
-                     <AnimatedProgressBar percent={pctUsage} color={isOverspent ? theme.colors.error : theme.colors.primary} bgColor={theme.colors.surfaceContainerLow} />
-                     <Text style={[styles.remTxt, { color: isOverspent ? theme.colors.error : theme.colors.onSurfaceVariant }]}>
-                       {isOverspent ? `-$${(spent - budget).toLocaleString('es-CO')}` : `$${(budget - spent).toLocaleString('es-CO')} libres`}
+               <TouchableOpacity 
+                 key={p.id || i} 
+                 style={[styles.pocketCard, isOverspent && !isAdjustMode && { borderColor: theme.colors.error + '40' }]} 
+                 activeOpacity={0.9} 
+                 onPress={() => openPocket(p)}
+               >
+                 <LinearGradient 
+                   colors={(theme.colors.categoryColors[p.category] || theme.colors.categoryColors['Otros']) as any} 
+                   style={styles.cardGradient}
+                   start={{x: 0, y: 0}}
+                   end={{x: 1, y: 1}}
+                 >
+                   <View style={styles.pocketTop}>
+                     <View style={styles.iconCircle}>
+                       <CategoryIcon iconName={p.icon} size={20} color="#FFF" />
+                     </View>
+                     {isAdjustMode ? (
+                       <View style={styles.inlineEditPct}>
+                          <TextInput 
+                            style={styles.editPctInput} 
+                            keyboardType="numeric" 
+                            value={targetPct.toString()}
+                            onChangeText={(v) => {
+                              const val = Math.min(parseInt(v.replace(/[^0-9]/g, '')) || 0, 100);
+                              setTempPercentages(pvs => ({...pvs, [p.id]: val}));
+                              if (tempIncome > 0) setTempBudgets(pvs => ({...pvs, [p.id]: Math.round(tempIncome * (val/100))}));
+                            }}
+                          />
+                          <Text style={styles.editPctLabel}>%</Text>
+                       </View>
+                     ) : (
+                       <View style={styles.weightBadge}><Text style={styles.weightTxt}>{targetPct}%</Text></View>
+                     )}
+                   </View>
+                   
+                   <View style={{ marginBottom: 16 }}>
+                     <Text style={styles.pocketName} numberOfLines={1}>{p.name}</Text>
+                     <Text style={styles.budgetLabel}>
+                       $ {budget.toLocaleString('es-CO')}
                      </Text>
-                  </View>
+                   </View>
+ 
+                   <View style={styles.progressArea}>
+                      <AnimatedProgressBar percent={pctUsage} color="#FFF" bgColor="rgba(255,255,255,0.2)" />
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={styles.remTxt}>
+                          {isOverspent ? `Exceso` : `Libre`}
+                        </Text>
+                        <Text style={[styles.remTxt, { fontWeight: '900' }]}>
+                          $ {Math.abs(budget - spent).toLocaleString('es-CO')}
+                        </Text>
+                      </View>
+                   </View>
+                 </LinearGradient>
                </TouchableOpacity>
              );
            })}
            <TouchableOpacity style={[styles.pocketCard, styles.addCard]} onPress={() => setAddModalVisible(true)}>
-              <Plus size={32} color={theme.colors.onSurfaceVariant} strokeWidth={1} />
-              <Text style={[styles.addTxt, { color: theme.colors.onSurfaceVariant }]}>Nueva Categoría</Text>
+              <View style={[styles.iconCircle, { backgroundColor: theme.colors.surfaceContainerHighest }]}>
+                <Plus size={24} color={theme.colors.onSurfaceVariant} strokeWidth={2.5} />
+              </View>
+              <Text style={[styles.addTxt, { color: theme.colors.onSurfaceVariant }]}>Crear Pocket</Text>
            </TouchableOpacity>
         </View>
+
+        {isAdjustMode && (
+          <View style={styles.adjustActions}>
+            <TouchableOpacity style={styles.cancelAdjustBtn} onPress={() => setIsAdjustMode(false)}><Text style={styles.cancelAdjustTxt}>Cancelar todo</Text></TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.saveAdjustBtn, diff !== 0 && { opacity: 0.5 }]} 
+              onPress={saveBatchBudget}
+              disabled={isSaving || diff !== 0}
+            >
+              {isSaving ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.saveAdjustTxt}>Confirmar Estructura</Text>}
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
 
       {selectedPocket && (
@@ -546,14 +582,28 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
           </Pressable>
           <Animated.View style={[styles.bottomSheet, { transform: [{ translateY: sheetAnim }] }]}>
              <View style={styles.sheetHeader}>
-                <CategoryIcon iconName={selectedPocket.icon} size={24} color={theme.colors.primary} />
+                <View style={[styles.iconCircle, { backgroundColor: theme.colors.primaryContainer + '40' }]}>
+                  <CategoryIcon iconName={selectedPocket.icon} size={24} color={theme.colors.primary} />
+                </View>
                 <Text style={styles.sheetTitle}>{selectedPocket.name}</Text>
-                <TouchableOpacity onPress={closePocket} style={{ padding: 8 }}><X size={24} color={theme.colors.onSurfaceVariant} /></TouchableOpacity>
+                <TouchableOpacity onPress={closePocket} style={{ padding: 12, backgroundColor: theme.colors.surfaceContainerHighest, borderRadius: 20 }}>
+                  <X size={20} color={theme.colors.onSurface} strokeWidth={3} />
+                </TouchableOpacity>
              </View>
              
              <View style={styles.quickStats}>
-                <View style={styles.qStat}><Text style={styles.qLabel}>PAGOS REALIZADOS</Text><Text style={styles.qVal}>$ {getPocketSpending(selectedPocket.category).toLocaleString('es-CO')}</Text></View>
-                <View style={styles.qStat}><Text style={styles.qLabel}>REMANENTE</Text><Text style={[styles.qVal, { color: theme.colors.primary }]}>$ {Math.max(0, selectedPocket.budget - getPocketSpending(selectedPocket.category)).toLocaleString('es-CO')}</Text></View>
+                <View style={styles.qStat}>
+                  <Text style={styles.qLabel}>USADO</Text>
+                  <Text style={[styles.qVal, getPocketSpending(selectedPocket.category) > selectedPocket.budget && { color: theme.colors.error }]}>
+                    $ {getPocketSpending(selectedPocket.category).toLocaleString('es-CO')}
+                  </Text>
+                </View>
+                <View style={styles.qStat}>
+                  <Text style={styles.qLabel}>REMANENTE</Text>
+                  <Text style={[styles.qVal, { color: theme.colors.primary }]}>
+                    $ {Math.max(0, selectedPocket.budget - getPocketSpending(selectedPocket.category)).toLocaleString('es-CO')}
+                  </Text>
+                </View>
              </View>
 
              {getPocketSpending(selectedPocket.category) > selectedPocket.budget && (
@@ -561,29 +611,42 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                   <View style={styles.overspentAlert}>
                     <AlertCircle size={22} color="#FFF" />
                     <View style={{flex:1}}>
-                      <Text style={styles.overspentTitle}>Límite excedido</Text>
-                      <Text style={styles.overspentMsg}>Has gastado ${(getPocketSpending(selectedPocket.category) - selectedPocket.budget).toLocaleString('es-CO')} por encima del presupuesto.</Text>
+                      <Text style={styles.overspentTitle}>Límite Superado</Text>
+                      <Text style={styles.overspentMsg}>Has excedido tu presupuesto por ${(getPocketSpending(selectedPocket.category) - selectedPocket.budget).toLocaleString('es-CO')}.</Text>
                     </View>
                   </View>
                   <TouchableOpacity style={styles.fixOverspentBtn} onPress={() => { closePocket(); onTransferPress({ fromId: selectedPocket.id, amount: getPocketSpending(selectedPocket.category) - selectedPocket.budget }); }}>
-                    <Text style={styles.fixOverspentTxt}>Mover fondos ahora mismo</Text>
+                    <Text style={styles.fixOverspentTxt}>Inyectar fondos de otro bolsillo</Text>
                     <ArrowRight size={18} color={theme.colors.primary} />
                   </TouchableOpacity>
                 </View>
              )}
 
+             <Text style={[styles.topLabel, { marginBottom: 16, paddingLeft: 4 }]}>ÚLTIMOS MOVIMIENTOS</Text>
              <ScrollView style={{flex: 1}} showsVerticalScrollIndicator={false}>
-                {getPocketTransactions(selectedPocket.category).map((tx, idx) => (
-                  <View key={tx.id || idx} style={styles.txRow}>
-                      <View style={{flex:1}}><Text style={styles.txMerchant}>{tx.merchant}</Text><Text style={styles.txDate}>{new Date(tx.date_string || tx.created_at).toLocaleDateString('es-CO')}</Text></View>
-                      <Text style={styles.txAmt}>$ {Math.abs(tx.amount).toLocaleString('es-CO')}</Text>
+                {getPocketTransactions(selectedPocket.category).length > 0 ? (
+                  getPocketTransactions(selectedPocket.category).map((tx, idx) => (
+                    <View key={tx.id || idx} style={styles.txRow}>
+                        <View style={{flex:1}}>
+                          <Text style={styles.txMerchant}>{tx.merchant}</Text>
+                          <Text style={styles.txDate}>{new Date(tx.date_string || tx.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}</Text>
+                        </View>
+                        <Text style={[styles.txAmt, { color: tx.amount < 0 ? theme.colors.onSurface : theme.colors.success }]}>
+                          {tx.amount < 0 ? '-' : '+'} $ {Math.abs(tx.amount).toLocaleString('es-CO')}
+                        </Text>
+                    </View>
+                  ))
+                ) : (
+                  <View style={{ padding: 40, alignItems: 'center', opacity: 0.3 }}>
+                    <Clock size={32} color={theme.colors.onSurfaceVariant} />
+                    <Text style={{ marginTop: 12, fontWeight: '800' }}>Sin movimientos este mes</Text>
                   </View>
-                ))}
+                )}
              </ScrollView>
 
              <TouchableOpacity style={styles.deleteBtn} onPress={() => deletePocket(selectedPocket.id)}>
                 <Trash2 size={18} color={theme.colors.error} />
-                <Text style={[styles.delTxt, { color: theme.colors.error }]}>Eliminar este bolsillo</Text>
+                <Text style={[styles.delTxt, { color: theme.colors.error }]}>Eliminar Categoría</Text>
              </TouchableOpacity>
           </Animated.View>
         </View>
@@ -591,13 +654,29 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
       <Modal visible={addModalVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
+          <BlurView intensity={20} style={StyleSheet.absoluteFill} tint="dark" />
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Nuevo Bolsillo</Text>
-            <TextInput style={styles.modalIn} placeholder="Nombre de categoría" value={newName} onChangeText={setNewName} placeholderTextColor={theme.colors.onSurfaceVariant + '80'} />
-            <TextInput style={styles.modalIn} placeholder="Monto objetivo ($)" keyboardType="numeric" value={newBudget} onChangeText={setNewBudget} placeholderTextColor={theme.colors.onSurfaceVariant + '80'} />
+            <Text style={styles.modalTitle}>Nuevo Pocket</Text>
+            <Text style={styles.topLabel}>IDENTIFICADOR</Text>
+            <TextInput 
+              style={styles.modalIn} 
+              placeholder="Ej. Viajes, Cine, etc." 
+              value={newName} 
+              onChangeText={setNewName} 
+              placeholderTextColor={theme.colors.onSurfaceVariant + '80'} 
+            />
+            <Text style={styles.topLabel}>MONTO OBJETIVO MENSUAL</Text>
+            <TextInput 
+              style={styles.modalIn} 
+              placeholder="$ 0" 
+              keyboardType="numeric" 
+              value={newBudget} 
+              onChangeText={(v) => setNewBudget(v.replace(/[^0-9]/g, ''))} 
+              placeholderTextColor={theme.colors.onSurfaceVariant + '80'} 
+            />
             <View style={styles.modalBtns}>
-              <TouchableOpacity onPress={() => setAddModalVisible(false)} style={styles.modalCancel}><Text style={styles.cancelTxt}>Cerrar</Text></TouchableOpacity>
-              <TouchableOpacity onPress={syncPocketToCloud} style={styles.save}><Text style={styles.saveTxt}>Confirmar</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAddModalVisible(false); }} style={styles.modalCancel}><Text style={styles.cancelTxt}>Cerrar</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); syncPocketToCloud(); }} style={styles.save}><Text style={styles.saveTxt}>Crear Ahora</Text></TouchableOpacity>
             </View>
           </View>
         </View>

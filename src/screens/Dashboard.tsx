@@ -15,14 +15,17 @@ import { useTheme } from '../theme/ThemeContext';
 import { normalize } from '../theme/theme';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { Transaction } from '../types';
+import { supabase } from '../lib/supabase';
 
 const { width } = Dimensions.get('window');
 
 interface DashboardProps {
   transactions: Transaction[];
   pockets: any[];
+  session: any;
+  isDataReady: boolean;
+  onOpenScanner: () => void;
   userProfile?: { full_name: string; streak?: number };
-  onAddTransaction: () => void;
   onRefresh?: () => void;
   isLoading?: boolean;
 }
@@ -30,8 +33,10 @@ interface DashboardProps {
 export const Dashboard = ({ 
   transactions, 
   pockets, 
+  session,
+  isDataReady,
+  onOpenScanner,
   userProfile, 
-  onAddTransaction,
   onRefresh,
   isLoading = false 
 }: DashboardProps) => {
@@ -39,268 +44,363 @@ export const Dashboard = ({
   const { theme } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(20)).current;
+  
+  const [healthData, setHealthData] = useState<any>(null);
+  const [isHealthLoading, setIsHealthLoading] = useState(false);
+  const [greeting, setGreeting] = useState('Hola');
+  const lastFetchRef = useRef<number>(0);
+
+  useEffect(() => {
+    const hours = new Date().getHours();
+    if (hours < 12) setGreeting('¡Buenos días! ☀️');
+    else if (hours < 18) setGreeting('¡Buenas tardes! ☕');
+    else setGreeting('¡Buenas noches! 🌙');
+
+    Animated.parallel([
+      Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 0, duration: 800, useNativeDriver: true })
+    ]).start();
+
+    // Initial fetch only if we haven't fetched in the last 5 minutes
+    const now = Date.now();
+    if (now - lastFetchRef.current > 300000) {
+      fetchHealthData();
+    }
+  }, []);
+
+  const fetchHealthData = async (force = false) => {
+    const now = Date.now();
+    const canFetch = force || !healthData || (now - lastFetchRef.current > 300000);
+    
+    if (!canFetch || isHealthLoading) return;
+    
+    setIsHealthLoading(true);
+    try {
+      if (!session?.user?.id) return;
+      
+      const { data, error } = await supabase.rpc('get_financial_health', {
+        p_user_id: session.user.id
+      });
+      if (data) {
+        setHealthData(data);
+        lastFetchRef.current = Date.now();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsHealthLoading(false);
+    }
+  };
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
-    scrollContent: { paddingHorizontal: 24, paddingTop: Math.max(insets.top, 16) + 120, paddingBottom: 120 },
+    scrollContent: { paddingHorizontal: 24, paddingTop: Math.max(insets.top, 16) + 110, paddingBottom: 150 },
     
-    // --- BALANCE CARD ---
-    balanceCard: { 
-      padding: 28, 
-      borderRadius: 36, 
-      backgroundColor: theme.colors.surface, 
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant, 
-      overflow: 'hidden',
-      ...theme.shadows.premium 
-    },
-    balanceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-    balanceLabel: { fontSize: 13, fontWeight: '900', color: theme.colors.onSurfaceVariant, letterSpacing: 1, textTransform: 'uppercase' },
-    balanceValue: { fontSize: 48, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -2, marginVertical: 6 },
+    headerSection: { marginBottom: 32 },
+    greetText: { ...theme.typography.bodyLarge, color: theme.colors.onSurfaceVariant, marginBottom: 8, fontWeight: '600', opacity: 0.8 },
     
     streakBadge: { 
       flexDirection: 'row', 
       alignItems: 'center', 
-      gap: 5, 
+      gap: 6, 
       paddingHorizontal: 12, 
       paddingVertical: 6, 
-      borderRadius: 14, 
-      backgroundColor: theme.colors.primaryContainer + '50',
+      borderRadius: theme.radius.full, 
+      backgroundColor: (theme.colors as any).pastel.teal + '10',
       borderWidth: 1,
-      borderColor: theme.colors.primary + '20'
+      borderColor: (theme.colors as any).pastel.teal + '20',
     },
-    streakText: { fontSize: 13, fontWeight: '900', color: theme.colors.primary },
+    streakText: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
 
-    statsRow: { flexDirection: 'row', gap: 12, marginTop: 24 },
-    statItem: { 
-      flex: 1, 
-      padding: 16, 
-      borderRadius: 24, 
-      backgroundColor: theme.colors.surfaceContainerLow, 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      gap: 10,
-      borderWidth: 1,
-      borderColor: theme.colors.outlineVariant
+    organicAiCard: { 
+      padding: 24, 
+      borderRadius: theme.radius.xl, 
+      marginBottom: 32, 
+      backgroundColor: theme.colors.glassWhite,
+      borderWidth: 1.5, 
+      borderColor: 'rgba(255, 255, 255, 1)', 
+      ...theme.shadows.soft,
+      overflow: 'hidden'
     },
-    statIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-    statLabel: { fontSize: 11, fontWeight: '900', color: theme.colors.onSurfaceVariant, textTransform: 'uppercase' },
-    statValue: { fontSize: 16, fontWeight: '900', color: theme.colors.onSurface, marginTop: 2 },
+    iaHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
+    iaIconBox: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+    iaLabel: { ...theme.typography.label, color: theme.colors.primary },
+    iaTitle: { ...theme.typography.h3, color: theme.colors.onSurface, marginBottom: 10, lineHeight: 28 },
+    iaReason: { ...theme.typography.bodyMedium, color: theme.colors.onSurfaceVariant, lineHeight: 22, opacity: 0.85 },
+    iaLoading: { paddingVertical: 32, alignItems: 'center' },
 
-    // --- AI ANALYSIS CARD ---
-    aiAnalysisCard: { 
-      marginTop: 24, 
-      borderRadius: 32, 
-      overflow: 'hidden', 
-      ...theme.shadows.premium,
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1,
-      borderColor: theme.colors.outlineVariant
-    },
-    aiGradient: { padding: 24 },
-    aiHeader: { flexDirection: 'row', justify: 'space-between', alignItems: 'center', marginBottom: 16 },
-    aiTitle: { fontSize: 15, fontWeight: '900', color: theme.colors.primary, letterSpacing: -0.3 },
-    aiBadge: { 
-      backgroundColor: theme.colors.primaryContainer, 
-      paddingHorizontal: 10, 
-      paddingVertical: 4, 
-      borderRadius: 10,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4
-    },
-    aiBadgeText: { fontSize: 10, fontWeight: '900', color: theme.colors.primary, textTransform: 'uppercase' },
-    aiAdvice: { fontSize: 14, color: theme.colors.onSurface, lineHeight: 22, fontWeight: '600' },
-    aiFooter: { marginTop: 16, flexDirection: 'row', justify: 'space-between', alignItems: 'center', borderTopWidth: 1, borderTopColor: theme.colors.outlineVariant, paddingTop: 16 },
-    aiNextBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    aiNextText: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },
-
-    // --- SECTION TITLES ---
-    sectionTitleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 32, marginBottom: 16 },
-    sectionTitle: { fontSize: 18, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -0.5 },
-    seeAll: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },
-
-    // --- TRANSACTION ITEM ---
+    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    sectionTitleOrganic: { ...theme.typography.h3, color: theme.colors.onSurface },
+    viewAllAction: { ...theme.typography.bodySmall, fontWeight: '800', color: theme.colors.primary },
+    
     txItem: { 
       flexDirection: 'row', 
       alignItems: 'center', 
       padding: 16, 
       backgroundColor: theme.colors.surface, 
-      borderRadius: 28, 
-      marginBottom: 12, 
+      borderRadius: theme.radius.lg, 
+      marginBottom: 14, 
       borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
-      ...theme.shadows.soft 
+      borderColor: theme.colors.divider,
+      ...theme.shadows.sm 
     },
-    txIconArea: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceContainerLow },
+    txIconBoxUI: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
     txMain: { flex: 1, marginLeft: 16 },
-    txMerchant: { fontSize: 16, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -0.3 },
-    txSub: { fontSize: 11, fontWeight: '800', color: theme.colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 },
-    txAmt: { fontSize: 16, fontWeight: '900', letterSpacing: -0.5 },
+    txMerchantUI: { ...theme.typography.bodyLarge, fontWeight: '800', color: theme.colors.onSurface, letterSpacing: -0.3 },
+    txDateUI: { ...theme.typography.bodySmall, color: theme.colors.onSurfaceVariant, marginTop: 2, opacity: 0.7 },
+    txAmountUI: { ...theme.typography.title, fontWeight: '900' },
 
-    // --- QUICK ACTION FAB ---
-    fab: { 
-      position: 'absolute', 
-      bottom: normalize(150), 
-      right: 24, 
-      width: 68, 
-      height: 68, 
-      borderRadius: 34, 
-      justify_content: 'center', 
-      align_items: 'center', 
-      ...theme.shadows.premium 
+    statsCard: {
+      padding: 24,
+      borderRadius: theme.radius.xl,
+      backgroundColor: theme.colors.surface,
+      marginBottom: 32,
+      borderWidth: 1,
+      borderColor: theme.colors.divider,
+      ...theme.shadows.md,
     },
-    fabGradient: { width: '100%', height: '100%', borderRadius: 34, alignItems: 'center', justifyContent: 'center' },
-  }), [theme]);
+    chartLabel: {
+      ...theme.typography.label,
+      color: theme.colors.onSurfaceVariant,
+      marginBottom: 0,
+      opacity: 0.6,
+    },
+    visualBarsRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
+      height: 100,
+      marginBottom: 32,
+      paddingHorizontal: 8,
+    },
+    vBarContainer: {
+      alignItems: 'center',
+      flex: 1,
+    },
+    vBar: {
+      width: 18,
+      borderRadius: 9,
+      backgroundColor: theme.colors.primary,
+    },
+    vBarGlow: {
+      ...StyleSheet.absoluteFillObject,
+      borderRadius: 9,
+      opacity: 0.3,
+    },
+    vBarLabel: {
+      ...theme.typography.label,
+      fontSize: 8,
+      marginTop: 12,
+      color: theme.colors.onSurfaceVariant,
+      opacity: 0.8,
+      fontWeight: '900',
+    },
+    distributionContainer: {
+      marginTop: 8,
+    },
+    distributionRow: {
+      height: 12,
+      flexDirection: 'row',
+      borderRadius: 6,
+      overflow: 'hidden',
+      backgroundColor: theme.colors.surfaceContainerLow,
+      marginBottom: 20,
+    },
+    distSegment: {
+      height: '100%',
+    },
+    distInfoRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    distItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    distDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    distLabel: {
+      ...theme.typography.bodySmall,
+      fontWeight: '800',
+      color: theme.colors.onSurfaceVariant,
+    },
+  }), [theme, insets]);
 
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 800, useNativeDriver: true })
-    ]).start();
-  }, []);
-
-  // Calculate stats based on transactions
-  const totalBalance = pockets.reduce((acc, p) => acc + (p.budget || 0), 0);
-  const monthlyExpenses = transactions
+  const currentMonthExpenses = transactions
     .filter(tx => tx.category !== 'Ingreso')
-    .reduce((acc, tx) => acc + Math.abs(tx.amount), 0);
-  const monthlySavings = transactions
-    .filter(tx => tx.category === 'Saving' || tx.category === 'Ahorro' || tx.category === 'Ahorros')
     .reduce((acc, tx) => acc + Math.abs(tx.amount), 0);
 
   const formatCurrency = (amt: number) => `$ ${amt.toLocaleString('es-CO')}`;
-
-  const renderRecentTransactions = () => {
-    if (transactions.length === 0) {
-      return (
-        <View style={{ padding: 40, alignItems: 'center', opacity: 0.3 }}>
-          <History size={48} color={theme.colors.onSurfaceVariant} strokeWidth={1} />
-          <Text style={{ marginTop: 12, fontWeight: '800', textAlign: 'center' }}>No hay movimientos recientes</Text>
-        </View>
-      );
-    }
-
-    return transactions.slice(0, 5).map((tx) => (
-      <TouchableOpacity key={tx.id} style={styles.txItem} activeOpacity={0.7}>
-        <View style={styles.txIconArea}>
-          <CategoryIcon iconName={tx.category === 'Ingreso' ? 'trending-up' : tx.icon || 'tag'} size={20} color={theme.colors.primary} />
-        </View>
-        <View style={styles.txMain}>
-          <Text style={styles.txMerchant} numberOfLines={1}>{tx.merchant}</Text>
-          <Text style={styles.txSub}>{tx.category} • {new Date(tx.date_string || tx.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}</Text>
-        </View>
-        <Text style={[styles.txAmt, { color: tx.category === 'Ingreso' ? theme.colors.success : theme.colors.onSurface }]}>
-          {tx.category === 'Ingreso' ? '+' : '-'} {formatCurrency(Math.abs(tx.amount))}
-        </Text>
-      </TouchableOpacity>
-    ));
-  };
 
   return (
     <View style={styles.container}>
       <ScrollView 
         showsVerticalScrollIndicator={false} 
         contentContainerStyle={styles.scrollContent}
-        onScrollEndDrag={onRefresh}
+        onScrollEndDrag={() => { onRefresh?.(); }}
       >
         <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
           
-          {/* Main Balance Header */}
-          <View style={styles.balanceCard}>
-            <View style={styles.balanceHeader}>
-              <Text style={styles.balanceLabel}>Capital Resguardado</Text>
-              <View style={styles.streakBadge}>
-                <Flame size={16} color={theme.colors.primary} fill={theme.colors.primary} />
-                <Text style={styles.streakText}>{userProfile?.streak || 0} DÍAS</Text>
-              </View>
-            </View>
-            <Text style={styles.balanceValue}>{formatCurrency(totalBalance)}</Text>
+          <View style={styles.headerSection}>
+            <View style={{ position: 'absolute', top: -100, right: -50, width: 250, height: 250, borderRadius: 125, backgroundColor: (theme.colors as any).pastel.teal + '15', zIndex: -1 }} />
+            <View style={{ position: 'absolute', top: -40, right: 100, width: 120, height: 120, borderRadius: 60, backgroundColor: (theme.colors as any).pastel.lavender + '10', zIndex: -1 }} />
             
-            <View style={styles.statsRow}>
-              <View style={styles.statItem}>
-                <View style={[styles.statIcon, { backgroundColor: theme.colors.error + '15' }]}>
-                  <ArrowDownLeft size={18} color={theme.colors.error} />
-                </View>
-                <View>
-                  <Text style={styles.statLabel}>Egresos</Text>
-                  <Text style={styles.statValue}>{formatCurrency(monthlyExpenses)}</Text>
-                </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <View>
+                <Text style={styles.greetText}>{greeting}</Text>
+                <Text style={{ ...theme.typography.h2, color: theme.colors.onSurface, letterSpacing: -0.5 }}>{userProfile?.full_name?.split(' ')[0] || 'Usuario'}</Text>
               </View>
-              <View style={styles.statItem}>
-                <View style={[styles.statIcon, { backgroundColor: theme.colors.success + '15' }]}>
-                  <ArrowUpRight size={18} color={theme.colors.success} />
-                </View>
-                <View>
-                  <Text style={styles.statLabel}>Ahorro</Text>
-                  <Text style={styles.statValue}>{formatCurrency(monthlySavings || 0)}</Text>
-                </View>
+              <View style={styles.streakBadge}>
+                {healthData && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: 8, borderRightWidth: 1, borderRightColor: theme.colors.divider, paddingRight: 8 }}>
+                    <Target size={14} color={theme.colors.primary} />
+                    <Text style={[styles.streakText, { fontSize: 14, color: theme.colors.primary }]}>{healthData.score}</Text>
+                  </View>
+                )}
+                <Flame size={16} color={(theme.colors as any).pastel.salmon} fill={(theme.colors as any).pastel.salmon} />
+                <Text style={[styles.streakText, { color: theme.colors.primary }]}>{userProfile?.streak || 0} DÍAS</Text>
               </View>
             </View>
           </View>
 
-          {/* AI Advisor Preview */}
-          <View style={styles.aiAnalysisCard}>
-            <View style={styles.aiGradient}>
-              <View style={styles.aiHeader}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <Sparkles size={18} color={theme.colors.primary} fill={theme.colors.primary} />
-                  <Text style={styles.aiTitle}>Asistente Patrimonial</Text>
-                </View>
-                <View style={styles.aiBadge}>
-                  <Text style={styles.aiBadgeText}>Optimizado</Text>
-                </View>
+          <BlurView intensity={Platform.OS === 'ios' ? 80 : 100} tint="light" style={styles.organicAiCard}>
+            <LinearGradient colors={['rgba(255,255,255,0.6)', 'transparent']} style={StyleSheet.absoluteFill} />
+            <View style={styles.iaHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.iaLabel, { color: theme.colors.primary, fontWeight: '900' }]}>ANÁLISIS INTELIGENTE</Text>
               </View>
-              
-              <Text style={styles.aiAdvice}>
-                Tu patrón de gastos en <Text style={{ color: theme.colors.primary, fontWeight: '900' }}>Alimentación</Text> ha bajado un 12% esta semana. 
-                Si mantienes este ritmo, podrías blindar tu fondo de emergencia 2 meses antes de lo previsto.
-              </Text>
-
-              <View style={styles.aiFooter}>
-                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Info size={14} color={theme.colors.onSurfaceVariant} />
-                    <Text style={{ fontSize: 11, color: theme.colors.onSurfaceVariant, fontWeight: '800' }}>BASADO EN TUS REGLAS</Text>
-                 </View>
-                 <TouchableOpacity style={styles.aiNextBtn}>
-                    <Text style={styles.aiNextText}>Ver Análisis</Text>
-                    <ChevronRight size={16} color={theme.colors.primary} />
-                 </TouchableOpacity>
-              </View>
+              <TouchableOpacity 
+                activeOpacity={0.7} 
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); fetchHealthData(true); }}
+                style={styles.iaIconBox}
+              >
+                <LinearGradient colors={(theme.colors as any).chartColors as any} style={styles.iaIconBox} start={{x:0, y:0}} end={{x:1, y:1}}>
+                  <Sparkles size={18} color="#FFF" />
+                </LinearGradient>
+              </TouchableOpacity>
             </View>
-          </View>
-
-          {/* Recent Activity Header */}
-          <View style={styles.sectionTitleRow}>
-            <Text style={styles.sectionTitle}>Movimientos de Capital</Text>
-            <TouchableOpacity><Text style={styles.seeAll}>VER TODO</Text></TouchableOpacity>
-          </View>
-
-          {/* List Content */}
-          <View>
-            {isLoading ? (
-              <ActivityIndicator color={theme.colors.primary} style={{ marginTop: 24 }} />
+            
+            {healthData?.insights?.length > 0 ? (
+              <View>
+                <Text style={[styles.iaTitle, { color: theme.colors.onSurface }]}>{healthData.insights[0].message}</Text>
+                <Text style={[styles.iaReason, { color: theme.colors.onSurfaceVariant }]}>Basado en tu comportamiento de este mes y tus objetivos de ahorro.</Text>
+                {healthData.insights.length > 1 && (
+                  <View style={{ marginTop: 20, backgroundColor: (theme.colors as any).pastel.teal + '15', padding: 18, borderRadius: theme.radius.md, borderWidth: 1, borderColor: (theme.colors as any).pastel.teal + '30' }}>
+                    <Text style={{ fontSize: 13, color: theme.colors.primary, fontWeight: '800', lineHeight: 20 }}>
+                      ✨ {healthData.insights[1].message}
+                    </Text>
+                  </View>
+                )}
+              </View>
             ) : (
-              renderRecentTransactions()
+              <View>
+                <Text style={[styles.iaTitle, { color: theme.colors.onSurface }]}>¡Estamos analizando tus datos!</Text>
+                <Text style={[styles.iaReason, { color: theme.colors.onSurfaceVariant }]}>
+                  {isHealthLoading ? 'Generando consejos financieros personalizados...' : 'Sigue registrando tus gastos para obtener consejos sobre tu salud financiera.'}
+                </Text>
+              </View>
             )}
+          </BlurView>
+
+          <View style={styles.statsCard}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 24 }}>
+              <View>
+                <Text style={[styles.chartLabel, { marginBottom: 4 }]}>FLUJO SEMANAL</Text>
+                <Text style={{ ...theme.typography.h3, color: theme.colors.primary, fontWeight: '900' }}>{formatCurrency(currentMonthExpenses)}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                <TrendingUp size={12} color={theme.colors.success} />
+                <Text style={{ ...theme.typography.label, color: theme.colors.success, fontSize: 10 }}>+12%</Text>
+              </View>
+            </View>
+
+            <View style={styles.visualBarsRow}>
+              {[0.4, 0.7, 0.3, 0.9, 0.5, 0.8, 0.6].map((h, i) => (
+                <View key={i} style={styles.vBarContainer}>
+                  <View 
+                    style={[
+                      styles.vBar, 
+                      { 
+                        height: h * 100, 
+                        backgroundColor: (theme.colors as any).chartColors[i % 5] || theme.colors.primary 
+                      }
+                    ]} 
+                  >
+                    <LinearGradient 
+                      colors={['rgba(255,255,255,0.4)', 'transparent']} 
+                      style={styles.vBarGlow} 
+                    />
+                  </View>
+                  <Text style={styles.vBarLabel}>
+                    {['L', 'M', 'M', 'J', 'V', 'S', 'D'][i]}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.distributionContainer}>
+              <View style={styles.distributionRow}>
+                <View style={[styles.distSegment, { width: '45%', backgroundColor: (theme.colors as any).pastel.teal }]} />
+                <View style={[styles.distSegment, { width: '25%', backgroundColor: (theme.colors as any).pastel.lavender }]} />
+                <View style={[styles.distSegment, { width: '20%', backgroundColor: (theme.colors as any).pastel.salmon }]} />
+                <View style={[styles.distSegment, { width: '10%', backgroundColor: (theme.colors as any).pastel.teal + '80' }]} />
+              </View>
+              <View style={styles.distInfoRow}>
+                <View style={styles.distItem}>
+                  <View style={[styles.distDot, { backgroundColor: (theme.colors as any).pastel.teal }]} />
+                  <Text style={styles.distLabel}>Indispensable</Text>
+                </View>
+                <View style={styles.distItem}>
+                  <View style={[styles.distDot, { backgroundColor: (theme.colors as any).pastel.lavender }]} />
+                  <Text style={styles.distLabel}>Lifestyle</Text>
+                </View>
+                <View style={styles.distItem}>
+                  <View style={[styles.distDot, { backgroundColor: (theme.colors as any).pastel.salmon }]} />
+                  <Text style={styles.distLabel}>Inversión</Text>
+                </View>
+              </View>
+            </View>
           </View>
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitleOrganic}>Recientes</Text>
+            <TouchableOpacity onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
+              <Text style={styles.viewAllAction}>Ver todo</Text>
+            </TouchableOpacity>
+          </View>
+
+          {transactions.slice(0, 5).length === 0 ? (
+            <View style={{ padding: 40, alignItems: 'center', opacity: 0.3 }}>
+              <History size={48} color={theme.colors.onSurfaceVariant} strokeWidth={1} />
+              <Text style={{ marginTop: 12, fontWeight: '800', textAlign: 'center' }}>No hay movimientos recientes</Text>
+            </View>
+          ) : (
+            transactions.slice(0, 5).map((tx) => {
+              const catColor = (theme.colors.categoryColors[tx.category] || theme.colors.categoryColors['Otros'])[0];
+              return (
+                <TouchableOpacity key={tx.id} style={styles.txItem} activeOpacity={0.7}>
+                  <View style={[styles.txIconBoxUI, { backgroundColor: catColor + '15' }]}>
+                    <CategoryIcon iconName={tx.category === 'Ingreso' ? 'trending-up' : (tx as any).icon || 'tag'} size={20} color={catColor} />
+                  </View>
+                  <View style={styles.txMain}>
+                    <Text style={styles.txMerchantUI} numberOfLines={1}>{tx.merchant}</Text>
+                    <Text style={styles.txDateUI}>{tx.category} • {new Date((tx as any).date_string || tx.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}</Text>
+                  </View>
+                  <Text style={[styles.txAmountUI, { color: tx.category === 'Ingreso' ? theme.colors.success : theme.colors.onSurface }]}>
+                    {formatCurrency(Math.abs(tx.amount))}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })
+          )}
 
         </Animated.View>
       </ScrollView>
-
-      {/* FAB - Adjusted for BottomNav visibility */}
-      <TouchableOpacity 
-        style={styles.fab} 
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          onAddTransaction();
-        }}
-        activeOpacity={0.9}
-      >
-        <LinearGradient colors={theme.colors.brandGradient as any} style={styles.fabGradient} start={{x:0, y:0}} end={{x:1, y:1}}>
-          <Plus size={32} color="#FFF" />
-        </LinearGradient>
-      </TouchableOpacity>
     </View>
   );
 };

@@ -1,0 +1,119 @@
+﻿diff --git a/src/theme/theme.ts b/src/theme/theme.ts
+index 73e1e3c..1e5f761 100644
+--- a/src/theme/theme.ts
++++ b/src/theme/theme.ts
+@@ -1,15 +1,15 @@
+ import { Platform, Dimensions } from 'react-native';
+ 
+ const { width } = Dimensions.get('window');
+-const scale = width / 390; // Based on iPhone 13/14 width
++const scale = width / 390; 
+ 
+ export const normalize = (size: number) => {
+   return Math.round(size * scale);
+ };
+ 
+-export const theme = {
+-  colors: {
+-    background: '#F7F7F2', // Warm Stone
++export const UI_COLORS = {
++  sage: {
++    background: '#F7F7F2',
+     onBackground: '#2D3436', 
+     primary: '#7D907E', // Sage Green
+     onPrimary: '#FFFFFF',
+@@ -24,7 +24,7 @@ export const theme = {
+     secondary: '#6B8E9B', // Slate Blue
+     secondaryContainer: '#E1E9EC',
+     onSecondaryContainer: '#2D4B54',
+-    tertiary: '#C9A959', // Muted Gold
++    tertiary: '#C9A959', 
+     tertiaryContainer: '#F9F4E6',
+     onTertiaryContainer: '#5C4A1E',
+     outlineVariant: '#C4C8BA',
+@@ -37,24 +37,67 @@ export const theme = {
+     error: '#BA1A1A',
+     info: '#6B8E9B'
+   },
+-  fonts: {
+-    headline: 'Outfit-Bold',
+-    body: 'Inter',
+-  },
+-  shadows: {
+-    premium: {
+-      shadowColor: '#FFB300',
+-      shadowOffset: { width: 0, height: 10 },
+-      shadowOpacity: 0.12,
+-      shadowRadius: 20,
+-      elevation: 8,
++  honey: {
++    background: '#FCFAEE', // Luxury Champagne Background
++    onBackground: '#1C1C1C',
++    primary: '#B8860B', // Dark Goldenrod (Old Gold Metallic)
++    onPrimary: '#FFFFFF',
++    primaryContainer: '#FFF5D6',
++    onPrimaryContainer: '#4B3E00',
++    surface: '#FFFFFF',
++    onSurface: '#121212',
++    surfaceContainerLow: '#F8F4DF',
++    surfaceContainerHigh: '#EFEACF',
++    surfaceContainerHighest: '#E6E1C4',
++    onSurfaceVariant: '#5D5A4D',
++    secondary: '#1A1C1E', // Midnight Black (For Premium High-Contrast)
++    secondaryContainer: '#DCD4B5',
++    onSecondaryContainer: '#2D2910',
++    tertiary: '#8B4513', // Saddle Brown (Deep Amber Accent)
++    tertiaryContainer: '#F9F1EB',
++    onTertiaryContainer: '#3E2723',
++    outlineVariant: '#CFCAB5',
++    brandGradient: ['#B8860B', '#8B4513', '#4E342E'], // Golden Luxury Gradient
++    warmGradient: ['#FCFAEE', '#EFEACF'],
++    glassWhite: 'rgba(255, 255, 255, 0.82)',
++    glassDark: 'rgba(0, 0, 0, 0.06)',
++    success: '#816900', // Deep Gold Success
++    warning: '#D49400',
++    error: '#B01010',
++    info: '#1A1C1E'
++  }
++};
++
++export type ThemeMode = 'sage' | 'honey';
++
++export const getTheme = (mode: ThemeMode = 'sage') => {
++  const colors = UI_COLORS[mode] || UI_COLORS.sage;
++  const isHoney = mode === 'honey';
++
++  return {
++    colors,
++    fonts: {
++      headline: 'Outfit-Bold',
++      body: 'Inter',
+     },
+-    soft: {
+-      shadowColor: '#000',
+-      shadowOffset: { width: 0, height: 4 },
+-      shadowOpacity: 0.04,
+-      shadowRadius: 10,
+-      elevation: 2,
++    shadows: {
++      premium: {
++        shadowColor: isHoney ? '#4B3E00' : '#2D3436',
++        shadowOffset: { width: 0, height: 12 },
++        shadowOpacity: isHoney ? 0.22 : 0.15,
++        shadowRadius: 24,
++        elevation: 10,
++      },
++      soft: {
++        shadowColor: '#000',
++        shadowOffset: { width: 0, height: 4 },
++        shadowOpacity: 0.05,
++        shadowRadius: 10,
++        elevation: 3,
++      }
+     }
+-  }
++  };
+ };
++
++// Default export for backward compatibility during transition
++export const theme = getTheme('sage');

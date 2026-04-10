@@ -9,95 +9,162 @@ export const normalize = (size: number) => {
 
 export const UI_COLORS = {
   sage: {
-    background: '#F7F7F2',
+    // Core
+    background: '#F7F7F2', 
     onBackground: '#2D3436', 
-    primary: '#7D907E', // Sage Green
+    primary: '#47ADA2', // Refined mint/teal from pastel palette
     onPrimary: '#FFFFFF',
-    primaryContainer: '#DDE5D1', 
-    onPrimaryContainer: '#344E41',
+    primaryContainer: '#DDF5F2', 
+    onPrimaryContainer: '#13302D',
+    
     surface: '#FFFFFF',
-    onSurface: '#1B201F',
-    surfaceContainerLow: '#F0F1EA',
-    surfaceContainerHigh: '#E7E9E0',
-    surfaceContainerHighest: '#D5D8CF',
-    onSurfaceVariant: '#5B6259',
-    secondary: '#6B8E9B', // Slate Blue
-    secondaryContainer: '#E1E9EC',
-    onSecondaryContainer: '#2D4B54',
-    tertiary: '#C9A959', 
-    tertiaryContainer: '#F9F4E6',
-    onTertiaryContainer: '#5C4A1E',
-    outlineVariant: '#C4C8BA',
-    brandGradient: ['#7D907E', '#6B8E9B', '#C9A959'], 
+    onSurface: '#2D3436', 
+    surfaceContainerLow: '#FAFBFA', // Lighter
+    surfaceContainerHigh: '#F5F9F8', // Lighter
+    surfaceContainerHighest: '#EFF6F5', // Lighter
+    onSurfaceVariant: '#70918E', // Much lighter, soft mint-slate
+    
+    secondary: '#B9E2A2', // Soft Green
+    secondaryContainer: '#F7FBF4',
+    onSecondaryContainer: '#1A2E1C',
+    
+    tertiary: '#F0927B', // Salmon
+    tertiaryContainer: '#FEF6F4',
+    onTertiaryContainer: '#401A10',
+
+    // Semantic States (PRO Level)
+    success: '#8AD6CE',
+    onSuccess: '#FFFFFF',
+    successContainer: '#F0FAF9',
+    onSuccessContainer: '#13302D',
+    
+    error: '#F0927B',
+    onError: '#FFFFFF',
+    errorContainer: '#FFF2F0',
+    onErrorContainer: '#401A10',
+    
+    warning: '#D2A9D1', // Changed from Yellow to Lavender
+    onWarning: '#30132F',
+    warningContainer: '#FBF7FB',
+    onWarningContainer: '#30132F',
+    
+    info: '#8AD6CE',
+    onInfo: '#FFFFFF',
+    infoContainer: '#F0FAF9',
+    onInfoContainer: '#13302D',
+
+    outlineVariant: '#E2EAE8', // Much softer
+    brandGradient: ['#8AD6CE', '#B9E2A2', '#D2A9D1'], 
     warmGradient: ['#F7F7F2', '#E7E9E0'],
-    glassWhite: 'rgba(255, 255, 255, 0.75)',
-    glassDark: 'rgba(0, 0, 0, 0.04)',
-    success: '#7D907E',
-    warning: '#C9A959',
-    error: '#BA1A1A',
-    info: '#6B8E9B'
-  },
-  honey: {
-    background: '#FCFAEE', // Luxury Champagne Background
-    onBackground: '#1C1C1C',
-    primary: '#B8860B', // Dark Goldenrod (Old Gold Metallic)
-    onPrimary: '#FFFFFF',
-    primaryContainer: '#FFF5D6',
-    onPrimaryContainer: '#4B3E00',
-    surface: '#FFFFFF',
-    onSurface: '#121212',
-    surfaceContainerLow: '#F8F4DF',
-    surfaceContainerHigh: '#EFEACF',
-    surfaceContainerHighest: '#E6E1C4',
-    onSurfaceVariant: '#5D5A4D',
-    secondary: '#1A1C1E', // Midnight Black (For Premium High-Contrast)
-    secondaryContainer: '#DCD4B5',
-    onSecondaryContainer: '#2D2910',
-    tertiary: '#8B4513', // Saddle Brown (Deep Amber Accent)
-    tertiaryContainer: '#F9F1EB',
-    onTertiaryContainer: '#3E2723',
-    outlineVariant: '#CFCAB5',
-    brandGradient: ['#B8860B', '#8B4513', '#4E342E'], // Golden Luxury Gradient
-    warmGradient: ['#FCFAEE', '#EFEACF'],
-    glassWhite: 'rgba(255, 255, 255, 0.82)',
-    glassDark: 'rgba(0, 0, 0, 0.06)',
-    success: '#816900', // Deep Gold Success
-    warning: '#D49400',
-    error: '#B01010',
-    info: '#1A1C1E'
+    glassWhite: 'rgba(255, 255, 255, 0.75)', // Pure luminous glass
+    glassDark: 'rgba(138, 214, 206, 0.1)', 
+    divider: 'rgba(138, 214, 206, 0.08)', 
+    
+    pastel: {
+      teal: '#8AD6CE',
+      green: '#B9E2A2',
+      yellow: '#B9E2A2', // Banned Yellow/Mustard, map to green
+      salmon: '#F0927B',
+      lavender: '#D2A9D1',
+    },
+    chartColors: ['#8AD6CE', '#B9E2A2', '#D2A9D1', '#F0927B', '#8AD6CE'],
+
+    premiumShadow: '#8AD6CE',
+    categoryColors: {
+      'Ahorros': ['#8AD6CE', '#47ADA2'],
+      'Ahorro': ['#8AD6CE', '#47ADA2'],
+      'Comida': ['#F0927B', '#83382D'],
+      'Salud': ['#D2A9D1', '#5B3E5A'],
+      'Hogar': ['#B9E2A2', '#1A2E1C'], // Changed from Yellow to Green
+      'Transporte': ['#8AD6CE', '#13302D'],
+      'Otros': ['#E7E9E0', '#7D907E'],
+      'Varios': ['#E7E9E0', '#7D907E'],
+      'Ingreso': ['#8AD6CE', '#1B5E20']
+    }
   }
 };
 
-export type ThemeMode = 'sage' | 'honey';
+export type ThemeMode = 'sage';
 
 export const getTheme = (mode: ThemeMode = 'sage') => {
-  const colors = UI_COLORS[mode] || UI_COLORS.sage;
-  const isHoney = mode === 'honey';
+  const colors = UI_COLORS.sage;
 
   return {
+    mode,
     colors,
+    // Spacing System
+    spacing: {
+      xs: 4,
+      sm: 8,
+      md: 16,
+      lg: 24,
+      xl: 32,
+      xxl: 48,
+    },
+    // Fonts
     fonts: {
       headline: 'Outfit-Bold',
       body: 'Inter',
     },
+    // Radius Hierarchy
+    radius: {
+      xs: 6,
+      sm: 10,
+      md: 14,
+      lg: 20,
+      xl: 28,
+      xxl: 36,
+      full: 9999,
+    },
+    // Typography System
+    typography: {
+      h1: { fontSize: normalize(34), fontWeight: '900', letterSpacing: -1.2, lineHeight: 42 },
+      h2: { fontSize: normalize(26), fontWeight: '900', letterSpacing: -0.8, lineHeight: 34 },
+      h3: { fontSize: normalize(21), fontWeight: '800', letterSpacing: -0.5, lineHeight: 28 },
+      title: { fontSize: normalize(17), fontWeight: '800', letterSpacing: -0.3, lineHeight: 24 },
+      bodyLarge: { fontSize: normalize(16), fontWeight: '500', lineHeight: 24 },
+      bodyMedium: { fontSize: normalize(14), fontWeight: '500', lineHeight: 20 },
+      bodySmall: { fontSize: normalize(12), fontWeight: '500', lineHeight: 16 },
+      caption: { fontSize: normalize(11), fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
+      label: { fontSize: normalize(10), fontWeight: '900', letterSpacing: 1.5, textTransform: 'uppercase' },
+    },
     shadows: {
+      sm: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.04,
+        shadowRadius: 3,
+        elevation: 1,
+      },
+      md: {
+        shadowColor: colors.onBackground,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.06,
+        shadowRadius: 16,
+        elevation: 3,
+      },
       premium: {
-        shadowColor: isHoney ? '#4B3E00' : '#2D3436',
+        shadowColor: colors.premiumShadow,
         shadowOffset: { width: 0, height: 12 },
-        shadowOpacity: isHoney ? 0.22 : 0.15,
-        shadowRadius: 24,
-        elevation: 10,
+        shadowOpacity: 0.08,
+        shadowRadius: 30,
+        elevation: 8,
       },
       soft: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 10,
-        elevation: 3,
+        shadowOpacity: 0.03,
+        shadowRadius: 12,
+        elevation: 2,
       }
+    },
+    states: {
+      pressed: { opacity: 0.7 },
+      disabled: { opacity: 0.4 },
+      focus: { borderWidth: 2, borderColor: colors.primary },
     }
   };
 };
 
-// Default export for backward compatibility during transition
 export const theme = getTheme('sage');
+

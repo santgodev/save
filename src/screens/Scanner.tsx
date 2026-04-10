@@ -23,30 +23,30 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
   const { theme } = useTheme();
 
   const styles = useMemo(() => StyleSheet.create({
-    scannerContainer: { flex: 1, backgroundColor: '#111311' }, // Deep Midnight for focus
+    scannerContainer: { flex: 1, backgroundColor: '#0A1A18' }, // Darker Teal-Slate for premium focus
     scannerTopBar: { position: 'absolute', top: 0, width: '100%', zIndex: 100, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center' },
     closeBtn: { 
       width: 48, 
       height: 48, 
       borderRadius: 24, 
-      backgroundColor: 'rgba(255,255,255,0.15)', 
+      backgroundColor: 'rgba(255,255,255,0.1)', 
       alignItems: 'center', 
       justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.1)'
+      borderWidth: 1.5,
+      borderColor: 'rgba(255,255,255,0.15)'
     },
     scannerBadge: { 
       paddingHorizontal: 14, 
       paddingVertical: 8, 
       borderRadius: 20, 
       borderWidth: 1.5, 
-      borderColor: '#FFF',
+      borderColor: 'rgba(255,255,255,0.4)',
       ...theme.shadows.premium 
     },
     scannerBadgeText: { color: '#FFF', fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5 },
     
     scannerInitialView: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
-    scannerInitialText: { color: 'rgba(255,255,255,0.7)', fontSize: 18, fontWeight: '700', marginTop: 24, marginBottom: 40, textAlign: 'center' },
+    scannerInitialText: { color: 'rgba(255,255,255,0.6)', fontSize: 18, fontWeight: '700', marginTop: 24, marginBottom: 40, textAlign: 'center' },
     
     mainCameraButton: { 
       flexDirection: 'row', 
@@ -67,9 +67,9 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
       padding: 24, 
       borderRadius: 36, 
       overflow: 'hidden', 
-      backgroundColor: theme.colors.surface,
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
+      backgroundColor: theme.colors.glassWhite,
+      borderWidth: 1.5, 
+      borderColor: 'rgba(255,255,255,0.8)',
       ...theme.shadows.premium 
     },
     scannerActionTitle: { fontWeight: '900', color: theme.colors.onSurface, fontSize: 18, marginBottom: 16, letterSpacing: -0.5 },
@@ -82,35 +82,35 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
       paddingHorizontal: 16, 
       paddingVertical: 8, 
       borderRadius: 16, 
-      backgroundColor: theme.colors.primaryContainer + '60',
+      backgroundColor: theme.colors.primaryContainer,
       marginBottom: 24,
       borderWidth: 1,
-      borderColor: theme.colors.primary + '20'
+      borderColor: theme.colors.primary + '30'
     },
     aiValidationText: { fontSize: 10, fontWeight: '900', color: theme.colors.primary, letterSpacing: 1, textTransform: 'uppercase' },
     
     premiumAmountBox: { alignItems: 'center', marginBottom: 24 },
-    premiumAmountLabel: { fontSize: 12, color: theme.colors.onSurfaceVariant, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
+    premiumAmountLabel: { fontSize: 12, color: theme.colors.primary, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
     modernAmountInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
     modernCurrencySymbol: { fontSize: 24, fontWeight: '800', color: theme.colors.onSurface, marginRight: 4 },
     modernAmountInput: { fontSize: 52, fontWeight: '900', color: theme.colors.onSurface, textAlign: 'center', letterSpacing: -2, minWidth: 120 },
     copBadge: { fontSize: 12, fontWeight: '900', color: theme.colors.primary, marginLeft: 8 },
     
-    dividerCustom: { height: 1.5, backgroundColor: theme.colors.outlineVariant, marginVertical: 24, opacity: 0.5 },
+    dividerCustom: { height: 1.5, backgroundColor: theme.colors.divider, marginVertical: 24 },
     
     premiumDetailItem: { 
       flexDirection: 'row', 
       alignItems: 'center', 
       gap: 16, 
-      backgroundColor: theme.colors.surfaceContainerLow, 
+      backgroundColor: 'rgba(255,255,255,0.5)', 
       padding: 18, 
       borderRadius: 24, 
       borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
+      borderColor: theme.colors.divider,
       marginBottom: 12
     },
-    premiumIconBox: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surface },
-    premiumDetailLabel: { fontSize: 10, fontWeight: '900', color: theme.colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
+    premiumIconBox: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primaryContainer },
+    premiumDetailLabel: { fontSize: 10, fontWeight: '900', color: theme.colors.primary, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
     premiumDetailInput: { fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, paddingVertical: 4 },
     premiumDetailValue: { fontSize: 16, fontWeight: '800', color: theme.colors.onSurface },
     originalTicketBadge: { fontSize: 10, fontWeight: '800', color: theme.colors.secondary, marginTop: 4, fontStyle: 'italic' },
@@ -120,12 +120,12 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
       paddingHorizontal: 16, 
       paddingVertical: 10, 
       borderRadius: 14, 
-      backgroundColor: theme.colors.surfaceContainerLow,
+      backgroundColor: theme.colors.primaryContainer,
       borderWidth: 1,
-      borderColor: theme.colors.outlineVariant
+      borderColor: 'rgba(255,255,255,0.5)'
     },
     catChipActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-    catText: { fontSize: 13, fontWeight: '800', color: theme.colors.onSurfaceVariant },
+    catText: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },
     catTextActive: { color: '#FFF' },
     
     premiumConfirmBtn: { borderRadius: 24, overflow: 'hidden', height: 64, ...theme.shadows.soft },
@@ -257,42 +257,35 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
   };
 
   const saveToSupabase = async () => {
-    if (!extractedData || isSaving) return;
+    if (isSaving) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setIsSaving(true);
     try {
       const user = session?.user;
       if (!user) throw new Error('Sesión no detectada.');
 
-      const strictClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        global: { headers: { Authorization: `Bearer ${session.access_token}` } }
-      });
-
-      const iconMap: Record<string, string> = { 'Comida': 'Utensils', 'Transporte': 'Car', 'Ocio': 'Theater', 'Ahorros': 'PiggyBank' };
+      const iconMap: Record<string, string> = { 'Comida': 'utensils', 'Transporte': 'car', 'Ocio': 'theater', 'Ahorros': 'piggy-bank' };
       const amountValue = parseFloat(editableAmount.replace(/[^0-9.]/g, ''));
       const today = new Date().toISOString().split('T')[0];
 
-      const { error } = await strictClient.from('transactions').insert({
-        user_id: user.id, 
-        merchant: editableMerchant || 'Factura Escaneada', 
-        amount: -Math.abs(amountValue), 
-        date_string: today,
-        category: selectedCategory, 
-        icon: iconMap[selectedCategory] || 'ReceiptText'
+      const { error } = await supabase.rpc('register_expense', {
+        p_user_id: user.id,
+        p_merchant: editableMerchant || 'Factura Escaneada',
+        p_amount: Math.abs(amountValue),
+        p_category: selectedCategory,
+        p_icon: iconMap[selectedCategory] || 'receipt-text',
+        p_date_string: today
       });
 
       if (error) throw error;
-      
-      // Update pocket
-      const p = (pockets || []).find(pk => pk.category === selectedCategory);
-      if (p) await strictClient.from('pockets').update({ budget: (p.budget || 0) - Math.abs(amountValue) }).eq('id', p.id);
 
       setIsSaving(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onSaveSuccess();
     } catch (error: any) {
       setIsSaving(false);
-      alert(error.message);
+      console.error(error);
+      alert('Error guardando el gasto.');
     }
   };
 

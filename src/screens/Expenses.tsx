@@ -29,13 +29,13 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
     container: { flex: 1, backgroundColor: theme.colors.background },
     headerContainer: { paddingHorizontal: normalize(24), paddingBottom: normalize(16) },
     overviewCard: { 
-      padding: normalize(24), 
-      borderRadius: normalize(32), 
+      padding: 24, 
+      borderRadius: theme.radius.xl, 
       overflow: 'hidden', 
-      backgroundColor: theme.colors.surface, 
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant, 
-      ...theme.shadows.premium 
+      backgroundColor: theme.colors.glassWhite, 
+      borderWidth: 1.5, 
+      borderColor: 'rgba(255,255,255,0.8)', 
+      ...theme.shadows.md 
     },
     overviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: normalize(12) },
     dotIndicator: { width: 8, height: 8, borderRadius: 4 },
@@ -49,24 +49,24 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
       flex: 1, 
       flexDirection: 'row', 
       alignItems: 'center', 
-      backgroundColor: theme.colors.surface, 
-      paddingHorizontal: normalize(16), 
-      paddingVertical: normalize(12), 
-      borderRadius: 20, 
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
+      backgroundColor: theme.colors.glassWhite, 
+      paddingHorizontal: 16, 
+      paddingVertical: 12, 
+      borderRadius: theme.radius.md, 
+      borderWidth: 1.5, 
+      borderColor: 'rgba(255,255,255,0.7)',
       ...theme.shadows.soft 
     },
-    searchInput: { flex: 1, marginLeft: 12, fontSize: normalize(15), fontWeight: '700', color: theme.colors.onSurface },
+    searchInput: { flex: 1, marginLeft: 12, fontSize: 15, fontWeight: '700', color: theme.colors.onSurface },
     filterBtn: { 
-      backgroundColor: theme.colors.surface, 
-      width: normalize(56), 
-      height: normalize(56), 
+      backgroundColor: theme.colors.glassWhite, 
+      width: 52, 
+      height: 52, 
       alignItems: 'center', 
       justifyContent: 'center', 
-      borderRadius: 24, 
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
+      borderRadius: theme.radius.md, 
+      borderWidth: 1.5, 
+      borderColor: 'rgba(255,255,255,0.7)',
       ...theme.shadows.soft 
     },
   
@@ -74,15 +74,15 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
     txRow: { 
       flexDirection: 'row', 
       alignItems: 'center', 
-      backgroundColor: theme.colors.surface, 
-      padding: normalize(16), 
-      borderRadius: normalize(28), 
-      marginBottom: normalize(16), 
+      backgroundColor: theme.colors.glassWhite, 
+      padding: 16, 
+      borderRadius: theme.radius.lg, 
+      marginBottom: 14, 
       borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
-      ...theme.shadows.soft 
+      borderColor: theme.colors.divider,
+      ...theme.shadows.sm 
     },
-    iconArea: { width: normalize(52), height: normalize(52), borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.surfaceContainerLow },
+    iconArea: { width: normalize(52), height: normalize(52), borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primaryContainer },
     txInfo: { flex: 1, marginLeft: normalize(16) },
     txMerchant: { fontSize: normalize(16), fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -0.3 },
     txCategory: { fontSize: normalize(10), fontWeight: '800', color: theme.colors.primary, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 },
@@ -94,13 +94,13 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
       paddingHorizontal: 20, 
       paddingVertical: 10, 
       borderRadius: 14, 
-      backgroundColor: theme.colors.surfaceContainerHigh, 
+      backgroundColor: theme.colors.primaryContainer, 
       marginRight: 10,
       borderWidth: 1,
-      borderColor: 'transparent'
+      borderColor: 'rgba(255,255,255,0.5)'
     },
     chipActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-    chipText: { fontSize: 13, fontWeight: '800', color: theme.colors.onSurfaceVariant },
+    chipText: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },
     chipTextActive: { color: theme.colors.onPrimary },
   
     emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 80, gap: 16 },
@@ -108,18 +108,18 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
     longPressHint: { fontSize: normalize(11), color: theme.colors.onSurfaceVariant, textAlign: 'center', marginTop: 20, marginBottom: 8, fontStyle: 'italic', opacity: 0.5 },
   
     modalOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
-    modalContainer: { width: width * 0.88, borderRadius: 36, padding: 32, paddingBottom: 24, ...theme.shadows.premium },
+    modalContainer: { width: width * 0.88, borderRadius: 36, padding: 32, paddingBottom: 24, borderWidth: 1, borderColor: theme.colors.divider, ...theme.shadows.premium },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-    modalTitle: { fontSize: 12, fontWeight: '900', color: theme.colors.onSurfaceVariant, letterSpacing: 2, textTransform: 'uppercase' },
+    modalTitle: { fontSize: 12, fontWeight: '900', color: theme.colors.primary, letterSpacing: 2, textTransform: 'uppercase' },
     modalInfo: { alignItems: 'center', marginBottom: 32 },
     modalIconCircle: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
     modalMerchant: { fontSize: 20, fontWeight: '900', textAlign: 'center', color: theme.colors.onSurface },
     modalAmt: { fontSize: 32, fontWeight: '900', marginVertical: 10, color: theme.colors.onSurface },
     modalSub: { fontSize: 14, textAlign: 'center', lineHeight: 20, color: theme.colors.onSurfaceVariant, paddingHorizontal: 10 },
-    modalConfirmBtn: { paddingVertical: 20, borderRadius: 24, alignItems: 'center', marginBottom: 12, ...theme.shadows.soft },
-    modalConfirmTxt: { color: '#FFF', fontSize: 17, fontWeight: '900' },
+    modalConfirmBtn: { paddingVertical: 18, borderRadius: theme.radius.lg, alignItems: 'center', marginBottom: 12, ...theme.shadows.soft },
+    modalConfirmTxt: { color: '#FFF', fontSize: 16, fontWeight: '900' },
     modalCancelBtn: { paddingVertical: 14, alignItems: 'center' },
-    modalCancelTxt: { fontSize: 15, fontWeight: '800' },
+    modalCancelTxt: { fontSize: 14, fontWeight: '800' },
   }), [theme]);
 
   useEffect(() => {
@@ -139,38 +139,21 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
     setIsDeleting(true);
 
     try {
-      const tx = deletingTx;
-      const { metadata, category, amount, pocket_id } = tx;
+      const { error } = await supabase.rpc('delete_transaction_with_reversal', {
+        p_tx_id: deletingTx.id,
+        p_user_id: session.user.id
+      });
 
-      const updates: any[] = [];
-      if (category === 'Ingreso' && metadata?.distribution) {
-        Object.entries(metadata.distribution).forEach(([pid, amt]: [any, any]) => {
-          const p = pockets.find(pk => pk.id === pid);
-          if (p) updates.push(supabase.from('pockets').update({ budget: (p.budget || 0) - amt }).eq('id', pid));
-        });
-      } else if (category === 'Traslado' && metadata?.from_id && metadata?.to_id) {
-        const fromP = pockets.find(p => p.id === metadata.from_id);
-        const toP = pockets.find(p => p.id === metadata.to_id);
-        if (fromP) updates.push(supabase.from('pockets').update({ budget: (fromP.budget || 0) + amount }).eq('id', metadata.from_id));
-        if (toP) updates.push(supabase.from('pockets').update({ budget: (toP.budget || 0) - amount }).eq('id', metadata.to_id));
-      } else {
-        const pid = pocket_id || metadata?.pocket_id;
-        if (pid) {
-          const p = pockets.find(pk => pk.id === pid);
-          if (p) updates.push(supabase.from('pockets').update({ budget: (p.budget || 0) + Math.abs(amount) }).eq('id', pid));
-        }
-      }
-
-      await Promise.all(updates);
-      const { error } = await supabase.from('transactions').delete().eq('id', tx.id);
-      
       if (!error) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setDeletingTx(null);
         if (onRefresh) onRefresh();
+      } else {
+        alert('No se pudo eliminar el movimiento.');
       }
     } catch (e) {
       console.error(e);
+      alert('Error en la operación.');
     } finally {
       setIsDeleting(false);
     }
@@ -265,13 +248,12 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
               >
                 <View style={[
                   styles.iconArea, 
-                  isIncome && { backgroundColor: theme.colors.success + '15' }, 
-                  isTransfer && { backgroundColor: theme.colors.secondaryContainer }
+                  { backgroundColor: (theme.colors.categoryColors[tx.category] || theme.colors.categoryColors['Otros'])[0] + '15' }
                 ]}>
                   <CategoryIcon 
                     iconName={isIncome ? 'trending-up' : isTransfer ? 'arrow-right-left' : tx.icon} 
                     size={20} 
-                    color={isIncome ? theme.colors.success : isTransfer ? theme.colors.secondary : theme.colors.onSurface} 
+                    color={(theme.colors.categoryColors[tx.category] || theme.colors.categoryColors['Otros'])[0]} 
                   />
                 </View>
                 
