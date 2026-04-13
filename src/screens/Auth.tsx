@@ -11,7 +11,9 @@ import {
   Image,
   Dimensions,
   ActivityIndicator,
-  Alert
+  Alert,
+  TouchableWithoutFeedback,
+  Keyboard
 } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../theme/ThemeContext';
@@ -319,11 +321,12 @@ export function Auth({ onLoginSuccess }: AuthProps) {
   const signInWithGoogle = () => handleOAuthLogin('google');
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.container}
+      >
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.bgCircle1} />
         <View style={styles.bgCircle2} />
 
@@ -459,6 +462,7 @@ export function Auth({ onLoginSuccess }: AuthProps) {
           </BlurView>
         </Animated.View>
       </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
   );
 }

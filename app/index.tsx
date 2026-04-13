@@ -153,7 +153,7 @@ function MainApp() {
 
     // 4. Data ready -> Show appropriate screen
     switch (currentScreen) {
-      case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('scanner')} />;
+      case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('scanner')} onViewAll={() => setCurrentScreen('expenses')} />;
       case 'scanner': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} />;
       case 'expenses': return <Expenses transactions={transactions} session={session} pockets={pockets} onRefresh={() => loadUserData(session!.user.id)} />;
       case 'pockets': return <Pockets session={session} pockets={pockets} transactions={transactions} onRefresh={() => loadUserData(session!.user.id)} onTransferPress={triggerTransfer} />;
@@ -161,7 +161,7 @@ function MainApp() {
       case 'add_income': return <AddIncome session={session} pockets={pockets} onCancel={() => setCurrentScreen('dashboard')} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('dashboard'); }} />;
       case 'pocket_transfer': return <PocketTransfer session={session} pockets={pockets} initialParams={transferParams ?? undefined} onCancel={() => { setTransferParams(null); setCurrentScreen('pockets'); }} onSaveSuccess={() => { setTransferParams(null); loadUserData(session!.user.id); setCurrentScreen('pockets'); }} />;
       case 'onboarding': return <Onboarding session={session} onComplete={() => loadUserData(session?.user?.id)} />;
-      default: return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('scanner')} />;
+      default: return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('scanner')} onViewAll={() => setCurrentScreen('expenses')} />;
     }
   };
 
@@ -172,6 +172,9 @@ function MainApp() {
           title={currentScreen === 'dashboard' ? 'Save' : currentScreen === 'expenses' ? 'Movimientos' : currentScreen === 'pockets' ? 'Bolsillos' : 'Perfil'}
           userName={session.user?.user_metadata?.full_name || session.user?.user_metadata?.name || session.user?.email?.split('@')[0]}
           userAvatar={session.user?.user_metadata?.avatar_url || session.user?.user_metadata?.picture}
+          userId={session.user?.id}
+          transactions={transactions}
+          pockets={pockets}
         />
       )}
 
@@ -188,27 +191,27 @@ function MainApp() {
            <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => toggleActionMenu(false)} />
            <Animated.View style={[styles.menuContent, { transform: [{ translateY: slideAnim }], backgroundColor: theme.colors.background }]}>
               <View style={[styles.menuHandle, { backgroundColor: theme.colors.divider }]} />
-              <Text style={[styles.menuTitle, { color: theme.colors.onSurface }]}>Centro de Comando</Text>
+              <Text style={[styles.menuTitle, { color: theme.colors.onSurface }]}>¿Qué quieres hacer?</Text>
               
               <View style={styles.menuGrid}>
                  <TouchableOpacity activeOpacity={0.8} style={styles.menuItem} onPress={() => { toggleActionMenu(false); setCurrentScreen('add_income'); }}>
                     <View style={[styles.menuIcon, { backgroundColor: theme.colors.primaryContainer }]}><TrendingUp size={28} color={theme.colors.primary} /></View>
-                    <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Inyectar Capital</Text>
+                    <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Entró Plata</Text>
                  </TouchableOpacity>
 
                  <TouchableOpacity activeOpacity={0.8} style={styles.menuItem} onPress={() => { toggleActionMenu(false); setCurrentScreen('scanner'); }}>
-                    <View style={[styles.menuIcon, { backgroundColor: theme.colors.secondaryContainer }]}><Camera size={28} color={theme.colors.secondary} /></View>
-                    <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Auditoría Directa</Text>
+                    <View style={[styles.menuIcon, { backgroundColor: (theme.colors as any).pastel.lavender + '30' }]}><Camera size={28} color={(theme.colors as any).pastel.lavender} /></View>
+                    <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Ingresar Gasto</Text>
                  </TouchableOpacity>
 
                  <TouchableOpacity activeOpacity={0.8} style={styles.menuItem} onPress={() => { toggleActionMenu(false); setCurrentScreen('pocket_transfer'); }}>
-                    <View style={[styles.menuIcon, { backgroundColor: theme.colors.tertiaryContainer }]}><Repeat size={28} color={theme.colors.tertiary} /></View>
-                    <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Transferir Fondos</Text>
+                    <View style={[styles.menuIcon, { backgroundColor: theme.colors.secondaryContainer }]}><Repeat size={28} color={theme.colors.secondary} /></View>
+                    <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Mover Plata</Text>
                  </TouchableOpacity>
               </View>
 
-              <TouchableOpacity style={[styles.closeMenu, { backgroundColor: theme.colors.primaryContainer }]} onPress={() => toggleActionMenu(false)}>
-                 <Text style={[styles.closeMenuTxt, { color: theme.colors.primary }]}>Cerrar panel</Text>
+              <TouchableOpacity style={[styles.closeMenu, { backgroundColor: theme.colors.surface }]} onPress={() => toggleActionMenu(false)}>
+                 <Text style={[styles.closeMenuTxt, { color: theme.colors.onSurfaceVariant }]}>Cancelar</Text>
               </TouchableOpacity>
            </Animated.View>
         </Animated.View>

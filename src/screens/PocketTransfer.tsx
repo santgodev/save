@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { X, ArrowRightLeft, ArrowRight, CheckCircle2, ChevronDown, Repeat } from 'lucide-react-native';
@@ -162,7 +162,8 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) + 16 }]}>
         <TouchableOpacity style={styles.closeBtn} onPress={onCancel}>
           <X size={24} color={theme.colors.onSurface} strokeWidth={2.5} />
@@ -171,7 +172,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
         <View style={{ width: 44 }} />
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: Math.max(insets.top, 20) + 96 }]}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scroll, { paddingTop: Math.max(insets.top, 20) + 96 }]}>
         <View style={styles.card}>
           <Text style={styles.label}>FLUJO DE CAPITAL</Text>
           <View style={styles.inputWrap}>
@@ -191,7 +192,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
         <View style={styles.transferFlow}>
           <View style={styles.pocketSelectorSection}>
             <Text style={styles.subLabel}>Bolsillo de Origen</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pocketScroll}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pocketScroll} nestedScrollEnabled={true} directionalLockEnabled={true}>
               {pockets.map(p => (
                 <TouchableOpacity 
                    key={p.id} 
@@ -212,7 +213,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
 
           <View style={styles.pocketSelectorSection}>
             <Text style={styles.subLabel}>Destino de Fondos</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pocketScroll}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pocketScroll} nestedScrollEnabled={true} directionalLockEnabled={true}>
               {pockets.map(p => (
                 <TouchableOpacity 
                   key={p.id} 
@@ -229,22 +230,40 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { flexDirection: 'row', gap: 12 }]}>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          style={{
+            flex: 1,
+            height: 68,
+            borderRadius: 28,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: theme.colors.surface,
+            borderWidth: 1.5,
+            borderColor: theme.colors.outlineVariant,
+          }}
+          onPress={onCancel}
+        >
+          <Text style={{ fontSize: 17, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>Cancelar</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity 
           activeOpacity={0.9}
-          style={[styles.saveBtn, (!amount || fromPocketId === toPocketId) && styles.saveBtnDisabled]} 
+          style={[styles.saveBtn, { flex: 2 }, (!amount || fromPocketId === toPocketId) && styles.saveBtnDisabled]} 
           onPress={handleSave} 
           disabled={isSaving || !amount || fromPocketId === toPocketId}
         >
           <LinearGradient colors={theme.colors.brandGradient as any} style={[StyleSheet.absoluteFill, { borderRadius: 28 }]} start={{x:0, y:0}} end={{x:1, y:0}} />
           {isSaving ? <ActivityIndicator color="#FFF" /> : (
             <>
-              <Text style={styles.saveBtnTxt}>Confirmar Traspaso</Text>
-              <Repeat size={22} color="#FFF" style={{ marginLeft: 12 }} />
+              <Text style={styles.saveBtnTxt}>Confirmar</Text>
+              <Repeat size={20} color="#FFF" style={{ marginLeft: 10 }} />
             </>
           )}
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
   );
 };

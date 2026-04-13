@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Animated, Dimensions, TouchableOpacity, Platform, ActivityIndicator
+  View, Text, StyleSheet, ScrollView, Animated, Dimensions, TouchableOpacity, Platform, ActivityIndicator, RefreshControl
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -25,6 +25,7 @@ interface DashboardProps {
   session: any;
   isDataReady: boolean;
   onOpenScanner: () => void;
+  onViewAll: () => void;
   userProfile?: { full_name: string; streak?: number };
   onRefresh?: () => void;
   isLoading?: boolean;
@@ -36,6 +37,7 @@ export const Dashboard = ({
   session,
   isDataReady,
   onOpenScanner,
+  onViewAll,
   userProfile, 
   onRefresh,
   isLoading = false 
@@ -43,12 +45,7 @@ export const Dashboard = ({
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(20)).current;
-  
-  const [healthData, setHealthData] = useState<any>(null);
-  const [isHealthLoading, setIsHealthLoading] = useState(false);
   const [greeting, setGreeting] = useState('Hola');
-  const lastFetchRef = useRef<number>(0);
 
   useEffect(() => {
     const hours = new Date().getHours();
@@ -56,79 +53,14 @@ export const Dashboard = ({
     else if (hours < 18) setGreeting('¡Buenas tardes! ☕');
     else setGreeting('¡Buenas noches! 🌙');
 
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 800, useNativeDriver: true })
-    ]).start();
-
-    // Initial fetch only if we haven't fetched in the last 5 minutes
-    const now = Date.now();
-    if (now - lastFetchRef.current > 300000) {
-      fetchHealthData();
-    }
+    Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
   }, []);
-
-  const fetchHealthData = async (force = false) => {
-    const now = Date.now();
-    const canFetch = force || !healthData || (now - lastFetchRef.current > 300000);
-    
-    if (!canFetch || isHealthLoading) return;
-    
-    setIsHealthLoading(true);
-    try {
-      if (!session?.user?.id) return;
-      
-      const { data, error } = await supabase.rpc('get_financial_health', {
-        p_user_id: session.user.id
-      });
-      if (data) {
-        setHealthData(data);
-        lastFetchRef.current = Date.now();
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsHealthLoading(false);
-    }
-  };
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     scrollContent: { paddingHorizontal: 24, paddingTop: Math.max(insets.top, 16) + 110, paddingBottom: 150 },
     
     headerSection: { marginBottom: 32 },
-    greetText: { ...theme.typography.bodyLarge, color: theme.colors.onSurfaceVariant, marginBottom: 8, fontWeight: '600', opacity: 0.8 },
-    
-    streakBadge: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      gap: 6, 
-      paddingHorizontal: 12, 
-      paddingVertical: 6, 
-      borderRadius: theme.radius.full, 
-      backgroundColor: (theme.colors as any).pastel.teal + '10',
-      borderWidth: 1,
-      borderColor: (theme.colors as any).pastel.teal + '20',
-    },
-    streakText: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-
-    organicAiCard: { 
-      padding: 24, 
-      borderRadius: theme.radius.xl, 
-      marginBottom: 32, 
-      backgroundColor: theme.colors.glassWhite,
-      borderWidth: 1.5, 
-      borderColor: 'rgba(255, 255, 255, 1)', 
-      ...theme.shadows.soft,
-      overflow: 'hidden'
-    },
-    iaHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 },
-    iaIconBox: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-    iaLabel: { ...theme.typography.label, color: theme.colors.primary },
-    iaTitle: { ...theme.typography.h3, color: theme.colors.onSurface, marginBottom: 10, lineHeight: 28 },
-    iaReason: { ...theme.typography.bodyMedium, color: theme.colors.onSurfaceVariant, lineHeight: 22, opacity: 0.85 },
-    iaLoading: { paddingVertical: 32, alignItems: 'center' },
-
     sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
     sectionTitleOrganic: { ...theme.typography.h3, color: theme.colors.onSurface },
     viewAllAction: { ...theme.typography.bodySmall, fontWeight: '800', color: theme.colors.primary },
@@ -146,241 +78,132 @@ export const Dashboard = ({
     },
     txIconBoxUI: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
     txMain: { flex: 1, marginLeft: 16 },
-    txMerchantUI: { ...theme.typography.bodyLarge, fontWeight: '800', color: theme.colors.onSurface, letterSpacing: -0.3 },
-    txDateUI: { ...theme.typography.bodySmall, color: theme.colors.onSurfaceVariant, marginTop: 2, opacity: 0.7 },
-    txAmountUI: { ...theme.typography.title, fontWeight: '900' },
-
-    statsCard: {
-      padding: 24,
-      borderRadius: theme.radius.xl,
-      backgroundColor: theme.colors.surface,
-      marginBottom: 32,
-      borderWidth: 1,
-      borderColor: theme.colors.divider,
-      ...theme.shadows.md,
-    },
-    chartLabel: {
-      ...theme.typography.label,
-      color: theme.colors.onSurfaceVariant,
-      marginBottom: 0,
-      opacity: 0.6,
-    },
-    visualBarsRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-end',
-      justifyContent: 'space-between',
-      height: 100,
-      marginBottom: 32,
-      paddingHorizontal: 8,
-    },
-    vBarContainer: {
-      alignItems: 'center',
-      flex: 1,
-    },
-    vBar: {
-      width: 18,
-      borderRadius: 9,
-      backgroundColor: theme.colors.primary,
-    },
-    vBarGlow: {
-      ...StyleSheet.absoluteFillObject,
-      borderRadius: 9,
-      opacity: 0.3,
-    },
-    vBarLabel: {
-      ...theme.typography.label,
-      fontSize: 8,
-      marginTop: 12,
-      color: theme.colors.onSurfaceVariant,
-      opacity: 0.8,
-      fontWeight: '900',
-    },
-    distributionContainer: {
-      marginTop: 8,
-    },
-    distributionRow: {
-      height: 12,
-      flexDirection: 'row',
-      borderRadius: 6,
-      overflow: 'hidden',
-      backgroundColor: theme.colors.surfaceContainerLow,
-      marginBottom: 20,
-    },
-    distSegment: {
-      height: '100%',
-    },
-    distInfoRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    distItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-    },
-    distDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-    },
-    distLabel: {
-      ...theme.typography.bodySmall,
-      fontWeight: '800',
-      color: theme.colors.onSurfaceVariant,
-    },
-  }), [theme, insets]);
-
-  const currentMonthExpenses = transactions
-    .filter(tx => tx.category !== 'Ingreso')
-    .reduce((acc, tx) => acc + Math.abs(tx.amount), 0);
+    txDateUI: { ...theme.typography.label, color: theme.colors.onSurfaceVariant, marginTop: 4 },
+    txMerchantUI: { ...theme.typography.bodyMedium, fontWeight: '800', color: theme.colors.onSurface },
+    txAmountUI: { ...theme.typography.bodyLarge, fontWeight: '900' }
+  }), [theme, insets.top]);
 
   const formatCurrency = (amt: number) => `$ ${amt.toLocaleString('es-CO')}`;
+  const totalBudget = (pockets || []).reduce((acc, p) => acc + (p?.budget || 0), 0);
+  const totalSpentAll = (transactions || []).filter(tx => tx.category !== 'Ingreso' && tx.category !== 'Traslado').reduce((acc, tx) => acc + Math.abs(tx?.amount || 0), 0);
+  const saldoDisponible = totalBudget - totalSpentAll;
 
   return (
     <View style={styles.container}>
       <ScrollView 
-        showsVerticalScrollIndicator={false} 
         contentContainerStyle={styles.scrollContent}
-        onScrollEndDrag={() => { onRefresh?.(); }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
+        keyboardShouldPersistTaps="handled"
       >
-        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+        <Animated.View style={{ opacity: fadeAnim }}>
           
-          <View style={styles.headerSection}>
-            <View style={{ position: 'absolute', top: -100, right: -50, width: 250, height: 250, borderRadius: 125, backgroundColor: (theme.colors as any).pastel.teal + '15', zIndex: -1 }} />
-            <View style={{ position: 'absolute', top: -40, right: 100, width: 120, height: 120, borderRadius: 60, backgroundColor: (theme.colors as any).pastel.lavender + '10', zIndex: -1 }} />
-            
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <View>
-                <Text style={styles.greetText}>{greeting}</Text>
-                <Text style={{ ...theme.typography.h2, color: theme.colors.onSurface, letterSpacing: -0.5 }}>{userProfile?.full_name?.split(' ')[0] || 'Usuario'}</Text>
-              </View>
-              <View style={styles.streakBadge}>
-                {healthData && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginRight: 8, borderRightWidth: 1, borderRightColor: theme.colors.divider, paddingRight: 8 }}>
-                    <Target size={14} color={theme.colors.primary} />
-                    <Text style={[styles.streakText, { fontSize: 14, color: theme.colors.primary }]}>{healthData.score}</Text>
-                  </View>
-                )}
-                <Flame size={16} color={(theme.colors as any).pastel.salmon} fill={(theme.colors as any).pastel.salmon} />
-                <Text style={[styles.streakText, { color: theme.colors.primary }]}>{userProfile?.streak || 0} DÍAS</Text>
-              </View>
-            </View>
+          {/* HEADER SIMPLE Y DIRECTO */}
+          <View style={[styles.headerSection, { alignItems: 'center', paddingTop: 10 }]}>
+            <Text style={{ ...theme.typography.bodyLarge, color: theme.colors.onSurfaceVariant, fontWeight: '600', marginBottom: 12 }}>
+              {greeting}, {userProfile?.full_name?.split(' ')[0] || 'Usuario'}
+            </Text>
+            <Text style={{ fontSize: 13, color: theme.colors.primary, fontWeight: '800', letterSpacing: 1, marginBottom: 8, opacity: 0.8 }}>
+              SALDO DISPONIBLE
+            </Text>
+            <Text style={{ fontSize: 44, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -1 }}>
+              {formatCurrency(saldoDisponible)}
+            </Text>
           </View>
 
-          <BlurView intensity={Platform.OS === 'ios' ? 80 : 100} tint="light" style={styles.organicAiCard}>
-            <LinearGradient colors={['rgba(255,255,255,0.6)', 'transparent']} style={StyleSheet.absoluteFill} />
-            <View style={styles.iaHeader}>
+          {/* SAGE PROACTIVO — INSIGHT RÁPIDO */}
+          {isDataReady && (
+            <TouchableOpacity 
+              activeOpacity={0.9} 
+              onPress={() => { 
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                // Aquí podrías disparar que se abra el chat de TopBar con un trigger
+              }}
+              style={{ 
+                backgroundColor: theme.colors.glassWhite, 
+                padding: 18, 
+                borderRadius: 24, 
+                marginBottom: 32, 
+                borderWidth: 1.5, 
+                borderColor: theme.colors.divider,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 14,
+                ...theme.shadows.soft
+              }}
+            >
+              <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: theme.colors.primaryContainer, alignItems: 'center', justifyContent: 'center' }}>
+                <Sparkles size={20} color={theme.colors.primary} />
+              </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.iaLabel, { color: theme.colors.primary, fontWeight: '900' }]}>ANÁLISIS INTELIGENTE</Text>
-              </View>
-              <TouchableOpacity 
-                activeOpacity={0.7} 
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); fetchHealthData(true); }}
-                style={styles.iaIconBox}
-              >
-                <LinearGradient colors={(theme.colors as any).chartColors as any} style={styles.iaIconBox} start={{x:0, y:0}} end={{x:1, y:1}}>
-                  <Sparkles size={18} color="#FFF" />
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-            
-            {healthData?.insights?.length > 0 ? (
-              <View>
-                <Text style={[styles.iaTitle, { color: theme.colors.onSurface }]}>{healthData.insights[0].message}</Text>
-                <Text style={[styles.iaReason, { color: theme.colors.onSurfaceVariant }]}>Basado en tu comportamiento de este mes y tus objetivos de ahorro.</Text>
-                {healthData.insights.length > 1 && (
-                  <View style={{ marginTop: 20, backgroundColor: (theme.colors as any).pastel.teal + '15', padding: 18, borderRadius: theme.radius.md, borderWidth: 1, borderColor: (theme.colors as any).pastel.teal + '30' }}>
-                    <Text style={{ fontSize: 13, color: theme.colors.primary, fontWeight: '800', lineHeight: 20 }}>
-                      ✨ {healthData.insights[1].message}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            ) : (
-              <View>
-                <Text style={[styles.iaTitle, { color: theme.colors.onSurface }]}>¡Estamos analizando tus datos!</Text>
-                <Text style={[styles.iaReason, { color: theme.colors.onSurfaceVariant }]}>
-                  {isHealthLoading ? 'Generando consejos financieros personalizados...' : 'Sigue registrando tus gastos para obtener consejos sobre tu salud financiera.'}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                   <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.primary, letterSpacing: 1 }}>ASISTENTE DE SAVE</Text>
+                </View>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: theme.colors.onSurface, lineHeight: 18 }}>
+                  {totalSpentAll > totalBudget * 0.8 
+                    ? "¡Ojo! Ya gastaste casi todo tu presupuesto. Toca para ver cómo estirar lo que queda."
+                    : totalSpentAll === 0 
+                      ? "Aún no hay gastos este mes. ¡Excelente momento para planear tus ahorros!"
+                      : "Vas por buen camino. Tu gasto diario promedio es estable comparado a la semana pasada."}
                 </Text>
               </View>
-            )}
-          </BlurView>
+              <ChevronRight size={18} color={theme.colors.onSurfaceVariant} opacity={0.5} />
+            </TouchableOpacity>
+          )}
 
-          <View style={styles.statsCard}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 24 }}>
-              <View>
-                <Text style={[styles.chartLabel, { marginBottom: 4 }]}>FLUJO SEMANAL</Text>
-                <Text style={{ ...theme.typography.h3, color: theme.colors.primary, fontWeight: '900' }}>{formatCurrency(currentMonthExpenses)}</Text>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                <TrendingUp size={12} color={theme.colors.success} />
-                <Text style={{ ...theme.typography.label, color: theme.colors.success, fontSize: 10 }}>+12%</Text>
-              </View>
+          {/* QUICK ADD GIGANTE (EL REY) */}
+          <TouchableOpacity 
+            activeOpacity={0.8} 
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenScanner(); }}
+            style={{ backgroundColor: theme.colors.primary, borderRadius: theme.radius.xl, padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 40, ...theme.shadows.md }}
+          >
+            <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: theme.radius.full }}>
+              <Plus size={24} color="#FFF" />
             </View>
+            <Text style={{ ...theme.typography.h3, color: '#FFF' }}>Registrar Gasto</Text>
+          </TouchableOpacity>
 
-            <View style={styles.visualBarsRow}>
-              {[0.4, 0.7, 0.3, 0.9, 0.5, 0.8, 0.6].map((h, i) => (
-                <View key={i} style={styles.vBarContainer}>
-                  <View 
-                    style={[
-                      styles.vBar, 
-                      { 
-                        height: h * 100, 
-                        backgroundColor: (theme.colors as any).chartColors[i % 5] || theme.colors.primary 
-                      }
-                    ]} 
-                  >
-                    <LinearGradient 
-                      colors={['rgba(255,255,255,0.4)', 'transparent']} 
-                      style={styles.vBarGlow} 
-                    />
+          {/* BOLSILLOS (Resumen Simple) */}
+          <View style={{ marginBottom: 32 }}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitleOrganic}>Bolsillos</Text>
+            </View>
+            <View style={{ gap: 12 }}>
+              {(pockets || []).slice(0, 3).map((p, i) => {
+                const spent = (transactions || []).filter(tx => tx.category === p?.category && tx.amount < 0).reduce((acc, tx) => acc + Math.abs(tx?.amount || 0), 0);
+                const isOver = spent > (p?.budget || 0);
+                const remaining = (p?.budget || 0) - spent;
+                const catColor = (theme.colors as any).chartColors?.[i % 5] || theme.colors.primary;
+                return (
+                  <View key={`sim-${p?.id || i}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: theme.colors.surface, borderRadius: theme.radius.lg, borderWidth: 1, borderColor: theme.colors.divider }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: isOver ? theme.colors.error : catColor }} />
+                      <Text style={{ ...theme.typography.bodyMedium, fontWeight: '800', color: theme.colors.onSurface }}>{p?.name}</Text>
+                    </View>
+                    <Text style={{ ...theme.typography.bodyMedium, fontWeight: '900', color: isOver ? theme.colors.error : theme.colors.onSurfaceVariant }}>
+                      {formatCurrency(remaining)} <Text style={{ fontSize: 11, fontWeight: '500', opacity: 0.6 }}>{isOver ? 'excedido' : 'restantes'}</Text>
+                    </Text>
                   </View>
-                  <Text style={styles.vBarLabel}>
-                    {['L', 'M', 'M', 'J', 'V', 'S', 'D'][i]}
-                  </Text>
-                </View>
-              ))}
-            </View>
-
-            <View style={styles.distributionContainer}>
-              <View style={styles.distributionRow}>
-                <View style={[styles.distSegment, { width: '45%', backgroundColor: (theme.colors as any).pastel.teal }]} />
-                <View style={[styles.distSegment, { width: '25%', backgroundColor: (theme.colors as any).pastel.lavender }]} />
-                <View style={[styles.distSegment, { width: '20%', backgroundColor: (theme.colors as any).pastel.salmon }]} />
-                <View style={[styles.distSegment, { width: '10%', backgroundColor: (theme.colors as any).pastel.teal + '80' }]} />
-              </View>
-              <View style={styles.distInfoRow}>
-                <View style={styles.distItem}>
-                  <View style={[styles.distDot, { backgroundColor: (theme.colors as any).pastel.teal }]} />
-                  <Text style={styles.distLabel}>Indispensable</Text>
-                </View>
-                <View style={styles.distItem}>
-                  <View style={[styles.distDot, { backgroundColor: (theme.colors as any).pastel.lavender }]} />
-                  <Text style={styles.distLabel}>Lifestyle</Text>
-                </View>
-                <View style={styles.distItem}>
-                  <View style={[styles.distDot, { backgroundColor: (theme.colors as any).pastel.salmon }]} />
-                  <Text style={styles.distLabel}>Inversión</Text>
-                </View>
-              </View>
+                );
+              })}
             </View>
           </View>
 
+          {/* RECIENTES MINI */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitleOrganic}>Recientes</Text>
-            <TouchableOpacity onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
+            <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onViewAll?.(); }}>
               <Text style={styles.viewAllAction}>Ver todo</Text>
             </TouchableOpacity>
           </View>
 
-          {transactions.slice(0, 5).length === 0 ? (
+          {transactions.slice(0, 3).length === 0 ? (
             <View style={{ padding: 40, alignItems: 'center', opacity: 0.3 }}>
               <History size={48} color={theme.colors.onSurfaceVariant} strokeWidth={1} />
               <Text style={{ marginTop: 12, fontWeight: '800', textAlign: 'center' }}>No hay movimientos recientes</Text>
             </View>
           ) : (
-            transactions.slice(0, 5).map((tx) => {
+            transactions.slice(0, 3).map((tx) => {
               const catColor = (theme.colors.categoryColors[tx.category] || theme.colors.categoryColors['Otros'])[0];
               return (
                 <TouchableOpacity key={tx.id} style={styles.txItem} activeOpacity={0.7}>

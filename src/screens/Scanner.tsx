@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
-  View, Text, Image, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, TextInput, Dimensions, Platform
+  View, Text, Image, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, TextInput, Dimensions, Platform, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -134,7 +134,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
   }), [theme]);
 
   const [progress, setProgress] = useState(0);
-  const [editableAmount, setEditableAmount] = useState<string>('0');
+  const [editableAmount, setEditableAmount] = useState<string>('');
   const [image, setImage] = useState<string | null>(null);
   const [visionOutput, setVisionOutput] = useState<string | null>(null);
   const [isOpeningPicker, setIsOpeningPicker] = useState(false);
@@ -290,114 +290,133 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
   };
 
   return (
-    <View style={styles.scannerContainer}>
-      {!image && (
-        <View style={styles.scannerInitialView}>
-          <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: 40, borderRadius: 100, marginBottom: 40 }}>
-            <CameraIcon size={80} color="rgba(255,255,255,0.4)" strokeWidth={1} />
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <KeyboardAvoidingView style={[styles.scannerContainer, { backgroundColor: theme.colors.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        
+        {image && (
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }]}>
+            <Image source={{ uri: image }} style={{ width: '100%', height: '100%', opacity: 0.6 }} resizeMode="contain" />
           </View>
-          <Text style={styles.scannerInitialText}>Captura tu comprobante para que la Pro-AI analice tu gasto.</Text>
-          
-          <TouchableOpacity onPress={takePhoto} style={styles.mainCameraButton} activeOpacity={0.8}>
-            <CameraIcon size={24} color="#FFF" />
-            <Text style={styles.mainCameraButtonText}>Tomar Fotografía</Text>
+        )}
+
+        <View style={[styles.scannerTopBar, { paddingTop: Math.max(insets.top, 16) + 16 }]}>
+          <TouchableOpacity 
+            style={[styles.closeBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outlineVariant }]} 
+            onPress={() => { if (image) { setImage(null); setExtractedData(null); setProgress(0); } else onGoBack(); Keyboard.dismiss(); }}
+          >
+            <XIcon size={24} color={theme.colors.onSurface} strokeWidth={2.5} />
           </TouchableOpacity>
-          
-          <TouchableOpacity onPress={pickImage} style={[styles.mainCameraButton, { backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.2)' }]} activeOpacity={0.8}>
-            <ImagePlusIcon size={24} color="#FFF" />
-            <Text style={styles.mainCameraButtonText}>Seleccionar Galería</Text>
-          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          <View style={[styles.scannerBadge, { backgroundColor: theme.colors.primaryContainer, borderColor: theme.colors.primary + '30' }]}>
+            <Text style={[styles.scannerBadgeText, { color: theme.colors.primary }]}>Ingresar Gasto</Text>
+          </View>
         </View>
-      )}
 
-      {image && <Image source={{ uri: image }} style={StyleSheet.absoluteFillObject} resizeMode="contain" />}
-      
-      <View style={[styles.scannerTopBar, { paddingTop: Math.max(insets.top, 16) + 16 }]}>
-        <TouchableOpacity 
-          style={styles.closeBtn} 
-          onPress={() => { if (image) { setImage(null); setExtractedData(null); setProgress(0); } else onGoBack(); }}
-        >
-          <XIcon size={24} color="#FFF" />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }} />
-        <View style={[styles.scannerBadge, { backgroundColor: theme.colors.primary }]}>
-          <Text style={styles.scannerBadgeText}>Auditoría Directa</Text>
-        </View>
-      </View>
+        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end', paddingBottom: Math.max(insets.bottom, 24) + 20 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {(image && progress > 0 && progress < 100) ? (
+            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }]}>
+               <BlurView intensity={20} tint="dark" style={{ padding: 40, borderRadius: 32, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+                 <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginBottom: 24 }} />
+                 <Text style={{ color: '#FFF', fontSize: 20, fontWeight: '900', marginBottom: 12, textAlign: 'center' }}>
+                   {progress < 40 ? 'Escaneando...' : 'Analizando con IA...'}
+                 </Text>
+                 <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, fontWeight: '600', textAlign: 'center', marginBottom: 24 }}>
+                   Save está extrayendo los datos de tu factura
+                 </Text>
+                 <View style={{ width: 140 }}>
+                   <AnimatedProgressBar percent={progress} color={theme.colors.primary} bgColor="rgba(255,255,255,0.1)" />
+                 </View>
+               </BlurView>
+            </View>
+          ) : (
+            <View style={{ paddingHorizontal: 16 }}>
+               {!image && (
+                 <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+                    <TouchableOpacity onPress={takePhoto} style={[styles.mainCameraButton, { flex: 1, backgroundColor: theme.colors.surface, borderWidth: 1.5, borderColor: theme.colors.outlineVariant }]} activeOpacity={0.8}>
+                      <CameraIcon size={20} color={theme.colors.primary} />
+                      <Text style={[styles.mainCameraButtonText, { color: theme.colors.primary, fontSize: 13 }]}>Cámara</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={pickImage} style={[styles.mainCameraButton, { flex: 1, backgroundColor: theme.colors.surface, borderWidth: 1.5, borderColor: theme.colors.outlineVariant }]} activeOpacity={0.8}>
+                      <ImagePlusIcon size={20} color={theme.colors.primary} />
+                      <Text style={[styles.mainCameraButtonText, { color: theme.colors.primary, fontSize: 13 }]}>Galería</Text>
+                    </TouchableOpacity>
+                 </View>
+               )}
 
-      {(image || isManualMode) && (
-        <View style={[styles.scannerProgressContainer, { paddingBottom: Math.max(insets.bottom, 24) + 20 }]}>
-          <BlurView intensity={Platform.OS === 'ios' ? 95 : 100} tint="light" style={styles.scannerProgressCard}>
-            {progress < 100 ? (
-              <View>
-                <Text style={styles.scannerActionTitle}>{progress < 30 ? 'Desencriptando...' : 'Analizando Factura...'}</Text>
-                <AnimatedProgressBar percent={progress} color={theme.colors.primary} bgColor={theme.colors.surfaceContainerHigh} />
-              </View>
-            ) : (
-              <ScrollView style={styles.beautifulResultCard} scrollEnabled={false}>
-                <View style={styles.aiVerificationShield}>
-                  <Sparkles size={14} color={theme.colors.primary} fill={theme.colors.primary} />
-                  <Text style={styles.aiValidationText}>Escaneo Inteligente</Text>
-                </View>
+               <BlurView intensity={Platform.OS === 'ios' ? 95 : 100} tint="light" style={styles.scannerProgressCard}>
+                  {image && progress === 100 && (
+                    <View style={styles.aiVerificationShield}>
+                      <Sparkles size={14} color={theme.colors.primary} fill={theme.colors.primary} />
+                      <Text style={styles.aiValidationText}>Escaneo Inteligente</Text>
+                    </View>
+                  )}
 
-                <View style={styles.premiumAmountBox}>
-                  <Text style={styles.premiumAmountLabel}>Total Identificado</Text>
-                  <View style={styles.modernAmountInputRow}>
-                    <Text style={styles.modernCurrencySymbol}>$</Text>
-                    <TextInput
-                      style={styles.modernAmountInput}
-                      value={editableAmount}
-                      onChangeText={setEditableAmount}
-                      keyboardType="numeric"
-                      selectionColor={theme.colors.primary}
-                    />
-                    <Text style={styles.copBadge}>COP</Text>
-                  </View>
-                </View>
+                  {!image && (
+                    <Text style={[styles.aiValidationText, { textAlign: 'center', marginBottom: 16, color: theme.colors.onSurfaceVariant }]}>
+                      AGREGAR MANUALMENTE
+                    </Text>
+                  )}
 
-                <View style={styles.premiumDetailItem}>
-                   <View style={styles.premiumIconBox}><Store size={20} color={theme.colors.primary} /></View>
-                   <View style={{ flex: 1 }}>
-                      <Text style={styles.premiumDetailLabel}>Establecimiento</Text>
-                      <TextInput 
-                        style={styles.premiumDetailInput}
-                        value={editableMerchant}
-                        onChangeText={setEditableMerchant}
-                        placeholder="Nombre del Comercio"
-                        placeholderTextColor={theme.colors.onSurfaceVariant + '80'}
+                  <View style={styles.premiumAmountBox}>
+                    <Text style={styles.premiumAmountLabel}>Monto</Text>
+                    <View style={styles.modernAmountInputRow}>
+                      <Text style={styles.modernCurrencySymbol}>$</Text>
+                      <TextInput
+                        style={styles.modernAmountInput}
+                        value={editableAmount}
+                        onChangeText={setEditableAmount}
+                        keyboardType="numeric"
+                        selectionColor={theme.colors.primary}
+                        placeholder="0"
+                        placeholderTextColor={theme.colors.outlineVariant}
                       />
-                   </View>
-                </View>
+                      <Text style={styles.copBadge}>COP</Text>
+                    </View>
+                  </View>
 
-                <View style={styles.categoryPicker}>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                    {['Comida', 'Transporte', 'Ocio', 'Ahorros', 'Otros'].map((cat) => (
-                      <TouchableOpacity 
-                        key={cat} 
-                        onPress={() => setSelectedCategory(cat)}
-                        style={[styles.catChip, selectedCategory === cat && styles.catChipActive]}
-                      >
-                        <Text style={[styles.catText, selectedCategory === cat && styles.catTextActive]}>{cat}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
+                  <View style={styles.premiumDetailItem}>
+                     <View style={[styles.premiumIconBox, { backgroundColor: theme.colors.surfaceContainerHighest }]}><Store size={20} color={theme.colors.onSurface} /></View>
+                     <View style={{ flex: 1 }}>
+                        <Text style={styles.premiumDetailLabel}>Establecimiento</Text>
+                        <TextInput 
+                          style={styles.premiumDetailInput}
+                          value={editableMerchant}
+                          onChangeText={setEditableMerchant}
+                          placeholder="Nombre del Comercio"
+                          placeholderTextColor={theme.colors.onSurfaceVariant + '80'}
+                        />
+                     </View>
+                  </View>
 
-                <TouchableOpacity 
-                  onPress={saveToSupabase} 
-                  disabled={isSaving} 
-                  style={styles.premiumConfirmBtn}
-                  activeOpacity={0.9}
-                >
-                  <LinearGradient colors={theme.colors.brandGradient as any} style={styles.btnGradient} start={{x:0, y:0}} end={{x:1, y:0}}>
-                    {isSaving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.premiumConfirmBtnText}>Blindar Transacción</Text>}
-                  </LinearGradient>
-                </TouchableOpacity>
-              </ScrollView>
-            )}
-          </BlurView>
-        </View>
-      )}
-    </View>
+                  <View style={styles.categoryPicker}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
+                      {['Comida', 'Transporte', 'Ocio', 'Ahorros', 'Otros'].map((cat) => (
+                        <TouchableOpacity 
+                          key={cat} 
+                          onPress={() => setSelectedCategory(cat)}
+                          style={[styles.catChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outlineVariant }, selectedCategory === cat && styles.catChipActive]}
+                        >
+                          <Text style={[styles.catText, selectedCategory === cat && styles.catTextActive]}>{cat}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+
+                  <TouchableOpacity 
+                    onPress={saveToSupabase} 
+                    disabled={isSaving || parseInt(editableAmount.replace(/[^0-9]/g, '') || '0') <= 0} 
+                    style={[styles.premiumConfirmBtn, (isSaving || parseInt(editableAmount.replace(/[^0-9]/g, '') || '0') <= 0) && { opacity: 0.5 }]}
+                    activeOpacity={0.9}
+                  >
+                    <LinearGradient colors={theme.colors.brandGradient as any} style={styles.btnGradient} start={{x:0, y:0}} end={{x:1, y:0}}>
+                      {isSaving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.premiumConfirmBtnText}>Guardar Gasto</Text>}
+                    </LinearGradient>
+                  </TouchableOpacity>
+               </BlurView>
+            </View>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
   );
 };

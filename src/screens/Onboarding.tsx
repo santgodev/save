@@ -27,9 +27,9 @@ const CATEGORIES = [
 ];
 
 const STEP_META = [
-  { title: 'Inyección Inicial', sub: 'Establece la base de tu capital mensual para que la IA Save lo distribuya.' },
-  { title: 'Bolsillos Estratégicos', sub: 'Define dónde fluirá tu dinero. "Ahorro Seguro" es innegociable.' },
-  { title: 'Blindaje de Fondos', sub: 'Ajusta los porcentajes de asignación según tus objetivos reales.' },
+  { title: 'Punto de Partida', sub: 'Establece tus ingresos mensuales para empezar a organizarlos.' },
+  { title: 'Tus Sobres', sub: 'Divide tu dinero como si fueran sobres. "Ahorro Seguro" te protege.' },
+  { title: 'Confirmar Sobres', sub: 'Ajusta qué porcentaje de tu sueldo va para cada sobre.' },
 ];
 
 export const Onboarding = ({ session, onComplete }: { session: any, onComplete: () => void }) => {
@@ -232,7 +232,8 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
   };
 
   return (
-    <View style={styles.container}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
        <View style={styles.header}>
           <View style={styles.progressLine}>
              {[1, 2, 3].map(n => <View key={n} style={[styles.progressStep, n <= step && styles.progressStepActive]} />)}
@@ -286,7 +287,7 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
                           </LinearGradient>
                        </TouchableOpacity>
                     </View>
-                    <ScrollView showsVerticalScrollIndicator={false}>
+                    <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                        {selectedCats.map(id => (
                           <View key={id} style={[styles.pocketPill, id === 'Ahorros' && styles.pocketPillActive]}>
                              <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: (theme.colors.categoryColors[id] || theme.colors.categoryColors['Otros'])[0] + '15', alignItems: 'center', justifyContent: 'center' }}>
@@ -315,7 +316,7 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
                        <View style={styles.allocBar}>
                           <LinearGradient colors={theme.colors.brandGradient as any} style={{ flex: 1 }} start={{x:0, y:0}} end={{x:1, y:0}} />
                        </View>
-                       <Text style={[styles.allocStatus, { color: theme.colors.primary }]}>Blindaje Sugerido por la IA activa</Text>
+                       <Text style={[styles.allocStatus, { color: theme.colors.primary }]}>Organización Sugerida por tu Asistente</Text>
                     </View>
                     <ScrollView>
                        {selectedCats.map(id => {
@@ -350,12 +351,13 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
              <LinearGradient colors={theme.colors.brandGradient as any} style={[styles.btnNext, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 24 }]} start={{x: 0, y: 0}} end={{x: 1, y: 1}} />
              {loading ? <ActivityIndicator color="#FFF" /> : (
                 <>
-                  <Text style={{ color: '#FFF', fontSize: 18, fontWeight: '900' }}>{step === 3 ? 'Comenzar Blindaje' : 'Continuar'}</Text>
+                  <Text style={{ color: '#FFF', fontSize: 18, fontWeight: '900' }}>{step === 3 ? 'Empezar a Organizar' : 'Continuar'}</Text>
                   <ArrowRight size={22} color="#FFF" />
                 </>
              )}
           </TouchableOpacity>
        </View>
-    </View>
+      </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
   );
 };

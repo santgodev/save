@@ -180,15 +180,15 @@ export const getCategoryColorPair = (categoryName: string, isDark: boolean = fal
 
 // Retro-compatibility explicit mapping needed by chart components
 const generatedCategoryColors: Record<string, [string, string]> = {
-  'Ahorros': ['#8AD6CE', '#13302D'],
-  'Ahorro': ['#8AD6CE', '#13302D'],
-  'Comida': ['#F0927B', '#401A10'],
-  'Salud': ['#D2A9D1', '#30132F'],
-  'Hogar': ['#B9E2A2', '#1A2E1C'],
-  'Transporte': ['#8AD6CE', '#13302D'],
-  'Otros': ['#E7E9E0', '#4A5557'],
-  'Varios': ['#E7E9E0', '#4A5557'],
-  'Ingreso': ['#A5D6A7', '#1B5E20']
+  'Ahorros': ['#8AD6CE', '#64B3A8'],
+  'Ahorro': ['#8AD6CE', '#64B3A8'],
+  'Comida': ['#F0927B', '#D77762'],
+  'Salud': ['#D2A9D1', '#BB8EBB'],
+  'Hogar': ['#B9E2A2', '#A3CF8C'],
+  'Transporte': ['#8BD6DE', '#69CDE2'],
+  'Otros': ['#D5DEE0', '#B9C5C8'],
+  'Varios': ['#D5DEE0', '#B9C5C8'],
+  'Ingreso': ['#A5D6A7', '#86B988']
 };
 
 export const UI_COLORS = {

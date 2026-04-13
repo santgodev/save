@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
-  View, Text, TouchableOpacity, Animated, StyleSheet, Alert, ScrollView, TextInput, Dimensions, ActivityIndicator
+  View, Text, TouchableOpacity, Animated, StyleSheet, Alert, ScrollView, TextInput, Dimensions, ActivityIndicator, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Platform
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
@@ -167,21 +167,22 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
   const availableCategories = [...new Set(transactions.map(tx => tx.category))].filter(Boolean) as string[];
 
   return (
-    <View style={styles.container}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Animated.View style={[styles.headerContainer, { opacity: fadeAnim, paddingTop: Math.max(insets.top, 16) + 104 }]}>
-        <BlurView intensity={90} tint={theme.mode === 'honey' ? 'light' : 'dark'} style={styles.overviewCard}>
+        <View style={styles.overviewCard}>
            <View style={styles.overviewHeader}>
-              <View style={[styles.dotIndicator, { backgroundColor: totalSpent >= 0 ? theme.colors.success : theme.colors.error }]} />
+              <View style={[styles.dotIndicator, { backgroundColor: totalSpent >= 0 ? theme.colors.success : theme.colors.primary }]} />
               <Text style={[styles.overviewTitle, { color: theme.colors.primary }]}>RESUMEN DE FLUJO</Text>
            </View>
-           <Text style={[styles.totalAmountText, { color: totalSpent >= 0 ? theme.colors.success : theme.colors.error }]}>
-              {totalSpent >= 0 ? '+' : '-'} $ {Math.abs(totalSpent).toLocaleString('es-CO')}
+           <Text style={[styles.totalAmountText, { color: theme.colors.onSurface }]}>
+              {totalSpent >= 0 ? '' : '-'} $ {Math.abs(totalSpent).toLocaleString('es-CO')}
            </Text>
            <View style={styles.trendRow}>
               <TrendingUp size={14} color={theme.colors.onSurfaceVariant} />
               <Text style={styles.trendText}>Control activo de capital</Text>
            </View>
-        </BlurView>
+        </View>
 
            <View style={styles.searchRow}>
               <View style={styles.searchBar}>
@@ -225,6 +226,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
       </Animated.View>
 
       <ScrollView 
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.scrollContent} 
         showsVerticalScrollIndicator={false}
       >
@@ -316,6 +318,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
           </View>
         </View>
       )}
-    </View>
+      </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
   );
 };
