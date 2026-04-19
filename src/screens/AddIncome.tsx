@@ -506,7 +506,6 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pocke
           )}
         </TouchableOpacity>
       </View>
-      </ScrollView>
     </KeyboardAvoidingView>
   );
 };
