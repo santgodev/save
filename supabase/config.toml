@@ -1,0 +1,19 @@
+# Supabase project configuration for organic-ledger.
+# This file is used by `supabase` CLI to know which functions to deploy
+# and which import maps to apply.
+
+project_id = "vxdnudkaelhqntrrwdwa"
+
+# NOTE on verify_jwt = false:
+# The gateway-level JWT verification does not yet support ES256 signing keys,
+# which is the algorithm the project uses after enabling the new Supabase
+# "JWT Signing Keys" feature (asymmetric). Setting verify_jwt=false disables
+# the gateway check, but we STILL verify the caller inside each function via
+# `authenticate()` in _shared/auth.ts, which calls supabase.auth.getUser()
+# with the Authorization header. That path validates ES256 tokens correctly.
+
+[functions.chat-advisor]
+verify_jwt = false
+
+[functions.ocr-receipt]
+verify_jwt = false

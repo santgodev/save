@@ -2,14 +2,16 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   View, Text, Image, TouchableOpacity, StyleSheet, Platform,
   Modal, ScrollView, ActivityIndicator, TextInput, KeyboardAvoidingView,
-  Keyboard, TouchableWithoutFeedback
+  Keyboard, TouchableWithoutFeedback, PanResponder, LayoutAnimation, Alert
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
-import { Bell, X, Sparkles, Send, Target } from 'lucide-react-native';
+import { Bell, X, Sparkles, Send, Target, Trash2 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
 import { calculateFinancialProfile } from '../utils/profileUtils';
+import { supabase } from '../lib/supabase';
+import { logEvent, EVENTS } from '../lib/events';
 
 interface TopBarProps {
   title: string;
@@ -42,68 +44,111 @@ export const TopBar = ({ title, userAvatar, userName, userId, transactions = [],
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [hasNewInsights, setHasNewInsights] = useState(false);
+  const [isScoreMinimized, setIsScoreMinimized] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+
+  const renderMessageText = (text: string, style: any) => {
+    // Parser simple para negritas (**) y saltos de línea con viñetas
+    const parts = text.split(/(\*\*.*?\*\*|\n- )/g);
+    return (
+      <Text style={style}>
+        {parts.map((part, i) => {
+          if (part.startsWith('**') && part.endsWith('**')) {
+            return <Text key={i} style={{ fontWeight: '800' }}>{part.slice(2, -2)}</Text>;
+          }
+          if (part === '\n- ') {
+             return <Text key={i}>{"\n\u2022 "}</Text>;
+          }
+          return part;
+        })}
+      </Text>
+    );
+  };
 
   const profileData = useMemo(() => calculateFinancialProfile(transactions, [], pockets), [transactions, pockets]);
 
-  // Mensaje de bienvenida al abrir por primera vez
+  // ---------------------------------------------------------------------------
+  // Persisted history: load from chat_messages on every chat open so that the
+  // conversation survives app reloads and feels continuous.
+  // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (showChat && messages.length === 0) {
-      const totalGasto = transactions
-        .filter(t => parseFloat(t.amount) < 0)
-        .reduce((acc, t) => acc + Math.abs(parseFloat(t.amount)), 0);
+    if (!showChat) return;
+    let cancelled = false;
 
-      const greeting = `Hola${userName ? ` ${userName.split(' ')[0]}` : ''}! 👋 Soy tu asistente de Save.\n\nEste mes llevas ${totalGasto > 0 ? `$ ${Math.round(totalGasto).toLocaleString('es-CO')} en gastos` : 'sin gastos registrados aún'}. Tu puntaje financiero es **${profileData.score}/100**.\n\n¿En qué te puedo ayudar?`;
+    (async () => {
+      logEvent(EVENTS.CHAT_OPENED);
 
-      setMessages([{ role: 'assistant', content: greeting }]);
-    }
-  }, [showChat]);
+      try {
+        if (userId) {
+          const { data, error } = await supabase
+            .from('chat_messages')
+            .select('role,content,created_at')
+            .eq('user_id', userId)
+            .in('role', ['user', 'assistant'])
+            .order('created_at', { ascending: true })
+            .limit(50);
 
-  const buildSystemContext = () => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
+          if (!error && data && !cancelled) {
+            const restored: Message[] = data.map(d => ({
+              role: d.role as 'user' | 'assistant',
+              content: d.content,
+            }));
+            if (restored.length > 0) {
+              setMessages(restored);
+              return;
+            }
+          }
+        }
 
-    const monthlyTx = transactions.filter(tx => {
-      const d = new Date(tx.date_string || tx.created_at);
-      return d.getMonth() === currentMonth;
-    });
+        // Fallback greeting when there's no history.
+        if (cancelled) return;
+        const totalGasto = transactions
+          .filter(t => parseFloat(t.amount) < 0)
+          .reduce((acc, t) => acc + Math.abs(parseFloat(t.amount)), 0);
 
-    const gastos = monthlyTx.filter(t => parseFloat(t.amount) < 0);
-    const ingresos = monthlyTx.filter(t => parseFloat(t.amount) > 0);
+        const greeting = `Hola${userName ? ` ${userName.split(' ')[0]}` : ''}! 👋 Soy tu asistente de Save.\n\nEste mes llevas ${totalGasto > 0 ? `$ ${Math.round(totalGasto).toLocaleString('es-CO')} en gastos` : 'sin gastos registrados aún'}. Tu puntaje financiero es ${profileData.score}/100.\n\n¿En qué te puedo ayudar?`;
 
-    const totalGasto = gastos.reduce((acc, t) => acc + Math.abs(parseFloat(t.amount)), 0);
-    const totalIngreso = ingresos.reduce((acc, t) => acc + Math.abs(parseFloat(t.amount)), 0);
+        setMessages([{ role: 'assistant', content: greeting }]);
+      } catch (e) {
+        console.warn('[chat] history load failed', e);
+      }
+    })();
 
-    // Agrupar por categoría
-    const porCategoria: Record<string, number> = {};
-    gastos.forEach(t => {
-      const cat = t.category || 'Otros';
-      porCategoria[cat] = (porCategoria[cat] || 0) + Math.abs(parseFloat(t.amount));
-    });
-    const topCats = Object.entries(porCategoria)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([cat, amt]) => `${cat}: $${Math.round(amt).toLocaleString('es-CO')}`)
-      .join(', ');
+    return () => { cancelled = true; };
+  }, [showChat, userId]);
 
-    const bolsillosInfo = pockets
-      .map(p => `${p.name} (presupuesto: $${(p.budget || 0).toLocaleString('es-CO')})`)
-      .join(', ');
-
-    return `Eres el asistente de Save (antes llamado Sage), un coach financiero experto en Colombia. Tu estilo es:
-- 🇨🇴 Colombiano muy parcero, amigable y directo.
-- ⚡ RESPUESTAS ULTRA-CORTAS: Máximo 2 oraciones breves por respuesta. No saludes siempre.
-- 🎯 ACCIONABLE: Si sugieres arreglar un bolsillo o mover plata, termina tu respuesta con el código [ACTION:TRANSFER]. Si sugieres revisar bolsillos, usa [ACTION:POCKETS]. Si sugieres ver gastos, usa [ACTION:EXPENSES].
-
-DATOS REALES DEL USUARIO:
-- Mes actual: ${now.toLocaleDateString('es-CO', { month: 'long' })}
-- Gastado: $${Math.round(totalGasto).toLocaleString('es-CO')} | Ingresado: $${Math.round(totalIngreso).toLocaleString('es-CO')}
-- Health Score: ${profileData.score}/100.
-- Top gastos: ${topCats || 'Sin datos'}.
-- Bolsillos: ${bolsillosInfo || 'Sin bolsillos'}.
-
-No inventes cifras. Responde directo a la pregunta.`;
+  const clearChat = async () => {
+    Alert.alert(
+      "Reiniciar chat",
+      "¿Estás seguro de que quieres borrar toda la conversación? Save olvidará el contexto de esta charla.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Borrar", 
+          style: "destructive",
+          onPress: async () => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            if (userId) {
+              try {
+                await supabase.from('chat_messages').delete().eq('user_id', userId);
+              } catch (e) {
+                console.warn('[chat] error clearing history', e);
+              }
+            }
+            const totalGasto = transactions
+              .filter(t => parseFloat(t.amount) < 0)
+              .reduce((acc, t) => acc + Math.abs(parseFloat(t.amount)), 0);
+            const greeting = `Hola${userName ? ` ${userName.split(' ')[0]}` : ''}! 👋 Soy tu asistente de Save.\n\nEste mes llevas ${totalGasto > 0 ? `$ ${Math.round(totalGasto).toLocaleString('es-CO')} en gastos` : 'sin gastos registrados aún'}. Tu puntaje financiero es ${profileData.score}/100.\n\n¿En qué te puedo ayudar?`;
+            setMessages([{ role: 'assistant', content: greeting }]);
+          }
+        }
+      ]
+    );
   };
+
+  // NOTE: system prompt construction now happens entirely on the server,
+  // inside the `chat-advisor` Edge Function (see supabase/functions/_shared/prompts.ts).
+  // The client no longer needs to assemble context or ship it with the request.
 
   const sendMessage = async (text: string) => {
     const trimmed = text.trim();
@@ -119,34 +164,54 @@ No inventes cifras. Responde directo a la pregunta.`;
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
 
     try {
-      const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-      if (!OPENAI_API_KEY) throw new Error('No API key');
+      // All the OpenAI + context-building work now happens server-side in the
+      // `chat-advisor` Edge Function. We explicitly attach the user's access
+      // token so the function can identify them via RLS — supabase-js otherwise
+      // falls back to the anon key when the session isn't fully loaded, which
+      // makes the server return 401.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData?.session;
+      const accessToken = session?.access_token;
 
-      const apiMessages = [
-        { role: 'system', content: buildSystemContext() },
-        ...newMessages.map(m => ({ role: m.role, content: m.content }))
-      ];
-
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: apiMessages,
-          temperature: 0.7,
-          max_tokens: 400
-        })
+      // Diagnostic log: remove once the 401 is resolved.
+      console.log('[chat] session debug', {
+        hasSession: !!session,
+        hasToken: !!accessToken,
+        tokenPreview: accessToken ? accessToken.slice(0, 24) + '…' : null,
+        userId: session?.user?.id ?? null,
+        expiresAt: session?.expires_at ?? null,
+        nowEpoch: Math.floor(Date.now() / 1000),
       });
 
-      const data = await response.json();
-      const reply = data.choices?.[0]?.message?.content || 'No pude procesar esa consulta. Intenta de nuevo.';
+      if (!accessToken) {
+        throw new Error('No hay sesión activa. Por favor vuelve a iniciar sesión.');
+      }
+
+      const { data, error } = await supabase.functions.invoke('chat-advisor', {
+        body: { message: trimmed },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (error) {
+        // supabase-js wraps the HTTP response in error.context so we can read
+        // the real server message. Without this we only see "non-2xx status".
+        let serverBody: string | null = null;
+        try {
+          // @ts-ignore — error.context exists at runtime on FunctionsHttpError.
+          const resp: Response | undefined = (error as any).context;
+          if (resp) serverBody = await resp.text();
+        } catch {/* ignore */}
+        console.warn('[chat] edge function error', { message: error.message, serverBody });
+        throw new Error(serverBody ? `Servidor: ${serverBody}` : error.message);
+      }
+
+      const reply = (data?.reply as string | undefined) ?? 'No pude procesar esa consulta. Intenta de nuevo.';
       setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Ups, no pude conectarme con Sage IA en este momento. Revisa tu conexión.' }]);
+      console.warn('[chat] invoke failed', e);
+      const errMsg = e instanceof Error ? e.message : 'Ups, no pude conectarme con Save IA en este momento. Revisa tu conexión.';
+      setMessages(prev => [...prev, { role: 'assistant', content: errMsg }]);
     } finally {
       setIsTyping(false);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150);
@@ -326,17 +391,44 @@ No inventes cifras. Responde directo a la pregunta.`;
                     <Text style={styles.chatSubtitle}>IA Personalizada</Text>
                   </View>
                 </View>
-                <TouchableOpacity style={styles.closeBtn} onPress={() => { setShowChat(false); }}>
-                  <X size={18} color={theme.colors.onSurface} strokeWidth={2.5} />
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <TouchableOpacity style={styles.closeBtn} onPress={clearChat}>
+                    <Trash2 size={16} color={theme.colors.error} strokeWidth={2.5} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.closeBtn} onPress={() => { setShowChat(false); }}>
+                    <X size={18} color={theme.colors.onSurface} strokeWidth={2.5} />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {/* Score strip */}
-              <View style={styles.scoreStrip}>
-                <Target size={16} color={theme.colors.primary} />
-                <Text style={styles.scoreText}>
-                  Health Score: {profileData.score}/100 · {profileData.scoreMessage}
-                </Text>
+              <View 
+                {...PanResponder.create({
+                  onStartShouldSetPanResponder: () => true,
+                  onPanResponderRelease: (e, gestureState) => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    if (gestureState.dx < -20) setIsScoreMinimized(true);
+                    else if (gestureState.dx > 20) setIsScoreMinimized(false);
+                    else setIsScoreMinimized(!isScoreMinimized);
+                  }
+                }).panHandlers}
+                style={[styles.scoreStrip, { 
+                  backgroundColor: profileData.score >= 80 ? '#D1FAE5' : profileData.score >= 50 ? '#FEF3C7' : '#FEE2E2',
+                  alignSelf: isScoreMinimized ? 'flex-end' : 'stretch',
+                  width: isScoreMinimized ? 44 : 'auto',
+                  height: isScoreMinimized ? 44 : 'auto',
+                  padding: isScoreMinimized ? 0 : 12,
+                  justifyContent: 'center',
+                }]}>
+                <Target size={18} color={profileData.score >= 80 ? '#10B981' : profileData.score >= 50 ? '#F59E0B' : '#EF4444'} />
+                {!isScoreMinimized && (
+                  <Text style={[styles.scoreText, { 
+                    flex: 1, flexWrap: 'wrap',
+                    color: profileData.score >= 80 ? '#065F46' : profileData.score >= 50 ? '#92400E' : '#991B1B' 
+                  }]}>
+                    Health Score: {profileData.score}/100 · {profileData.scoreMessage}
+                  </Text>
+                )}
               </View>
 
               {/* Mensajes */}
@@ -357,9 +449,10 @@ No inventes cifras. Responde directo a la pregunta.`;
                       </View>
                     )}
                     <View style={msg.role === 'user' ? styles.bubbleUserInner : styles.bubbleAssistantInner}>
-                      <Text style={msg.role === 'user' ? styles.bubbleUserText : styles.bubbleAssistantText}>
-                        {msg.content.replace(/\[ACTION:.*\]/g, '').trim()}
-                      </Text>
+                      {renderMessageText(
+                        msg.content.replace(/\[ACTION:.*\]/g, '').trim(),
+                        msg.role === 'user' ? styles.bubbleUserText : styles.bubbleAssistantText
+                      )}
                       {msg.role === 'assistant' && msg.content.includes('[ACTION:TRANSFER]') && (
                         <TouchableOpacity 
                           style={{ marginTop: 12, backgroundColor: theme.colors.primary, paddingVertical: 10, borderRadius: 12, alignItems: 'center' }}

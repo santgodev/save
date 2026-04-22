@@ -12,9 +12,8 @@ import { useTheme } from '../theme/ThemeContext';
 import { normalize } from '../theme/theme';
 import { AnimatedProgressBar } from '../components/AnimatedProgressBar';
 import { supabase } from '../lib/supabase';
-import { createClient } from '@supabase/supabase-js';
-import { GOOGLE_VISION_API_KEY, OPENAI_API_KEY, SUPABASE_URL, SUPABASE_ANON_KEY } from '../constants';
 import { normalizeMerchant } from '../utils/merchant';
+import { logEvent, EVENTS } from '../lib/events';
 
 const { width, height } = Dimensions.get('window');
 
@@ -201,55 +200,57 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
   };
 
   const performTextDetection = async (base64: string) => {
+    // OCR + LLM parsing is now server-side via the `ocr-receipt` Edge Function.
+    // No API keys leave the phone; we only send the image + our JWT.
     setProgress(10);
-    const fakeProgress = setInterval(() => setProgress(p => (p < 55 ? p + 2 : p)), 100);
+    const fakeProgress = setInterval(() => setProgress(p => (p < 85 ? p + 3 : p)), 120);
     try {
-      const vResp = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${GOOGLE_VISION_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requests: [{ image: { content: base64 }, features: [{ type: 'TEXT_DETECTION' }] }] })
-      });
-      const vData = await vResp.json();
-      const ocrText = vData.responses?.[0]?.fullTextAnnotation?.text;
-      if (!ocrText || ocrText.trim().length < 15) throw new Error('No logré leer bien la foto.');
+      logEvent(EVENTS.SCANNER_OPENED);
 
-      setProgress(60);
-      const oaiResp = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [{ 
-            role: 'system', 
-            content: 'Auditor experto para la app "Save". Estamos en el año 2026. Identifica el establecimiento, monto y fecha. JSON: merchant, amount (entero), date (YYYY-MM-DD), category (Comida, Transporte, Ocio, Otros).' 
-          }, { role: 'user', content: ocrText }],
-          response_format: { type: 'json_object' }
-        })
+      // Pass the user's access token explicitly. Without this supabase-js
+      // may fall back to the anon key when the session isn't fully loaded,
+      // and the Edge Function will return 401.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        throw new Error('No hay sesión activa. Vuelve a iniciar sesión.');
+      }
+
+      const { data, error } = await supabase.functions.invoke('ocr-receipt', {
+        body: { image_base64: base64 },
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
-      const oaiData = await oaiResp.json();
       clearInterval(fakeProgress);
-      const result = JSON.parse(oaiData.choices[0].message.content);
-      
-      const finalDate = result.date || new Date().toISOString().split('T')[0];
-      const isValid = isValidTransaction(result);
-      const amount = String(result.amount || '0').replace(/[^0-9]/g, '');
-      
-      setExtractedData({ 
-        merchant: result.merchant || 'Desconocido', 
-        amount, 
-        date: finalDate, 
-        category: result.category || 'Comida' 
+
+      if (error) throw error;
+      const parsed = data?.parsed ?? {};
+
+      const finalDate = parsed.date || new Date().toISOString().split('T')[0];
+      const amount = String(parsed.amount || '0').replace(/[^0-9]/g, '');
+      const isValid =
+        parsed &&
+        typeof parsed.amount === 'number' &&
+        parsed.amount > 0 &&
+        parsed.merchant &&
+        parsed.merchant !== 'Desconocido';
+
+      setExtractedData({
+        merchant: parsed.merchant || 'Desconocido',
+        amount,
+        date: finalDate,
+        category: 'Comida',
       });
-      
+
       setEditableAmount(amount);
-      setEditableMerchant(result.merchant || '');
-      setSelectedCategory(result.category || 'Comida');
-      
+      setEditableMerchant(parsed.merchant || '');
+      // We still let the user pick the category in the UI.
+
       if (!isValid) setIsManualMode(true);
       setProgress(100);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error: any) {
       clearInterval(fakeProgress);
+      console.warn('[scanner] ocr failed', error);
       setIsManualMode(true);
       setProgress(100);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

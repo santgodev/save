@@ -16,8 +16,11 @@ export const INITIAL_POCKETS: Pocket[] = [
   { id: '4', name: 'Fondo Futuro', category: 'Ahorros', spent: 600, budget: 1000, icon: 'PiggyBank' },
 ];
 
-export const GOOGLE_VISION_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_VISION_API_KEY || '';
-export const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
+// -----------------------------------------------------------------------------
+// SECURITY: OpenAI and Google Vision API keys MUST NOT live on the client.
+// They are now injected as Edge Function secrets and accessed only from
+// Supabase Functions (chat-advisor, ocr-receipt). Do not re-add them here.
+// -----------------------------------------------------------------------------
 export const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
 export const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
 
