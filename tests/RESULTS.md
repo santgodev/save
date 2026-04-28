@@ -93,6 +93,63 @@ Todavía no arreglados (para próximas sesiones):
 
 ---
 
+## 2026-04-22 (tercera corrida) — POST-FIX separación allocated_budget
+
+**Corredor:** Claude vía Supabase MCP.
+**Migración aplicada:** `supabase/migrations/20260422000002_separate_allocated_budget.sql` (OK).
+**Edge Function redeployada:** `chat-advisor` version 5 → 6 (yo hice v5; el
+usuario redeployó encima con un prompt "proactivo con botones" — la lógica
+de allocated/available quedó intacta).
+
+### Cambios de schema
+- `pockets.allocated_budget` nuevo, `NOT NULL DEFAULT 0`, `CHECK >= 0`.
+- `pockets.budget` ahora oficialmente = "saldo disponible hoy".
+- Backfill: `allocated_budget = COALESCE(budget, 0)` en bolsillos existentes.
+- Ambos campos documentados con `COMMENT ON COLUMN`.
+
+### Verificación en prod (BEGIN/ROLLBACK, usuario santgodev)
+Antes: los 5 bolsillos tienen `allocated_budget = budget` (post-backfill).
+Gasto simulado de $12.345 en "Comida":
+
+| Campo | Antes | Después |
+|---|---|---|
+| allocated_budget | 442.500 | 442.500 ✅ (no se movió) |
+| budget           | 442.500 | 430.155 ✅ (decrementó) |
+
+Ahora el advisor puede decir "plan $442.500 · queda $430.155 (gastado 3%)"
+en lugar del ambiguo "presupuesto $442.500" de antes.
+
+### Cambios de aplicación
+- `supabase/functions/_shared/prompts.ts` → `ADVISOR_PROMPT_VERSION = "advisor.v3"`:
+  - Nuevo campo `allocated_budget` en la interfaz del pocket.
+  - Render `plan $X · queda $Y (gastado Z%)`.
+  - Regla: alertar si gastado >= 80% o si el ritmo va a reventar el plan.
+- `supabase/functions/chat-advisor/index.ts`:
+  - `select` trae `allocated_budget`.
+  - Mapping lo pasa al prompt.
+- `supabase/functions/_shared/tools.ts`:
+  - `create_pocket` inicializa `budget = allocated_budget = initial`
+    (al crear, asignado = disponible por consistencia).
+
+### Observación sobre el redeploy v6 del usuario
+El usuario desplegó otro prompt encima del v3 con personalidad proactiva y
+botones `[BOTON:...]` obligatorios. **El contenido cambió pero
+`ADVISOR_PROMPT_VERSION` sigue en "v3"** — próxima vez que se toque texto
+del prompt hay que subir a v4 para no perder trazabilidad offline.
+
+### Pendiente siguiente sesión
+- Bug #7 medio — default `preferred_currency = 'USD'`.
+- Bug #8 alto — onboarding permite `monthly_income = 0`.
+- Bug #9 medio — `date_string` sin validación.
+- Bug #11 bajo — trigger para `canonical_merchant`.
+- Bug #12 medio — `chat_messages.session_id` null por defecto.
+- Bug #13 bajo — OCR devuelve "Desconocido" demasiado seguido.
+- UI: barra de progreso por bolsillo plan/queda.
+- UI: flujo "reasignar presupuesto" que haga
+  `UPDATE pockets SET allocated_budget = X, budget = X WHERE id = …`.
+
+---
+
 ## Plantilla para futuras corridas
 
 ```

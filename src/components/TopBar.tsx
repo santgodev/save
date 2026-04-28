@@ -47,22 +47,97 @@ export const TopBar = ({ title, userAvatar, userName, userId, transactions = [],
   const [isScoreMinimized, setIsScoreMinimized] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
-  const renderMessageText = (text: string, style: any) => {
-    // Parser simple para negritas (**) y saltos de línea con viñetas
-    const parts = text.split(/(\*\*.*?\*\*|\n- )/g);
+  const renderMessageContent = (msg: Message, style: any) => {
+    // Extraer botones
+    const buttonRegex = /\[BOTON:(.*?)\]/g;
+    const buttons: string[] = [];
+    let match;
+    while ((match = buttonRegex.exec(msg.content)) !== null) {
+      buttons.push(match[1]);
+    }
+
+    // Limpiar texto
+    let cleanText = msg.content.replace(buttonRegex, '').replace(/\[ACTION:.*\]/g, '').trim();
+
+    // Parser simple para negritas (**), saltos de línea con viñetas y dinero ($XX.XXX o XXk)
+    const parts = cleanText.split(/(\*\*.*?\*\*|\n- |\$ ?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?|\d{1,3}k)/g);
+    
     return (
-      <Text style={style}>
-        {parts.map((part, i) => {
-          if (part.startsWith('**') && part.endsWith('**')) {
-            return <Text key={i} style={{ fontWeight: '800' }}>{part.slice(2, -2)}</Text>;
-          }
-          if (part === '\n- ') {
-             return <Text key={i}>{"\n\u2022 "}</Text>;
-          }
-          return part;
-        })}
-      </Text>
+      <View>
+        {cleanText.length > 0 && (
+          <Text style={style}>
+            {parts.map((part, i) => {
+              if (part.startsWith('**') && part.endsWith('**')) {
+                return <Text key={i} style={{ fontWeight: '800' }}>{part.slice(2, -2)}</Text>;
+              }
+              if (part === '\n- ') {
+                 return <Text key={i}>{"\n\u2022 "}</Text>;
+              }
+              // Detect money amounts
+              if (part.match(/^(\$ ?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?|\d{1,3}k)$/)) {
+                return (
+                  <Text key={i} style={{ 
+                    backgroundColor: msg.role === 'assistant' ? theme.colors.primary + '20' : 'rgba(255,255,255,0.2)',
+                    color: msg.role === 'assistant' ? theme.colors.primary : '#FFF',
+                    fontWeight: '900',
+                  }}>
+                    {` ${part} `}
+                  </Text>
+                );
+              }
+              return part;
+            })}
+          </Text>
+        )}
+        
+        {buttons.length > 0 && (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+            {buttons.map((btn, i) => (
+              <TouchableOpacity 
+                key={i} 
+                style={{ 
+                  backgroundColor: msg.role === 'user' ? 'rgba(255,255,255,0.2)' : theme.colors.primaryContainer, 
+                  paddingHorizontal: 12, paddingVertical: 8, 
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: msg.role === 'user' ? 'transparent' : theme.colors.primary + '40'
+                }}
+                onPress={() => sendMessage(btn)}
+              >
+                <Text style={{ 
+                  color: msg.role === 'user' ? '#FFF' : theme.colors.primary, 
+                  fontSize: 12, fontWeight: '700' 
+                }}>
+                  {btn}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
     );
+  };
+
+  const getProactiveGreeting = () => {
+    const totalGasto = transactions
+      .filter(t => parseFloat(t.amount) < 0)
+      .reduce((acc, t) => acc + Math.abs(parseFloat(t.amount)), 0);
+      
+    let insight = "Todo se ve bien por ahora. 👍";
+    const criticalPocket = pockets.find(p => {
+      const alloc = parseFloat(p.allocated_budget || '0');
+      const avail = parseFloat(p.budget || '0');
+      if (alloc <= 0) return false;
+      return ((alloc - avail) / alloc) >= 0.8;
+    });
+
+    if (criticalPocket) {
+      insight = `Ojo parce, ya casi te gastas todo en **${criticalPocket.name}** 👀`;
+    } else if (totalGasto > 0) {
+      insight = `Llevas **$${Math.round(totalGasto).toLocaleString('es-CO')}** gastados. Vas a buen ritmo.`;
+    }
+
+    return `Hola${userName ? ` ${userName.split(' ')[0]}` : ''}! 👋 Te resumo rápido:\n${insight}\n\n[BOTON:¿Cómo voy este mes?][BOTON:Ver mis gastos][BOTON:Dame un consejo]`;
   };
 
   const profileData = useMemo(() => calculateFinancialProfile(transactions, [], pockets), [transactions, pockets]);
@@ -102,13 +177,7 @@ export const TopBar = ({ title, userAvatar, userName, userId, transactions = [],
 
         // Fallback greeting when there's no history.
         if (cancelled) return;
-        const totalGasto = transactions
-          .filter(t => parseFloat(t.amount) < 0)
-          .reduce((acc, t) => acc + Math.abs(parseFloat(t.amount)), 0);
-
-        const greeting = `Hola${userName ? ` ${userName.split(' ')[0]}` : ''}! 👋 Soy tu asistente de Save.\n\nEste mes llevas ${totalGasto > 0 ? `$ ${Math.round(totalGasto).toLocaleString('es-CO')} en gastos` : 'sin gastos registrados aún'}. Tu puntaje financiero es ${profileData.score}/100.\n\n¿En qué te puedo ayudar?`;
-
-        setMessages([{ role: 'assistant', content: greeting }]);
+        setMessages([{ role: 'assistant', content: getProactiveGreeting() }]);
       } catch (e) {
         console.warn('[chat] history load failed', e);
       }
@@ -135,11 +204,7 @@ export const TopBar = ({ title, userAvatar, userName, userId, transactions = [],
                 console.warn('[chat] error clearing history', e);
               }
             }
-            const totalGasto = transactions
-              .filter(t => parseFloat(t.amount) < 0)
-              .reduce((acc, t) => acc + Math.abs(parseFloat(t.amount)), 0);
-            const greeting = `Hola${userName ? ` ${userName.split(' ')[0]}` : ''}! 👋 Soy tu asistente de Save.\n\nEste mes llevas ${totalGasto > 0 ? `$ ${Math.round(totalGasto).toLocaleString('es-CO')} en gastos` : 'sin gastos registrados aún'}. Tu puntaje financiero es ${profileData.score}/100.\n\n¿En qué te puedo ayudar?`;
-            setMessages([{ role: 'assistant', content: greeting }]);
+            setMessages([{ role: 'assistant', content: getProactiveGreeting() }]);
           }
         }
       ]
@@ -387,8 +452,10 @@ export const TopBar = ({ title, userAvatar, userName, userId, transactions = [],
                     <Sparkles size={22} color={theme.colors.primary} />
                   </View>
                   <View>
-                    <Text style={styles.chatTitle}>Asistente Save</Text>
-                    <Text style={styles.chatSubtitle}>IA Personalizada</Text>
+                    <Text style={styles.chatTitle}>Tu asesor financiero</Text>
+                    <Text style={styles.chatSubtitle}>
+                      Estado: {profileData.score >= 80 ? '🟢 Al día' : profileData.score >= 50 ? '🟡 Cuidado' : '🔴 Te estás pasando'}
+                    </Text>
                   </View>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -449,8 +516,8 @@ export const TopBar = ({ title, userAvatar, userName, userId, transactions = [],
                       </View>
                     )}
                     <View style={msg.role === 'user' ? styles.bubbleUserInner : styles.bubbleAssistantInner}>
-                      {renderMessageText(
-                        msg.content.replace(/\[ACTION:.*\]/g, '').trim(),
+                      {renderMessageContent(
+                        msg,
                         msg.role === 'user' ? styles.bubbleUserText : styles.bubbleAssistantText
                       )}
                       {msg.role === 'assistant' && msg.content.includes('[ACTION:TRANSFER]') && (
@@ -508,7 +575,7 @@ export const TopBar = ({ title, userAvatar, userName, userId, transactions = [],
               <View style={[styles.inputBar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
                 <TextInput
                   style={styles.input}
-                  placeholder="Pregúntale algo a Save..."
+                  placeholder="Ej: ¿En qué estoy gastando más?"
                   placeholderTextColor={theme.colors.onSurfaceVariant + '70'}
                   value={inputText}
                   onChangeText={setInputText}
