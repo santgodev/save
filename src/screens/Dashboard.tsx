@@ -99,10 +99,9 @@ export const Dashboard = ({
   const totalSpentMonth = monthState?.spent_month ?? 0;
   const netFlowMonth = monthState?.net_month ?? 0;
 
-  // SALDO DISPONIBLE = lo que tienes hoy en TUS BOLSILLOS (suma de
-  // pockets.budget, ya decrementado por register_expense). Antes esto
-  // se calculaba como income_all_time − spent_all_time, que daba un
-  // número distinto a la suma real de bolsillos. Ahora son iguales.
+  // FUENTE DE UNICIDAD — El usuario prefiere ver el Flujo del Mes (Ingresos - Gastos)
+  // como el número principal, igual que en la pantalla de Gastos.
+  const mainDisplayAmount = monthState?.net_month ?? 0;
   const saldoDisponible = monthState?.available_total ?? 0;
 
   const [aiInsight, setAiInsight] = useState<{ title: string; body: string } | null>(null);
@@ -167,18 +166,18 @@ export const Dashboard = ({
               {greeting}, {userProfile?.full_name?.split(' ')[0] || 'Usuario'}
             </Text>
             <Text style={{ fontSize: 13, color: theme.colors.primary, fontWeight: '800', letterSpacing: 1, marginBottom: 8, opacity: 0.8 }}>
-              SALDO DISPONIBLE
+              RESUMEN DE FLUJO
             </Text>
             <Text style={{ fontSize: 44, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -1 }}>
-              {formatCurrency(saldoDisponible)}
+              {formatCurrency(mainDisplayAmount)}
             </Text>
 
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
-              <View style={{ backgroundColor: theme.colors.success + '10', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, alignItems: 'center' }}>
-                <Text style={{ fontSize: 9, fontWeight: '900', color: theme.colors.success, textTransform: 'uppercase', marginBottom: 2 }}>Ingresos Abril</Text>
-                <Text style={{ fontSize: 13, fontWeight: '900', color: theme.colors.success }}>$ {totalIncomeMonth.toLocaleString('es-CO')}</Text>
+              <View style={{ backgroundColor: theme.colors.primary + '15', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, alignItems: 'center', borderWidth: 1, borderColor: theme.colors.primary + '30' }}>
+                <Text style={{ fontSize: 9, fontWeight: '900', color: theme.colors.primary, textTransform: 'uppercase', marginBottom: 2 }}>Ingresos Abril</Text>
+                <Text style={{ fontSize: 13, fontWeight: '900', color: theme.colors.primary }}>$ {totalIncomeMonth.toLocaleString('es-CO')}</Text>
               </View>
-              <View style={{ backgroundColor: theme.colors.error + '10', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, alignItems: 'center' }}>
+              <View style={{ backgroundColor: theme.colors.error + '15', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, alignItems: 'center', borderWidth: 1, borderColor: theme.colors.error + '30' }}>
                 <Text style={{ fontSize: 9, fontWeight: '900', color: theme.colors.error, textTransform: 'uppercase', marginBottom: 2 }}>Gastos Abril</Text>
                 <Text style={{ fontSize: 13, fontWeight: '900', color: theme.colors.error }}>$ {totalSpentMonth.toLocaleString('es-CO')}</Text>
               </View>
@@ -271,7 +270,7 @@ export const Dashboard = ({
                         <Text style={{ ...theme.typography.bodyMedium, fontWeight: '800', color: theme.colors.onSurface }} numberOfLines={1}>{mp.name}</Text>
                       </View>
                       <Text style={{ ...theme.typography.bodyMedium, fontWeight: '900', color: isOver ? theme.colors.error : theme.colors.onSurfaceVariant }}>
-                        {isOver ? '-' : ''} $ {Math.abs(remaining).toLocaleString('es-CO')} {isOver ? 'excedido' : 'disponibles'}
+                        {isOver ? 'Exceso ' : ''} $ {Math.abs(isOver ? (mp.spent_month - mp.allocated) : remaining).toLocaleString('es-CO')} {!isOver ? 'disponibles' : ''}
                       </Text>
                     </View>
                   );

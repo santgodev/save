@@ -361,7 +361,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                           {new Date(tx.date_string || tx.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}
                         </Text>
                       </View>
-                      <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.success }}>
+                      <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.primary }}>
                         + {formatCOP(Math.abs(tx.amount))}
                       </Text>
                     </View>
@@ -460,8 +460,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                       <>
                         <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" />
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
-                          <Text style={styles.remainingLbl}>{isOver ? 'EXCEDIDO' : 'TE QUEDA'}</Text>
-                          <Text style={styles.remainingAmt}>{formatCOP(Math.abs(remaining))}</Text>
+                          <Text style={[styles.remainingLbl, { fontSize: 9 }]}>{isOver ? 'EXCESO' : 'TE QUEDA'}</Text>
+                          <Text style={[styles.remainingAmt, { fontSize: 14 }]} numberOfLines={1} adjustsFontSizeToFit>{formatCOP(isOver ? (spent - allocated) : (allocated - spent))}</Text>
                         </View>
                       </>
                     )}
@@ -515,19 +515,19 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                 return (
                   <>
                     <View style={styles.statsRow}>
-                      <View style={[styles.statCard, { backgroundColor: theme.colors.primaryContainer }]}>
-                        <Text style={styles.statLabel}>Disponible hoy</Text>
-                        <Text style={[styles.statVal, { color: theme.colors.primary }]}>
-                          {formatCOP(Math.max(0, available))}
+                      <View style={[styles.statCard, { backgroundColor: theme.colors.primary + '12' }]}>
+                        <Text style={[styles.statLabel, { color: theme.colors.primary }]}>Disponible</Text>
+                        <Text style={[styles.statVal, { color: theme.colors.primary, fontSize: 18 }]} numberOfLines={1} adjustsFontSizeToFit>
+                          {formatCOP(Math.max(0, planAlloc - spent))}
                         </Text>
                       </View>
                       <View style={styles.statCard}>
-                        <Text style={styles.statLabel}>Plan del mes</Text>
-                        <Text style={styles.statVal}>{formatCOP(planAlloc)}</Text>
+                        <Text style={styles.statLabel}>Plan</Text>
+                        <Text style={[styles.statVal, { fontSize: 18 }]} numberOfLines={1} adjustsFontSizeToFit>{formatCOP(planAlloc)}</Text>
                       </View>
                       <View style={styles.statCard}>
-                        <Text style={styles.statLabel}>Gastado del mes</Text>
-                        <Text style={[styles.statVal, { color: isOver ? theme.colors.error : theme.colors.onSurface }]}>
+                        <Text style={styles.statLabel}>Gastado</Text>
+                        <Text style={[styles.statVal, { color: isOver ? theme.colors.error : theme.colors.onSurface, fontSize: 18 }]} numberOfLines={1} adjustsFontSizeToFit>
                           {formatCOP(spent)}
                         </Text>
                       </View>
@@ -540,7 +540,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                           <Text style={styles.overspendTitle}>
                             {overshoot > 0
                               ? `Excediste el plan por ${formatCOP(overshoot)}`
-                              : `Saldo en negativo: ${formatCOP(Math.abs(available))}`}
+                              : `Saldo en negativo: ${formatCOP(Math.abs(planAlloc - spent))}`}
                           </Text>
                         </View>
                         <TouchableOpacity
@@ -566,7 +566,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                         <Text style={styles.txMerchant}>{tx.merchant}</Text>
                         <Text style={styles.txDate}>{new Date(tx.date_string || tx.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}</Text>
                       </View>
-                      <Text style={[styles.txAmt, { color: tx.amount < 0 ? theme.colors.onSurface : theme.colors.success }]}>
+                      <Text style={[styles.txAmt, { color: tx.amount < 0 ? theme.colors.onSurface : theme.colors.primary }]}>
                         {tx.amount < 0 ? '- ' : '+ '}{formatCOP(Math.abs(tx.amount))}
                       </Text>
                     </View>

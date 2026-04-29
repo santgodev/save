@@ -5,7 +5,8 @@ import {
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import { 
-  Search, Filter, Trash2, ChevronRight, PieChart, ArrowDownRight, TrendingUp, ArrowRightLeft, X 
+  Search, Filter, Trash2, ChevronRight, PieChart, ArrowDownRight, TrendingUp, ArrowRightLeft, X,
+  ChevronLeft
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
@@ -24,6 +25,14 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
   const [showFilter, setShowFilter] = useState(false);
   const [deletingTx, setDeletingTx] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+
+  const MONTHS = [
+    { label: 'Enero', value: 0 }, { label: 'Febrero', value: 1 }, { label: 'Marzo', value: 2 },
+    { label: 'Abril', value: 3 }, { label: 'Mayo', value: 4 }, { label: 'Junio', value: 5 },
+    { label: 'Julio', value: 6 }, { label: 'Agosto', value: 7 }, { label: 'Septiembre', value: 8 },
+    { label: 'Octubre', value: 9 }, { label: 'Noviembre', value: 10 }, { label: 'Diciembre', value: 11 }
+  ];
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
@@ -69,6 +78,11 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
       borderColor: 'rgba(255,255,255,0.7)',
       ...theme.shadows.soft 
     },
+    
+    // Mes Nav
+    monthNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, marginBottom: 20 },
+    monthTitle: { fontSize: 18, fontWeight: '900', letterSpacing: -0.3, color: theme.colors.onSurface },
+    navBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.glassWhite, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.8)', ...theme.shadows.soft },
   
     scrollContent: { paddingHorizontal: normalize(24), paddingBottom: 120 },
     txRow: { 
@@ -128,13 +142,12 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
 
   const monthTransactions = useMemo(() => {
     const now = new Date();
-    const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
     return (transactions || []).filter(tx => {
       const date = new Date(tx.date_string || tx.created_at);
-      return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+      return date.getMonth() === selectedMonth && date.getFullYear() === currentYear;
     });
-  }, [transactions]);
+  }, [transactions, selectedMonth]);
 
   const filteredTransactions = useMemo(() => {
     return monthTransactions.filter(tx =>
@@ -145,10 +158,12 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
   }, [monthTransactions, searchQuery, filterCategory]);
 
   const totalSpent = useMemo(() => {
-    // Calculamos sobre monthTransactions para que el resumen del encabezado sea coherente con el Dashboard
-    // y no cambie al filtrar o buscar.
-    return monthTransactions.reduce((acc, tx) => acc + (tx.category === 'Ingreso' ? Math.abs(Number(tx.amount)) : -Math.abs(Number(tx.amount))), 0);
-  }, [monthTransactions]);
+    // Solo sumamos los gastos (excluyendo ingresos y traslados) 
+    // y aplicamos los filtros de búsqueda/categoría para que sea coherente con lo que el usuario ve.
+    return filteredTransactions
+      .filter(tx => tx.category !== 'Ingreso')
+      .reduce((acc, tx) => acc + Math.abs(Number(tx.amount)), 0);
+  }, [filteredTransactions]);
 
   const handleConfirmDelete = async () => {
     if (!deletingTx || isDeleting) return;
@@ -186,17 +201,28 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Animated.View style={[styles.headerContainer, { opacity: fadeAnim, paddingTop: Math.max(insets.top, 16) + 104 }]}>
+        {/* Navegación de Mes */}
+        <View style={styles.monthNav}>
+          <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedMonth(p => (p - 1 + 12) % 12); }} style={styles.navBtn}>
+            <ChevronLeft size={18} color={theme.colors.onSurface} />
+          </TouchableOpacity>
+          <Text style={styles.monthTitle}>{MONTHS[selectedMonth].label}</Text>
+          <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedMonth(p => (p + 1) % 12); }} style={styles.navBtn}>
+            <ChevronRight size={18} color={theme.colors.onSurface} />
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.overviewCard}>
            <View style={styles.overviewHeader}>
-              <View style={[styles.dotIndicator, { backgroundColor: totalSpent >= 0 ? theme.colors.success : theme.colors.primary }]} />
-              <Text style={[styles.overviewTitle, { color: theme.colors.primary }]}>RESUMEN DE FLUJO</Text>
+              <View style={[styles.dotIndicator, { backgroundColor: theme.colors.error }]} />
+              <Text style={[styles.overviewTitle, { color: theme.colors.primary }]}>TOTAL GASTADO</Text>
            </View>
            <Text style={[styles.totalAmountText, { color: theme.colors.onSurface }]}>
-              {totalSpent >= 0 ? '' : '-'} $ {Math.abs(totalSpent).toLocaleString('es-CO')}
+              $ {totalSpent.toLocaleString('es-CO')}
            </Text>
            <View style={styles.trendRow}>
               <TrendingUp size={14} color={theme.colors.onSurfaceVariant} />
-              <Text style={styles.trendText}>Control activo de capital</Text>
+              <Text style={styles.trendText}>Consumo en el periodo seleccionado</Text>
            </View>
         </View>
 
@@ -283,7 +309,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
                 <View style={styles.txAmtArea}>
                   <Text style={[
                       styles.txAmt, 
-                      isIncome && { color: theme.colors.success }, 
+                      isIncome && { color: theme.colors.primary }, 
                       isTransfer && { color: theme.colors.secondary },
                       !isIncome && !isTransfer && { color: theme.colors.onSurface }
                   ]}>
