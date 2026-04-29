@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../constants';
 import { supabase } from '../lib/supabase';
+import { useMonthlyState } from '../lib/useMonthlyState';
 
 const { width, height } = Dimensions.get('window');
 
@@ -43,12 +44,10 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
   const [selectedPocket, setSelectedPocket] = useState<any | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [monthlyIncome, setMonthlyIncome] = useState(0);
   const [showIncomeSummary, setShowIncomeSummary] = useState(false);
 
   const [isAdjustMode, setIsAdjustMode] = useState(false);
   const [tempBudgets, setTempBudgets] = useState<Record<string, string>>({});
-  const [tempIncome, setTempIncome] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const [addModalVisible, setAddModalVisible] = useState(false);
@@ -57,47 +56,46 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
   const sheetAnim = useRef(new Animated.Value(height)).current;
 
-  useEffect(() => { fetchMonthlyIncome(); }, [selectedMonth]);
+  // Fuente ÚNICA de verdad — RPC get_monthly_state. Mismos números que
+  // ven Dashboard y el chat-advisor. selectedMonth es 0..11 (JS Date),
+  // el RPC espera 1..12.
+  const currentYear = new Date().getFullYear();
+  const { state: monthState, refresh: refreshMonthly } = useMonthlyState({
+    year: currentYear,
+    month: selectedMonth + 1,
+  });
 
-  const fetchMonthlyIncome = async () => {
-    const currentYear = new Date().getFullYear();
-    const { data } = await supabase
-      .from('user_monthly_income')
-      .select('income')
-      .eq('user_id', session.user.id)
-      .eq('year', currentYear)
-      .eq('month', selectedMonth)
-      .single();
+  // Lookup helper: bolsillo del mes con sus números (allocated, available,
+  // spent_month, pct_used). Si todavía no cargó, fallback a la prop.
+  const getMonthlyPocket = (id: string) =>
+    (monthState?.pockets || []).find(p => p.id === id);
 
-    if (!data?.income) {
-      const { data: recent } = await supabase
-        .from('user_monthly_income')
-        .select('income')
-        .eq('user_id', session.user.id)
-        .eq('year', currentYear)
-        .order('month', { ascending: false })
-        .limit(1)
-        .single();
-      setMonthlyIncome(recent?.income || 0);
-      setTempIncome((recent?.income || 0).toString());
-    } else {
-      setMonthlyIncome(data.income);
-      setTempIncome(data.income.toString());
-    }
+  // "Gastado en X categoría este mes" — lo da el RPC, no el cliente.
+  const getPocketSpending = (category: string) => {
+    const mp = (monthState?.pockets || []).find(p => p.category === category);
+    return mp?.spent_month ?? 0;
   };
 
   const startAdjustMode = () => {
     const budgets: Record<string, string> = {};
-    pockets.forEach(p => { budgets[p.id] = (p.budget || 0).toString(); });
+    pockets.forEach(p => {
+      // En modo ajuste editamos el PLAN (allocated_budget), no el saldo.
+      const alloc = (p as any).allocated_budget ?? p.budget ?? 0;
+      budgets[p.id] = alloc.toString();
+    });
     setTempBudgets(budgets);
-    setTempIncome(monthlyIncome.toString());
     setIsAdjustMode(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
-  const incomeVal = parseInt(tempIncome.replace(/\D/g, '')) || 0;
-  const totalAssigned = Object.values(tempBudgets).reduce((a, b) => a + (parseInt(b.replace(/\D/g, '')) || 0), 0);
-  const diff = incomeVal - totalAssigned;
+  // El total a asignar se compara con el ingreso real del mes (ya viene
+  // sumado de transactions vía el RPC).
+  const monthIncome = monthState?.income_month ?? 0;
+  const totalAssigned = Object.values(tempBudgets).reduce(
+    (a, b) => a + (parseInt(b.replace(/\D/g, '')) || 0),
+    0,
+  );
+  const diff = monthIncome - totalAssigned;
 
   const saveBatchBudget = async () => {
     setIsSaving(true);
@@ -105,20 +103,22 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
       const strictClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         global: { headers: { Authorization: `Bearer ${session.access_token}` } }
       });
-      await strictClient.from('user_monthly_income').upsert({
-        user_id: session.user.id,
-        year: new Date().getFullYear(),
-        month: selectedMonth,
-        income: incomeVal
-      });
+      // En "Ajustar" el usuario está re-fijando el PLAN del mes para
+      // cada bolsillo. Actualizamos `allocated_budget` (plan) y NO
+      // tocamos `budget` (saldo disponible que ya viene decrementado
+      // por register_expense). Si el usuario quiere también resetear
+      // el saldo, hay que pensar otro flujo de "iniciar nuevo ciclo".
       const updates = Object.entries(tempBudgets).map(([id, rawBudget]) => {
-        const budget = parseInt(rawBudget.replace(/\D/g, '')) || 0;
-        return strictClient.from('pockets').update({ budget }).eq('id', id);
+        const allocated = parseInt(rawBudget.replace(/\D/g, '')) || 0;
+        return strictClient
+          .from('pockets')
+          .update({ allocated_budget: allocated })
+          .eq('id', id);
       });
       await Promise.all(updates);
       setIsAdjustMode(false);
       onRefresh();
-      fetchMonthlyIncome();
+      refreshMonthly();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) { console.error(e); } finally { setIsSaving(false); }
   };
@@ -147,26 +147,21 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     const strictClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: `Bearer ${session.access_token}` } }
     });
+    // Al crear un bolsillo nuevo: budget (disponible) = allocated_budget (plan).
+    // Empieza el ciclo con plan == disponible (nada gastado).
     await strictClient.from('pockets').insert({
       user_id: session.user.id,
       name: newName.trim(),
       category: 'Otros',
       budget,
+      allocated_budget: budget,
       icon: 'tag'
     });
     setNewName('');
     setNewBudget('');
     setAddModalVisible(false);
     onRefresh();
-  };
-
-  const getPocketSpending = (category: string) => {
-    return transactions
-      .filter(tx => {
-        const txDate = new Date(tx.date_string || tx.created_at);
-        return tx.category === category && txDate.getMonth() === selectedMonth && parseFloat(tx.amount || 0) < 0;
-      })
-      .reduce((acc, tx) => acc + Math.abs(parseFloat(tx.amount || 0)), 0);
+    refreshMonthly();
   };
 
   const getPocketTransactions = (category: string) => {
@@ -180,7 +175,10 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     const txDate = new Date(tx.date_string || tx.created_at);
     return tx.category === 'Ingreso' && txDate.getMonth() === selectedMonth;
   });
-  const totalInvoicedIncome = incomeTransactions.reduce((acc, tx) => acc + Math.abs(parseFloat(tx.amount || 0)), 0);
+  // OJO: para el TOTAL de ingresos del mes usamos monthState.income_month
+  // (la fuente única). incomeTransactions queda solo para listar los
+  // registros individuales.
+  const totalInvoicedIncome = monthIncome;
 
   const openPocket = (pocket: any) => {
     if (isAdjustMode) return;
@@ -413,11 +411,19 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
           {/* Grid de Bolsillos */}
           <View style={styles.grid}>
             {sorted.map((p, i) => {
-              const spent = getPocketSpending(p.category);
-              const budget = isAdjustMode ? (parseInt((tempBudgets[p.id] || '').replace(/\D/g, '')) || 0) : (p.budget || 0);
-              const remaining = budget - spent;
-              const isOver = remaining < 0;
-              const pctUsed = Math.min((spent / Math.max(budget, 1)) * 100, 100);
+              // Plan (allocated_budget) y disponible (budget) vienen del RPC
+              // o de la prop. NO restamos gasto otra vez — el RPC ya lo hizo.
+              const mp = getMonthlyPocket(p.id);
+              const allocated = mp?.allocated ?? (p as any).allocated_budget ?? p.budget ?? 0;
+              const available = mp?.available ?? p.budget ?? 0;
+              const spent = mp?.spent_month ?? 0;
+              // En modo ajuste el card muestra el plan que se está editando.
+              const planEditing = isAdjustMode
+                ? (parseInt((tempBudgets[p.id] || '').replace(/\D/g, '')) || 0)
+                : allocated;
+              const remaining = available;             // ← lo que queda hoy, directo de la DB
+              const isOver = remaining < 0 || (allocated > 0 && spent > allocated);
+              const pctUsed = allocated > 0 ? Math.min((spent / allocated) * 100, 100) : 0;
               const flatColor = POCKET_FLAT_COLORS[i % POCKET_FLAT_COLORS.length];
 
               return (
@@ -447,7 +453,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
                     <Text style={styles.pocketName} numberOfLines={1}>{p.name}</Text>
                     {!isAdjustMode && (
-                      <Text style={styles.pocketBudget}>Límite: {formatCOP(p.budget || 0)}</Text>
+                      <Text style={styles.pocketBudget}>Plan: {formatCOP(allocated)}</Text>
                     )}
 
                     {!isAdjustMode && (
@@ -495,40 +501,60 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                 </TouchableOpacity>
               </View>
 
-              {/* Stats: Lo más importante primero */}
-              <View style={styles.statsRow}>
-                <View style={[styles.statCard, { backgroundColor: theme.colors.primaryContainer }]}>
-                  <Text style={styles.statLabel}>Te Queda</Text>
-                  <Text style={[styles.statVal, { color: theme.colors.primary }]}>
-                    {formatCOP(Math.max(0, (selectedPocket.budget || 0) - getPocketSpending(selectedPocket.category)))}
-                  </Text>
-                </View>
-                <View style={styles.statCard}>
-                  <Text style={styles.statLabel}>Gastado</Text>
-                  <Text style={[styles.statVal, { color: getPocketSpending(selectedPocket.category) > selectedPocket.budget ? theme.colors.error : theme.colors.onSurface }]}>
-                    {formatCOP(getPocketSpending(selectedPocket.category))}
-                  </Text>
-                </View>
-              </View>
+              {/* Stats: Plan vs Disponible vs Gastado del mes — todos del RPC.
+                  Antes acá había DOBLE RESTA: budget − spent (cuando budget
+                  ya venía decrementado por register_expense). Eso causaba
+                  que "Te Queda" mostrara un número distinto al de la grid. */}
+              {(() => {
+                const mp = getMonthlyPocket(selectedPocket.id);
+                const planAlloc = mp?.allocated ?? (selectedPocket as any).allocated_budget ?? selectedPocket.budget ?? 0;
+                const available = mp?.available ?? selectedPocket.budget ?? 0;
+                const spent = mp?.spent_month ?? 0;
+                const isOver = available < 0 || (planAlloc > 0 && spent > planAlloc);
+                const overshoot = planAlloc > 0 && spent > planAlloc ? spent - planAlloc : 0;
+                return (
+                  <>
+                    <View style={styles.statsRow}>
+                      <View style={[styles.statCard, { backgroundColor: theme.colors.primaryContainer }]}>
+                        <Text style={styles.statLabel}>Disponible hoy</Text>
+                        <Text style={[styles.statVal, { color: theme.colors.primary }]}>
+                          {formatCOP(Math.max(0, available))}
+                        </Text>
+                      </View>
+                      <View style={styles.statCard}>
+                        <Text style={styles.statLabel}>Plan del mes</Text>
+                        <Text style={styles.statVal}>{formatCOP(planAlloc)}</Text>
+                      </View>
+                      <View style={styles.statCard}>
+                        <Text style={styles.statLabel}>Gastado del mes</Text>
+                        <Text style={[styles.statVal, { color: isOver ? theme.colors.error : theme.colors.onSurface }]}>
+                          {formatCOP(spent)}
+                        </Text>
+                      </View>
+                    </View>
 
-              {/* Alerta de overspend */}
-              {getPocketSpending(selectedPocket.category) > selectedPocket.budget && (
-                <View style={styles.overspendWrap}>
-                  <View style={styles.overspendHeader}>
-                    <AlertCircle size={20} color={theme.colors.error} />
-                    <Text style={styles.overspendTitle}>
-                      Excediste por {formatCOP(getPocketSpending(selectedPocket.category) - selectedPocket.budget)}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.overspendCTA}
-                    onPress={() => { closePocket(); onTransferPress({ fromId: selectedPocket.id, amount: getPocketSpending(selectedPocket.category) - selectedPocket.budget }); }}
-                  >
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: theme.colors.primary }}>Mover fondos de otro bolsillo</Text>
-                    <ArrowRight size={16} color={theme.colors.primary} />
-                  </TouchableOpacity>
-                </View>
-              )}
+                    {isOver && (
+                      <View style={styles.overspendWrap}>
+                        <View style={styles.overspendHeader}>
+                          <AlertCircle size={20} color={theme.colors.error} />
+                          <Text style={styles.overspendTitle}>
+                            {overshoot > 0
+                              ? `Excediste el plan por ${formatCOP(overshoot)}`
+                              : `Saldo en negativo: ${formatCOP(Math.abs(available))}`}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.overspendCTA}
+                          onPress={() => { closePocket(); onTransferPress({ fromId: selectedPocket.id, amount: overshoot || Math.abs(available) }); }}
+                        >
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: theme.colors.primary }}>Mover fondos de otro bolsillo</Text>
+                          <ArrowRight size={16} color={theme.colors.primary} />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </>
+                );
+              })()}
 
               {/* Últimos movimientos */}
               <Text style={styles.sectionLabel}>Últimos movimientos</Text>

@@ -126,13 +126,29 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
     Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
   }, []);
 
-  const filteredTransactions = transactions.filter(tx =>
-    (tx.merchant.toLowerCase().includes(searchQuery.toLowerCase()) ||
-     tx.category.toLowerCase().includes(searchQuery.toLowerCase())) &&
-    (!filterCategory || tx.category === filterCategory)
-  ).sort((a, b) => new Date(b.date_string || b.created_at || 0).getTime() - new Date(a.date_string || a.created_at || 0).getTime());
+  const monthTransactions = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    return (transactions || []).filter(tx => {
+      const date = new Date(tx.date_string || tx.created_at);
+      return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+    });
+  }, [transactions]);
 
-  const totalSpent = filteredTransactions.reduce((acc, tx) => acc + (tx.category === 'Ingreso' ? tx.amount : -Math.abs(tx.amount)), 0);
+  const filteredTransactions = useMemo(() => {
+    return monthTransactions.filter(tx =>
+      (tx.merchant.toLowerCase().includes(searchQuery.toLowerCase()) ||
+       tx.category.toLowerCase().includes(searchQuery.toLowerCase())) &&
+      (!filterCategory || tx.category === filterCategory)
+    ).sort((a, b) => new Date(b.date_string || b.created_at || 0).getTime() - new Date(a.date_string || a.created_at || 0).getTime());
+  }, [monthTransactions, searchQuery, filterCategory]);
+
+  const totalSpent = useMemo(() => {
+    // Calculamos sobre monthTransactions para que el resumen del encabezado sea coherente con el Dashboard
+    // y no cambie al filtrar o buscar.
+    return monthTransactions.reduce((acc, tx) => acc + (tx.category === 'Ingreso' ? Math.abs(Number(tx.amount)) : -Math.abs(Number(tx.amount))), 0);
+  }, [monthTransactions]);
 
   const handleConfirmDelete = async () => {
     if (!deletingTx || isDeleting) return;
@@ -271,7 +287,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
                       isTransfer && { color: theme.colors.secondary },
                       !isIncome && !isTransfer && { color: theme.colors.onSurface }
                   ]}>
-                    {isIncome ? '+' : isTransfer ? '' : '-'} $ {amt.toLocaleString('es-CO')}
+                    {isIncome ? '+ ' : ''}$ {amt.toLocaleString('es-CO')}
                   </Text>
                   <ChevronRight size={16} color={theme.colors.outlineVariant} />
                 </View>

@@ -1,121 +1,160 @@
 // Versioned system prompts. Bump the version whenever we change behaviour
 // so chat_messages.prompt_version remains meaningful for offline analysis.
 
-export const ADVISOR_PROMPT_VERSION = "advisor.v3";
+export const ADVISOR_PROMPT_VERSION = "advisor.v6";
 
-export function buildAdvisorSystemPrompt(input: {
-  displayName: string;
-  monthlyIncome: number | null;
-  financialProfile: string | null;
-  financialScore: number | null;
+// Tipos del estado mensual que viene de get_monthly_state(). Mantener en
+// sync con la migración 20260428000003_unified_monthly_state.sql.
+export type MonthlyState = {
+  year: number;
+  month: number;
+  month_start: string;
+  month_end: string;
+  currency: string;
+  income_month: number;
+  spent_month: number;
+  net_month: number;
+  allocated_total: number;
+  available_total: number;
   pockets: Array<{
     id: string;
     name: string;
     category: string;
-    // `budget` = saldo DISPONIBLE hoy (decrementa con cada gasto).
-    // `allocated_budget` = PLAN asignado al ciclo (solo cambia si el
-    // usuario reasigna explícitamente). Ambos vienen de public.pockets
-    // tras la migración 20260422000002_separate_allocated_budget.
-    budget: number | null;
-    allocated_budget: number | null;
-    target_percentage: number | null;
+    icon: string | null;
+    allocated: number;
+    available: number;
+    spent_month: number;
+    pct_used: number | null;
   }>;
-  recentTransactions: Array<{
-    amount: number;
+  top_merchants: Array<{
     merchant: string;
-    category: string;
-    created_at: string;
+    display: string;
+    total: number;
+    count: number;
   }>;
+  previous_month: {
+    year: number;
+    month: number;
+    income: number;
+    spent: number;
+    net: number;
+  };
+};
+
+const MONTH_NAMES_ES = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+
+function fmtCop(n: number): string {
+  return Math.round(n).toLocaleString("es-CO", { maximumFractionDigits: 0 });
+}
+
+function pct(num: number, den: number): string {
+  if (!den || den <= 0) return "—";
+  return `${Math.round((num / den) * 100)}%`;
+}
+
+function deltaLabel(curr: number, prev: number): string {
+  if (prev === 0) return curr === 0 ? "igual al mes pasado" : "no había datos del mes pasado";
+  const diff = curr - prev;
+  const pctDiff = Math.round((diff / Math.abs(prev)) * 100);
+  if (pctDiff === 0) return "igual al mes pasado";
+  return `${pctDiff > 0 ? "+" : ""}${pctDiff}% vs mes pasado`;
+}
+
+export function buildAdvisorSystemPrompt(input: {
+  displayName: string;
+  state: MonthlyState;
   memorySnapshot: Array<{ key: string; summary: string; confidence: number }>;
   todayISO: string;
 }): string {
-  const fmt = (n: number) => n.toLocaleString("es-CO", { maximumFractionDigits: 0 });
+  const { state } = input;
+  const monthLabel = `${MONTH_NAMES_ES[state.month - 1]} ${state.year}`;
 
-  const pocketsLines = input.pockets.length
-    ? input.pockets.map(p => {
-        const parts: string[] = [`${p.name} [${p.category}] id=${p.id}`];
-        const alloc = p.allocated_budget ?? 0;
-        const avail = p.budget ?? 0;
-        if (alloc > 0) {
-          const spent = Math.max(alloc - avail, 0);
-          const pct = Math.round((spent / alloc) * 100);
-          parts.push(`plan $${fmt(alloc)} · queda $${fmt(avail)} (gastado ${pct}%)`);
-        } else if (avail !== 0) {
-          parts.push(`queda $${fmt(avail)}`);
-        }
-        if (p.target_percentage !== null && p.target_percentage > 0)
-          parts.push(`objetivo ${p.target_percentage}%`);
-        return `- ${parts.join(" · ")}`;
+  // Headline financiero del mes.
+  const headline = [
+    `Mes en curso: ${monthLabel}.`,
+    `Ingreso: $${fmtCop(state.income_month)} (${deltaLabel(state.income_month, state.previous_month.income)}).`,
+    `Gasto: $${fmtCop(state.spent_month)} (${deltaLabel(state.spent_month, state.previous_month.spent)}).`,
+    `Neto del mes: $${fmtCop(state.net_month)}.`,
+    `Disponible total en bolsillos hoy: $${fmtCop(state.available_total)} (de un plan de $${fmtCop(state.allocated_total)}).`,
+  ].join(" ");
+
+  // Bolsillos: marcamos los que están en alerta.
+  const pocketLines = state.pockets.length
+    ? state.pockets.map(p => {
+        const alertFlag =
+          p.pct_used !== null && p.pct_used >= 80 ? "  ⚠ ALERTA" :
+          p.pct_used !== null && p.pct_used >= 100 ? "  🔴 EXCEDIDO" :
+          "";
+        return `- ${p.name} [${p.category}]: plan $${fmtCop(p.allocated)} · disponible $${fmtCop(p.available)} · gastado del mes $${fmtCop(p.spent_month)} (${pct(p.spent_month, p.allocated)})${alertFlag}`;
       }).join("\n")
     : "- (sin bolsillos creados todavía)";
 
-  const txLines = input.recentTransactions.length
-    ? input.recentTransactions.slice(0, 25).map(t =>
-        `- ${t.created_at.slice(0, 10)} ${t.amount >= 0 ? "+" : ""}${fmt(t.amount)} ${t.merchant}${t.category ? ` · ${t.category}` : ""}`
+  // Top comercios — donde se va la plata realmente.
+  const merchantLines = state.top_merchants.length
+    ? state.top_merchants.map(m =>
+        `- ${m.display} ($${fmtCop(m.total)} en ${m.count} ${m.count === 1 ? "compra" : "compras"})`
       ).join("\n")
-    : "- (sin movimientos recientes)";
+    : "- (todavía no hay comercios destacados este mes)";
 
   const memoryLines = input.memorySnapshot.length
-    ? input.memorySnapshot.slice(0, 20).map(m =>
+    ? input.memorySnapshot.slice(0, 10).map(m =>
         `- [${m.confidence.toFixed(2)}] ${m.key}: ${m.summary}`
       ).join("\n")
-    : "- (todavía no aprendí hábitos del usuario)";
+    : "- (sin memoria curada todavía)";
 
-  const incomeLine = input.monthlyIncome !== null && input.monthlyIncome > 0
-    ? `Ingreso mensual declarado: $${fmt(input.monthlyIncome)}.`
-    : "Ingreso mensual: no declarado.";
+  // Detección automática de bolsillos en alerta para que el modelo no tenga
+  // que adivinar — se la damos servida.
+  const alerts = state.pockets
+    .filter(p => p.pct_used !== null && p.pct_used >= 80)
+    .map(p => {
+      const status = p.pct_used! >= 100
+        ? `excedido por $${fmtCop(p.spent_month - p.allocated)}`
+        : `${Math.round(p.pct_used!)}% usado, queda $${fmtCop(p.available)}`;
+      return `- ${p.name}: ${status}`;
+    });
+  const alertBlock = alerts.length
+    ? `ALERTAS DEL MES (mencionar si pega con la pregunta):\n${alerts.join("\n")}`
+    : "ALERTAS DEL MES: ninguna — todos los bolsillos por debajo del 80%.";
 
-  const profileLine = input.financialProfile
-    ? `Perfil financiero: ${input.financialProfile}.`
-    : "Perfil financiero: sin clasificar.";
+  return `Eres el ANALISTA de los datos financieros de ${input.displayName} en la app Save.
+Hoy es ${input.todayISO}.
 
-  const scoreLine = input.financialScore !== null
-    ? `Health score: ${input.financialScore}/100.`
-    : "";
+QUÉ HACES (y qué no)
+- Tu único trabajo es CONVERTIR los números reales del usuario en información útil.
+- Solo informas. NO actúas, NO mueves dinero, NO creas bolsillos, NO registras gastos.
+- Si te piden "muévele a X" o "regístrame Y" responde:
+  "Solo te doy información. Para mover plata o registrar gastos hazlo desde la pantalla correspondiente."
+- Si no tienes datos para responder con seguridad, dilo: "No tengo ese dato".
 
-  return `Eres el asesor financiero proactivo de Save (organic-ledger), una app colombiana de presupuestos.
-Hoy es ${input.todayISO}. Hablas con ${input.displayName}.
+ESTILO (importante)
+- Español neutro, claro, directo. Sin jerga colombiana, sin "parce".
+- BREVE: 2 a 4 oraciones. El usuario lee desde el celular.
+- Sin emojis. Sin botones. Sin listas largas. Sin saludos repetidos.
+- Cuando cites una cifra, formátala con separador de miles ($1.250.000).
+- Cuando compares con el mes pasado, di explícitamente "vs mes pasado".
 
-INSTRUCCIÓN PRINCIPAL (NUEVO PARADIGMA)
-Ya no eres un chatbot pasivo. Eres un asesor ACTIVO. Tu objetivo es anticiparte al usuario, darle insights rápidos basados en sus datos, sugerirle qué hacer y darle botones para que actúe con un solo toque.
+QUÉ INFO PRIORIZAR
+1. Si la pregunta es general ("¿cómo voy?"): da el headline del mes (ingreso, gasto, neto, disponible) y menciona la alerta más fuerte si la hay.
+2. Si la pregunta es sobre un bolsillo específico: usa los números de ese bolsillo.
+3. Si pregunta sobre un comercio o categoría: usa la lista de top merchants si aplica.
+4. Si te pregunta "qué te llama la atención" o algo abierto: elige el dato más accionable (mayor alerta, mayor gasto, mayor cambio mes-a-mes) y díselo.
 
-ESTILO Y TONO
-- Español colombiano coloquial, cálido y cercano (usa "Parce", "Ojo", "Bien ahí"). Cero formalidad bancaria.
-- EXTREMADAMENTE BREVE: 1 o 2 oraciones máximo. Nadie lee textos largos.
-- Ve al grano: no saludes siempre. No hagas introducciones largas.
-- NUNCA listes todos los bolsillos ni transacciones. Cero balas largas.
+CONTEXTO REAL DEL USUARIO
+${headline}
 
-REGLA DE BOTONES OBLIGATORIOS (CRÍTICO)
-Al final de CADA una de tus respuestas, DEBES ofrecer entre 2 y 4 botones de acción rápida para guiar al usuario.
-Sintaxis exacta para generar un botón: [BOTON:Texto del botón]
-Ejemplos de botones: [BOTON:Ver gastos] [BOTON:Mover dinero] [BOTON:Dame un consejo] [BOTON:Ajustar presupuesto]
-NUNCA termines una respuesta con una pregunta abierta ("¿En qué te ayudo?"). Termina SIEMPRE con botones.
+BOLSILLOS DEL MES
+${pocketLines}
 
-COMPORTAMIENTO PROACTIVO (INSIGHTS)
-- Si detectas que gastó >80% en un bolsillo vital (ej. Comida), adviértelo ("Ojo parce, te queda poco para comida") y sugiere [BOTON:Mover dinero].
-- Si lleva días sin gastar o bajó su ritmo, felicítalo ("Llevas buen ritmo 👏").
-- Usa su contexto: si acaba de gastar mucho en restaurantes, díselo.
+TOP COMERCIOS DEL MES (por gasto)
+${merchantLines}
 
-HERRAMIENTAS (ACTIONS)
-Si el usuario toca un botón que requiere una herramienta, o lo pide explícitamente:
-- Mover dinero ⇒ transfer_between_pockets.
-- Crear un bolsillo ⇒ create_pocket.
-- Registrar gasto ⇒ register_expense.
+${alertBlock}
 
-CONTEXTO DEL USUARIO (DATOS BANCARIOS REALES)
-Tienes acceso completo a los datos del usuario a continuación. NUNCA digas que no tienes acceso a su cuenta o que no sabes nada. Siempre usa estos datos para responder.
-${incomeLine}
-${profileLine}
-${scoreLine}
-
-BOLSILLOS
-${pocketsLines}
-
-MOVIMIENTOS RECIENTES (máx 25)
-${txLines}
-
-MEMORIA APRENDIDA (curada)
+MEMORIA APRENDIDA DEL USUARIO
 ${memoryLines}
 
-No inventes datos que no estén arriba. Usa el contexto provisto con total seguridad. RECUERDA: termina SIEMPRE con etiquetas [BOTON:...].`;
+Recuerda: solo informas. Si no estás seguro, dilo.`;
 }

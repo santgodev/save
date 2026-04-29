@@ -209,16 +209,26 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
       const strictClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         global: { headers: { Authorization: `Bearer ${session.access_token}` } }
       });
-      const now = new Date();
-      await strictClient.from('user_monthly_income').upsert({ user_id: session.user.id, year: now.getFullYear(), month: now.getMonth(), income: incomeNum });
-      
+      // user_monthly_income fue deprecada en la migración
+      // 20260428000003_unified_monthly_state. La fuente única de
+      // ingreso es ahora SUM(transactions WHERE category='Ingreso').
+      // El usuario registrará su ingreso real cuando le llegue, vía
+      // la pantalla AddIncome — acá solo usamos `incomeNum` LOCAL
+      // para inicializar el plan de cada bolsillo.
+
       const pocketsToInsert = selectedCats.map(id => {
         const cat = CATEGORIES.find(c => c.id === id);
+        const planAmount = id === 'Ahorros'
+          ? (incomeNum * 0.2)
+          : (incomeNum * ((distributions[id]?.value || 10) / 100));
         return {
           user_id: session.user.id,
           name: cat?.name || id,
           category: id,
-          budget: id === 'Ahorros' ? (incomeNum * 0.2) : (incomeNum * ((distributions[id]?.value || 10)/100)),
+          // Al crear: budget (saldo disponible) = allocated_budget (plan).
+          // Empezamos el ciclo con 0 gastado.
+          budget: planAmount,
+          allocated_budget: planAmount,
           icon: cat?.icon || 'Tag',
         };
       });

@@ -150,6 +150,235 @@ del prompt hay que subir a v4 para no perder trazabilidad offline.
 
 ---
 
+## 2026-04-28 (cuarta corrida) — POST-FIX data_quality_guards
+
+**Corredor:** Claude vía Supabase MCP.
+**Migración aplicada:** `supabase/migrations/20260428000001_data_quality_guards.sql` (OK).
+**Regresión nueva:** `tests/regressions/regression_002_data_quality.sql`.
+
+### Bugs cerrados
+
+| Bug | Caso | Antes | Ahora |
+|---|---|---|---|
+| #7 medio  | default `preferred_currency` | `'USD'` en app colombiana | ✅ Default `'COP'`, CHECK `IN ('COP','USD','EUR')`. Backfill: el único profile pasó USD→COP. |
+| #8 alto   | default `monthly_income`     | `0` (bloqueaba al advisor) | ✅ Default NULL, CHECK `IS NULL OR > 0`. Backfill: 0→NULL. Rechaza 0 y negativos. |
+| #9 medio  | `date_string` sin validación  | aceptaba `'2019/06/19'`, `'1970-01-01'`, `'2099-12-31'` | ✅ CHECK formato `^\d{4}-\d{2}-\d{2}$` en columna. `register_expense` v3 valida regex + rango `2000-01-01..today+1`. Backfill: row de SIIGO `2019/06/19` → `2019-06-19`. |
+| #12 medio | `chat_messages.session_id` null | 2 mensajes históricos sin sesión | ✅ Default `gen_random_uuid()`, NOT NULL. Backfill agrupado en buckets de 30min por usuario. |
+
+### Verificación contra prod (BEGIN/ROLLBACK)
+- `register_expense('2026/04/22')` → rechaza `22007` invalid_datetime_format.
+- `register_expense(today+30 días)` → rechaza `22008`.
+- `register_expense('1970-01-01')` → rechaza `22008`.
+- `register_expense('2026-04-22')` → pasa.
+- `UPDATE profiles SET monthly_income=0` → rechaza `23514` check_violation.
+- `UPDATE profiles SET monthly_income=-100` → rechaza `23514`.
+- `INSERT INTO chat_messages (...sin session_id...)` → genera UUID auto.
+
+### Regresión 001 sigue verde
+Re-verifiqué que el rework de `register_expense` v3 no rompió los guards
+de safety_guards: monto 0, monto negativo, merchant vacío y fallback a
+Otros siguen comportándose igual.
+
+### Pendiente siguiente sesión
+- Bug #11 bajo — trigger para `canonical_merchant`.
+- Bug #13 bajo — OCR devuelve "Desconocido" / "Factura Escaneada".
+- Sentry sin instalar (operación, no bug). El día que un usuario reporte
+  "se me perdió plata" hoy no podemos ver stack trace.
+- UI: barra de progreso plan/queda + pantalla de reasignar presupuesto.
+- Cliente y Edge Function deberían empezar a pasar `session_id` explícito
+  ahora que la columna es NOT NULL — el default es backup, no la fuente
+  de verdad.
+
+---
+
+## 2026-04-28 (quinta corrida) — POST-FIX canonical_merchant + OCR v2
+
+**Corredor:** Claude vía Supabase MCP.
+**Migración aplicada:** `supabase/migrations/20260428000002_canonical_merchant_trigger.sql` (OK).
+**Edge Function redeployada:** `ocr-receipt` v4 → v5 (prompt `ocr.v2`).
+**Regresión nueva:** `tests/regressions/regression_003_canonical_merchant.sql`.
+
+### Bugs cerrados
+
+| Bug | Caso | Antes | Ahora |
+|---|---|---|---|
+| #11 bajo | `canonical_merchant` NULL en muchas tx | 14/30 rows con NULL; agrupar gasto por comercio era imposible | ✅ Función `canonicalize_merchant(text)` IMMUTABLE + trigger BEFORE INSERT/UPDATE en `transactions`. Backfill aplicado: **0/30 rows con NULL**. |
+| #13 bajo | OCR devuelve "Desconocido" / "Factura Escaneada" como merchant | El parser reusaba placeholders y `register_expense` los persistía; quedaba basura en analytics | ✅ Prompt `ocr.v2` PROHÍBE explícitamente esos strings. Sanitización post-OpenAI: si igual aparece, lo neutraliza a `null`. Si `merchant=null` o `confidence=low` → no auto-registramos, devolvemos `needs_review:true` para que el cliente le pida confirmación al usuario. |
+
+### Verificación contra prod (BEGIN/ROLLBACK)
+
+**Bug #11**
+
+- `canonicalize_merchant('HELADOS POPSY COMERCIAL ALLAN S.A.S.')` → `'helados popsy comercial allan sas'` ✅
+- `canonicalize_merchant('Tiendas ARA')` → `'tiendas ara'` ✅
+- `canonicalize_merchant('   El   Corral    ')` → `'el corral'` ✅ (trim + collapse)
+- `canonicalize_merchant(NULL)` → `''` ✅ (null-safe)
+- `canonicalize_merchant('Ocio y Diversión')` → `'ocio y diversión'` ✅ (tildes preservadas)
+- `canonicalize_merchant('"COMBOY-PIZZA, S.A.S."')` → `'comboy-pizza sas'` ✅ (puntuación)
+- INSERT sin canonical → trigger calcula y `canonical_merchant='jeronimo martins colombia sas'` ✅
+- INSERT con canonical='traslado_bolsillos' → trigger respeta el explícito ✅
+- UPDATE merchant='Tienda NUEVA S.A.' → trigger recalcula a `'tienda nueva sa'` ✅
+- UPDATE merchant + canonical='manual_override' → trigger respeta el explícito ✅
+- Spot-check post-backfill: las 2 copias de `HELADOS POPSY...` y las 2 de `SIIGO S.A.S` colapsan al mismo `canonical_merchant`. ✅
+
+**Bug #13** (verificación lógica del Edge Function)
+
+- `ocr-receipt` v5 desplegada (`prompt_version=ocr.v2`).
+- Sanitización defensiva blindada: aunque OpenAI ignore las reglas, los placeholders nunca llegan a `register_expense`.
+- `auto_register=true` con `confidence=low` → respuesta `{ needs_review:true, register_skipped_reason:"low_confidence" }`. No se crean tx fantasma.
+- Evento `scanner.scanned` ahora incluye `confidence` y `needs_review` para análisis posterior.
+- Pendiente para el cliente: leer `needs_review` de la respuesta y abrir un modal "¿Cuál es el comercio?" en vez de guardar "Recibo".
+
+### Regresión 001 + 002 siguen verdes
+
+Volví a verificar (BEGIN/ROLLBACK contra prod):
+- `register_expense` v3 sigue rechazando monto 0/negativo, merchant vacío, fechas inválidas.
+- Las CHECK constraints de `profiles.preferred_currency` y `profiles.monthly_income` siguen activas.
+- El trigger nuevo de canonical_merchant NO interfiere con los guards existentes.
+
+### Estado del TEST_REPORT (TL;DR)
+
+**13 / 13 bugs originales cerrados.** Quedan tareas operativas/UI fuera del alcance del test report:
+
+- Sentry (infra de errores) — fuera de alcance, es operación.
+- UI: barra de progreso plan/queda — feature pendiente, no es bug.
+- UI: pantalla "reasignar presupuesto" — feature pendiente.
+- Cliente debería empezar a pasar `session_id` explícito al Edge Function (hoy el default lo cubre como backup, pero no es la fuente de verdad).
+- `chat-advisor` v6 (deploy del usuario con prompt "[BOTON:...]") sigue marcado como `ADVISOR_PROMPT_VERSION="advisor.v3"` — la próxima vez que se toque texto del prompt hay que subir a v4 para no perder trazabilidad offline.
+- `tools.ts` `create_pocket` ya inicializa `budget = allocated_budget = initial` (queda documentado por si en el futuro se separan).
+
+### Pendiente siguiente sesión
+
+(No quedan bugs del TEST_REPORT. La lista de abajo es UX / infra.)
+
+- UI Scanner: leer `needs_review` y `register_skipped_reason` de la respuesta del Edge Function para no guardar transacciones débiles en silencio.
+- UI Bolsillos: barra de progreso `allocated_budget` vs `budget`.
+- UI Bolsillos: pantalla "reasignar presupuesto" que haga `UPDATE pockets SET allocated_budget=X, budget=X WHERE id=…` atómicamente.
+- Sentry / observabilidad de Edge Functions.
+- Subir `ADVISOR_PROMPT_VERSION` a `"advisor.v4"` cuando se vuelva a tocar el prompt v6 actual.
+- Migración fuzzy "Tiendas ARA" ≡ "Mercado ARA Express" (out of scope hoy — requiere taxonomía de marca).
+
+---
+
+## 2026-04-28 (sexta corrida) — UNIFIED MONTHLY STATE + chat read-only
+
+**Corredor:** Claude vía Supabase MCP + edits del cliente.
+**Migración aplicada:** `supabase/migrations/20260428000003_unified_monthly_state.sql` (OK).
+**Edge Function redeployada:** `chat-advisor` v6 → v7 (prompt `advisor.v6`).
+**Hook nuevo:** `src/lib/useMonthlyState.ts`.
+**Pantallas refactorizadas:** `Dashboard.tsx`, `Pockets.tsx`, `Onboarding.tsx`.
+
+### Problema de UX (no era bug del TEST_REPORT — era inconsistencia)
+
+Cada módulo calculaba ingresos/disponible con su propia lógica:
+- **Ingresos del mes:** 3 fuentes distintas (`profiles.monthly_income`,
+  tabla `user_monthly_income`, `SUM(transactions Ingreso)`).
+- **Disponible por bolsillo:** doble resta — `pockets.budget` ya viene
+  decrementado por `register_expense`, pero el cliente le restaba el gasto
+  del mes encima en el modal. Resultado: "Te Queda" decía un número en la
+  grid y otro en el modal del mismo bolsillo.
+
+### Solución: una sola fuente de verdad
+
+1. **RPC `get_monthly_state(p_user_id, p_year, p_month)`** devuelve TODO
+   lo que la app necesita en un JSON: `income_month`, `spent_month`,
+   `net_month`, `available_total`, `allocated_total`, `pockets[]` (cada
+   uno con `allocated`, `available`, `spent_month`, `pct_used`),
+   `top_merchants[]`, y `previous_month` para comparar.
+2. **Tabla `user_monthly_income` borrada** (estaba vacía) y columna
+   `profiles.monthly_income` borrada (estaba NULL). La fuente de ingresos
+   ahora es exclusivamente `SUM(transactions WHERE category='Ingreso')`.
+3. **Hook `useMonthlyState`** llama el RPC y todas las pantallas leen de
+   ahí: Dashboard, Pockets y chat-advisor. Si una pantalla muestra otro
+   número, el hook está mal — un solo lugar para arreglar.
+
+### Verificación de consistencia 3-vías (BEGIN/ROLLBACK)
+
+Comparé el RPC contra los SUM crudos directamente en SQL para abril 2026
+del usuario santgodev:
+
+| Métrica | RPC (`get_monthly_state`) | SQL crudo | Match |
+|---|---|---|---|
+| `income_month` | $400.000 | $400.000 | ✅ |
+| `spent_month` | $110.000 | $110.000 | ✅ |
+| `available_total` | $2.290.000 | $2.290.000 | ✅ |
+| `allocated_total` | $2.290.000 | $2.290.000 | ✅ |
+
+Antes en la app un módulo decía "ingresos $625.000" y otro "ingresos $0";
+ahora todos verán $400.000.
+
+### Chat advisor — paradigma read-only (advisor.v6)
+
+El usuario pidió "que sólo de info, no que actúe". Cambios:
+
+- `advisorTools` es ahora `[]`. `executeTool` rechaza cualquier llamada
+  con error explícito si el modelo intenta llamar a una herramienta
+  vieja por alucinación.
+- El prompt v6 declara explícitamente: "Solo informas. NO actúas, NO
+  mueves dinero, NO creas bolsillos, NO registras gastos. Si te piden
+  hacer algo, redirige a la pantalla correspondiente."
+- Sin botones obligatorios (`[BOTON:...]`). Sin emojis. Sin jerga
+  colombiana. 2-4 oraciones máximo.
+- El contexto que se le pasa al modelo viene **íntegramente del RPC**
+  `get_monthly_state` — mismo número que la UI:
+  - Headline del mes (ingreso, gasto, neto, disponible) con delta vs
+    mes pasado.
+  - Bolsillos con plan/disponible/gastado y flags de alerta (≥80%) y
+    excedido (≥100%) pre-calculados para que el modelo no tenga que
+    razonar sobre ellos.
+  - Top 5 comercios del mes (usa `canonical_merchant`).
+  - Memoria curada del usuario.
+- Telemetría enriquecida: cada `chat.message.sent` ahora persiste un
+  `state_snapshot` con los números del mes, así podemos correlacionar
+  conversaciones con el estado real al momento del mensaje.
+
+### Cambios en cliente
+
+| Archivo | Antes | Ahora |
+|---|---|---|
+| `src/lib/useMonthlyState.ts` | (no existía) | Hook que envuelve el RPC. Helpers `formatCop`, `pctUsedLabel`. |
+| `src/screens/Dashboard.tsx` | Recalculaba income/spent del mes y `saldoDisponible` desde `transactions` all-time. Insight fallback iteraba pockets manualmente. | Lee todo de `monthState`. `saldoDisponible = monthState.available_total`. Bolsillos top-3 vienen del RPC. |
+| `src/screens/Pockets.tsx` | `fetchMonthlyIncome()` desde `user_monthly_income`. `getPocketSpending` sumaba transactions. Modal hacía `budget − getPocketSpending` (DOBLE RESTA). `saveBatchBudget` escribía `pockets.budget`. | Lee `monthState`. Modal muestra `Plan / Disponible / Gastado del mes` directo del RPC. `saveBatchBudget` ahora actualiza `allocated_budget` (el plan), no el saldo. |
+| `src/screens/Onboarding.tsx` | Upsert a `user_monthly_income`. Insertaba pockets sin `allocated_budget`. | Quitado el upsert (tabla deprecada). Pockets se crean con `budget = allocated_budget = planAmount`. |
+
+### Verificación bonus: AddIncome → register_income → get_monthly_state
+
+Confirmé end-to-end (BEGIN/ROLLBACK) que el flujo "Entró Plata" sigue
+sumando correcto a la fuente única:
+
+- `register_income(p_user_id, p_amount, p_distribution, p_mode)` inserta
+  `transactions` con `category='Ingreso'`, `amount=ABS(p_amount)`,
+  `merchant='Depósito de Capital'` por defecto, y luego suma cada parte
+  del distribution a `pockets.budget`.
+- Con un income simulado de $500.000 distribuido 60/40:
+  - `income_month` subió +$500.000 (de $400k a $900k). ✅
+  - `available_total` subió +$500.000 (de $2.29M a $2.79M). ✅
+  - El trigger nuevo `trg_transactions_set_canonical` poblo
+    `canonical_merchant='test sueldo'` automáticamente. ✅
+
+Notas que quedaron en el aire (no son bugs, son observaciones):
+- `register_income` no actualiza `allocated_budget` — y está bien:
+  un ingreso aumenta el saldo disponible, no debería cambiar el plan
+  del mes. Si el usuario quiere agrandar el plan, lo hace desde
+  Pockets → Ajustar.
+- `register_income` no tiene los guards defensivos que ya tiene
+  `register_expense` (monto ≤ 0, distribución que no suma al total, etc.).
+  Bug potencial pero no urgente; agregar a próxima tanda de safety_guards.
+
+### Pendiente siguiente sesión
+
+- **Verificación end-to-end con la app real**: usuario debe abrir Dashboard
+  → Pockets → Chat y confirmar que los 3 muestran los mismos $400k de
+  ingresos / $110k de gastos / $2.290.000 de disponible.
+- Flujo "Iniciar nuevo ciclo mensual": al cambiar de mes, ofrecer
+  resetear `budget = allocated_budget` para todos los bolsillos.
+- Selector de mes en Dashboard (hoy es solo mes actual).
+- Guards en `register_income` (monto positivo, suma de distribution =
+  amount, bolsillos del mismo user).
+- Sentry / observabilidad de Edge Functions.
+
+---
+
 ## Plantilla para futuras corridas
 
 ```

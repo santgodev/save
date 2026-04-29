@@ -11,24 +11,26 @@ Cuenta usada como víctima: santgodev@gmail.com (tu cuenta real, sin modificarla
 
 ## TL;DR
 
-| Severidad | # | Resumen |
-|---|---|---|
-| 🔴 Crítico  | 1 | Transferencia con monto **negativo** invierte el flujo — vulnera integridad financiera |
-| 🔴 Crítico  | 2 | `pockets.budget` se usa como saldo corriente — se pierde el presupuesto original |
-| 🔴 Crítico  | 3 | `register_expense` con categoría sin bolsillo → transacción huérfana (gasto invisible) |
-| 🟠 Alto     | 4 | Self-transfer (from=to) crea 2 transacciones falsas |
-| 🟠 Alto     | 5 | Transfer/expense con monto 0 crea basura |
-| 🟠 Alto     | 6 | Categoría duplicada → `LIMIT 1` sin `ORDER BY`, descuento no-determinista |
-| 🟡 Medio    | 7 | `preferred_currency` default `'USD'` en app colombiana |
-| 🟡 Medio    | 8 | `profiles.monthly_income = 0` bloquea razonamiento del asesor |
-| 🟡 Medio    | 9 | `date_string` no validado — acepta fechas imposibles (2099, 1850) |
-| 🟡 Medio    | 10 | `merchant=''` aceptado — la UI va a mostrar espacios vacíos |
-| 🟢 Bajo     | 11 | `canonical_merchant` no se puebla (trigger faltante) |
-| 🟢 Bajo     | 12 | `chat_messages.session_id = null` — imposible agrupar conversación |
-| 🟢 Bajo     | 13 | OCR deja muchos merchants como "Factura Escaneada" o "Desconocido" |
+| Severidad | # | Resumen | Estado |
+|---|---|---|---|
+| 🔴 Crítico  | 1  | Transferencia con monto **negativo** invierte el flujo | ✅ FIX `safety_guards` (2026-04-22) |
+| 🔴 Crítico  | 2  | `pockets.budget` se usa como saldo corriente — se pierde el presupuesto original | ✅ FIX `separate_allocated_budget` (2026-04-22) |
+| 🔴 Crítico  | 3  | `register_expense` con categoría sin bolsillo → transacción huérfana | ✅ FIX `safety_guards` (fallback a Otros) |
+| 🟠 Alto     | 4  | Self-transfer (from=to) crea 2 transacciones falsas | ✅ FIX `safety_guards` |
+| 🟠 Alto     | 5  | Transfer/expense con monto 0 crea basura | ✅ FIX `safety_guards` |
+| 🟠 Alto     | 6  | Categoría duplicada → `LIMIT 1` sin `ORDER BY`, descuento no-determinista | ✅ FIX `safety_guards` (`ORDER BY created_at ASC`) |
+| 🟡 Medio    | 7  | `preferred_currency` default `'USD'` en app colombiana | ✅ FIX `data_quality_guards` (2026-04-28) |
+| 🟡 Alto     | 8  | `profiles.monthly_income = 0` bloquea razonamiento del asesor | ✅ FIX `data_quality_guards` (default NULL, CHECK > 0) |
+| 🟡 Medio    | 9  | `date_string` no validado — acepta fechas imposibles | ✅ FIX `data_quality_guards` (CHECK formato + rango en RPC) |
+| 🟠 Medio    | 10 | `merchant=''` aceptado — la UI va a mostrar espacios vacíos | ✅ FIX `safety_guards` |
+| 🟢 Bajo     | 11 | `canonical_merchant` no se puebla (trigger faltante) | ✅ FIX `canonical_merchant_trigger` (2026-04-28) |
+| 🟡 Medio    | 12 | `chat_messages.session_id = null` — imposible agrupar conversación | ✅ FIX `data_quality_guards` (default uuid + NOT NULL) |
+| 🟢 Bajo     | 13 | OCR deja muchos merchants como "Factura Escaneada" o "Desconocido" | ✅ FIX `ocr-receipt v5` (prompt `ocr.v2` + sanitización + `needs_review`) |
 
-**Recomendación:** antes de salir a producción real con más usuarios, arreglar
-**#1, #2, #3** esta semana. Son bugs de plata; el resto es higiene.
+**Status:** **13 de 13 cerrados.** Listo para producción a nivel de
+schema/RPCs/Edge Functions. Lo que falta es UX (cliente debe leer
+`needs_review` del OCR; barra plan/queda; reasignar presupuesto) y
+observabilidad (Sentry).
 
 ---
 
@@ -181,6 +183,16 @@ dejar un espacio en blanco donde debería ir el nombre del comercio.
 Todas las transacciones recientes tienen `canonical_merchant` null. Debería
 haber un trigger `BEFORE INSERT` que lo calcule (lowercase + strip).
 
+**Fix (2026-04-28, migración `canonical_merchant_trigger`):**
+- Función `canonicalize_merchant(text)` IMMUTABLE: lower + strip puntuación
+  común + collapse de espacios + trim. Tildes y guiones se preservan.
+- Trigger `trg_transactions_set_canonical` BEFORE INSERT/UPDATE en
+  `transactions`: rellena automáticamente si no se pasó explícito; recalcula
+  si cambia `merchant`. Respeta canonicales explícitos (RPCs internos
+  pueden setear `traslado_bolsillos`, `ingreso_nuevo`, etc.).
+- Backfill aplicado: 0/30 rows quedan con `canonical_merchant = NULL`.
+- Cobertura: `tests/regressions/regression_003_canonical_merchant.sql`.
+
 ### 🟢 #12 — `chat.message.sent` con `session_id = null`
 
 Sin sesión agrupada, no se puede responder preguntas como "¿cuántos turnos
@@ -192,6 +204,25 @@ De los últimos `scan_success` events: uno tenía merchant "Desconocido",
 otros tenían "Factura Escaneada" como nombre por defecto. Sugiere bajar el
 umbral o mejorar el prompt del OCR para que siempre intente un merchant
 plausible.
+
+**Fix (2026-04-28, `ocr-receipt` v5 con prompt `ocr.v2`):**
+- Prompt nuevo PROHÍBE explícitamente devolver `Desconocido`,
+  `Factura Escaneada`, `Recibo`, `Sin nombre`, `N/A`, `null`. Si el modelo
+  no ve un merchant claro debe devolver `null`.
+- Pide un campo `confidence: "high"|"medium"|"low"`.
+- Sanitización defensiva en el Edge Function: aunque OpenAI ignore la
+  regla, una regex blacklist en TypeScript fuerza `merchant=null` y
+  `confidence=low` antes de continuar.
+- Si `auto_register=true` pero el ticket viene débil (`merchant=null` o
+  `confidence=low`) → NO se llama a `register_expense`. Se devuelve
+  `{ needs_review: true, register_skipped_reason: "low_confidence" }` para
+  que el cliente abra un modal "¿Cuál es el comercio?" en vez de guardar
+  basura.
+- Eventos `scanner.scanned` ahora incluyen `confidence`, `needs_review` y
+  `prompt_version` para análisis offline.
+- Pendiente del lado del cliente: `Scanner.tsx` debe leer `needs_review`
+  y mostrar un input al usuario antes de persistir. Eso ya no es bug del
+  backend; es feature de UI.
 
 ---
 

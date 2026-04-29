@@ -20,14 +20,15 @@ interface TopBarProps {
   userId?: string;
   transactions?: any[];
   pockets?: any[];
+  showChat?: boolean;
+  onShowChatChange?: (show: boolean) => void;
+  initialMessage?: string;
 }
 
 const QUICK_QUESTIONS = [
-  '¿Por qué se me va la plata tan rápido?',
+  '¿En qué se me está yendo la plata?',
   '¿Voy a alcanzar a llegar a fin de mes?',
-  '¿En qué me estoy pasando de piña?',
-  '¿Qué bolsillo tiene más plata?',
-  'Dame un consejo para ahorrar ya.',
+  'Dame un consejo para ahorrar hoy',
 ];
 
 type Message = {
@@ -35,17 +36,34 @@ type Message = {
   content: string;
 };
 
-export const TopBar = ({ title, userAvatar, userName, userId, transactions = [], pockets = [] }: TopBarProps) => {
+export const TopBar = ({ 
+  title, userAvatar, userName, userId, transactions = [], pockets = [],
+  showChat: propsShowChat, onShowChatChange, initialMessage
+}: TopBarProps) => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
 
-  const [showChat, setShowChat] = useState(false);
+  const [internalShowChat, setInternalShowChat] = useState(false);
+  const showChat = propsShowChat !== undefined ? propsShowChat : internalShowChat;
+  const setShowChat = (val: boolean) => {
+    if (onShowChatChange) onShowChatChange(val);
+    else setInternalShowChat(val);
+  };
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [hasNewInsights, setHasNewInsights] = useState(false);
   const [isScoreMinimized, setIsScoreMinimized] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+
+  // Auto-send initial message when chat is opened from outside
+  useEffect(() => {
+    if (showChat && initialMessage && messages.length <= 1) {
+      sendMessage(initialMessage);
+    }
+  }, [showChat, initialMessage]);
 
   const renderMessageContent = (msg: Message, style: any) => {
     // Extraer botones
@@ -59,14 +77,27 @@ export const TopBar = ({ title, userAvatar, userName, userId, transactions = [],
     // Limpiar texto
     let cleanText = msg.content.replace(buttonRegex, '').replace(/\[ACTION:.*\]/g, '').trim();
 
-    // Parser simple para negritas (**), saltos de línea con viñetas y dinero ($XX.XXX o XXk)
-    const parts = cleanText.split(/(\*\*.*?\*\*|\n- |\$ ?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?|\d{1,3}k)/g);
+    // Detect money amounts
+    const pocketNames = pockets.map(p => p.name).filter(n => n.length > 2);
+    // Definimos regex sin grupos capturadores internos
+    const moneyRegexRaw = /\$ ?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?|\d{1,3}k/;
+    const pocketRegexRaw = pocketNames.length > 0 
+      ? new RegExp(`${pocketNames.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')}`, 'gi')
+      : null;
+
+    // Solo un grupo capturador exterior para el split
+    const combinedRegex = pocketRegexRaw 
+      ? new RegExp(`(\\*\\*.*?\\*\\*|\\n- |${moneyRegexRaw.source}|${pocketRegexRaw.source})`, 'g')
+      : new RegExp(`(\\*\\*.*?\\*\\*|\\n- |${moneyRegexRaw.source})`, 'g');
+
+    const parts = cleanText.split(combinedRegex);
     
     return (
       <View>
         {cleanText.length > 0 && (
           <Text style={style}>
             {parts.map((part, i) => {
+              if (!part) return null;
               if (part.startsWith('**') && part.endsWith('**')) {
                 return <Text key={i} style={{ fontWeight: '800' }}>{part.slice(2, -2)}</Text>;
               }
@@ -74,14 +105,24 @@ export const TopBar = ({ title, userAvatar, userName, userId, transactions = [],
                  return <Text key={i}>{"\n\u2022 "}</Text>;
               }
               // Detect money amounts
-              if (part.match(/^(\$ ?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?|\d{1,3}k)$/)) {
+              if (part.match(moneyRegexRaw)) {
                 return (
                   <Text key={i} style={{ 
-                    backgroundColor: msg.role === 'assistant' ? theme.colors.primary + '20' : 'rgba(255,255,255,0.2)',
-                    color: msg.role === 'assistant' ? theme.colors.primary : '#FFF',
+                    color: theme.colors.primary,
                     fontWeight: '900',
                   }}>
-                    {` ${part} `}
+                    {part}
+                  </Text>
+                );
+              }
+              // Detect pocket names
+              if (pocketRegexRaw && part.match(pocketRegexRaw)) {
+                return (
+                  <Text key={i} style={{ 
+                    color: theme.colors.onSurface, 
+                    fontWeight: '900',
+                  }}>
+                    {part}
                   </Text>
                 );
               }
@@ -118,26 +159,36 @@ export const TopBar = ({ title, userAvatar, userName, userId, transactions = [],
     );
   };
 
+  const monthTransactions = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    return (transactions || []).filter(tx => {
+      const date = new Date(tx.created_at);
+      return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+    });
+  }, [transactions]);
+
   const getProactiveGreeting = () => {
-    const totalGasto = transactions
-      .filter(t => parseFloat(t.amount) < 0)
-      .reduce((acc, t) => acc + Math.abs(parseFloat(t.amount)), 0);
+    const totalGastoMonth = monthTransactions
+      .filter(t => Number(t.amount) < 0)
+      .reduce((acc, t) => acc + Math.abs(Number(t.amount)), 0);
       
-    let insight = "Todo se ve bien por ahora. 👍";
+    let insight = "";
     const criticalPocket = pockets.find(p => {
-      const alloc = parseFloat(p.allocated_budget || '0');
-      const avail = parseFloat(p.budget || '0');
+      const alloc = Number(p.allocated_budget || 0);
+      const avail = Number(p.budget || 0);
       if (alloc <= 0) return false;
       return ((alloc - avail) / alloc) >= 0.8;
     });
 
     if (criticalPocket) {
-      insight = `Ojo parce, ya casi te gastas todo en **${criticalPocket.name}** 👀`;
-    } else if (totalGasto > 0) {
-      insight = `Llevas **$${Math.round(totalGasto).toLocaleString('es-CO')}** gastados. Vas a buen ritmo.`;
+      insight = `Atención: El bolsillo ${criticalPocket.name} está al 80%.`;
+    } else if (totalGastoMonth > 0) {
+      insight = `Consumo actual del mes: $${Math.round(totalGastoMonth).toLocaleString('es-CO')}.`;
     }
 
-    return `Hola${userName ? ` ${userName.split(' ')[0]}` : ''}! 👋 Te resumo rápido:\n${insight}\n\n[BOTON:¿Cómo voy este mes?][BOTON:Ver mis gastos][BOTON:Dame un consejo]`;
+    return `Hola${userName ? ` ${userName.split(' ')[0]}` : ''}. ${insight}\n¿Cómo puedo ayudarte con tus datos hoy?\n\n[BOTON:¿Cómo voy este mes?][BOTON:Resumen de gastos]`;
   };
 
   const profileData = useMemo(() => calculateFinancialProfile(transactions, [], pockets), [transactions, pockets]);
@@ -152,6 +203,7 @@ export const TopBar = ({ title, userAvatar, userName, userId, transactions = [],
 
     (async () => {
       logEvent(EVENTS.CHAT_OPENED);
+      setIsHistoryLoading(true);
 
       try {
         if (userId) {
@@ -180,6 +232,8 @@ export const TopBar = ({ title, userAvatar, userName, userId, transactions = [],
         setMessages([{ role: 'assistant', content: getProactiveGreeting() }]);
       } catch (e) {
         console.warn('[chat] history load failed', e);
+      } finally {
+        if (!cancelled) setIsHistoryLoading(false);
       }
     })();
 
@@ -448,55 +502,23 @@ export const TopBar = ({ title, userAvatar, userName, userId, transactions = [],
               {/* Header */}
               <View style={[styles.chatHeader, { paddingTop: Math.max(insets.top, 20) + 16 }]}>
                 <View style={styles.chatHeaderLeft}>
-                  <View style={styles.sageAvatar}>
-                    <Sparkles size={22} color={theme.colors.primary} />
+                  <View style={[styles.sageAvatar, { backgroundColor: profileData.score >= 80 ? '#10B98120' : profileData.score >= 50 ? '#F59E0B20' : '#EF444420' }]}>
+                    <Sparkles size={22} color={profileData.score >= 80 ? '#10B981' : profileData.score >= 50 ? '#F59E0B' : '#EF4444'} />
                   </View>
                   <View>
                     <Text style={styles.chatTitle}>Tu asesor financiero</Text>
                     <Text style={styles.chatSubtitle}>
-                      Estado: {profileData.score >= 80 ? '🟢 Al día' : profileData.score >= 50 ? '🟡 Cuidado' : '🔴 Te estás pasando'}
+                      Analista de Datos Save
                     </Text>
                   </View>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                  <TouchableOpacity style={styles.closeBtn} onPress={clearChat}>
-                    <Trash2 size={16} color={theme.colors.error} strokeWidth={2.5} />
-                  </TouchableOpacity>
                   <TouchableOpacity style={styles.closeBtn} onPress={() => { setShowChat(false); }}>
                     <X size={18} color={theme.colors.onSurface} strokeWidth={2.5} />
                   </TouchableOpacity>
                 </View>
               </View>
 
-              {/* Score strip */}
-              <View 
-                {...PanResponder.create({
-                  onStartShouldSetPanResponder: () => true,
-                  onPanResponderRelease: (e, gestureState) => {
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    if (gestureState.dx < -20) setIsScoreMinimized(true);
-                    else if (gestureState.dx > 20) setIsScoreMinimized(false);
-                    else setIsScoreMinimized(!isScoreMinimized);
-                  }
-                }).panHandlers}
-                style={[styles.scoreStrip, { 
-                  backgroundColor: profileData.score >= 80 ? '#D1FAE5' : profileData.score >= 50 ? '#FEF3C7' : '#FEE2E2',
-                  alignSelf: isScoreMinimized ? 'flex-end' : 'stretch',
-                  width: isScoreMinimized ? 44 : 'auto',
-                  height: isScoreMinimized ? 44 : 'auto',
-                  padding: isScoreMinimized ? 0 : 12,
-                  justifyContent: 'center',
-                }]}>
-                <Target size={18} color={profileData.score >= 80 ? '#10B981' : profileData.score >= 50 ? '#F59E0B' : '#EF4444'} />
-                {!isScoreMinimized && (
-                  <Text style={[styles.scoreText, { 
-                    flex: 1, flexWrap: 'wrap',
-                    color: profileData.score >= 80 ? '#065F46' : profileData.score >= 50 ? '#92400E' : '#991B1B' 
-                  }]}>
-                    Health Score: {profileData.score}/100 · {profileData.scoreMessage}
-                  </Text>
-                )}
-              </View>
 
               {/* Mensajes */}
               <ScrollView
@@ -507,38 +529,31 @@ export const TopBar = ({ title, userAvatar, userName, userId, transactions = [],
                 keyboardShouldPersistTaps="handled"
                 onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
               >
-                {messages.map((msg, idx) => (
-                  <View key={idx} style={[styles.bubbleWrap, msg.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant]}>
-                    {msg.role === 'assistant' && (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                        <Sparkles size={12} color={theme.colors.primary} />
-                        <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.primary, letterSpacing: 0.8 }}>SAVE AI</Text>
-                      </View>
-                    )}
-                    <View style={msg.role === 'user' ? styles.bubbleUserInner : styles.bubbleAssistantInner}>
-                      {renderMessageContent(
-                        msg,
-                        msg.role === 'user' ? styles.bubbleUserText : styles.bubbleAssistantText
-                      )}
-                      {msg.role === 'assistant' && msg.content.includes('[ACTION:TRANSFER]') && (
-                        <TouchableOpacity 
-                          style={{ marginTop: 12, backgroundColor: theme.colors.primary, paddingVertical: 10, borderRadius: 12, alignItems: 'center' }}
-                          onPress={() => { setShowChat(false); /* Navegar a transfer */ }}
-                        >
-                          <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>Mover dinero ahora</Text>
-                        </TouchableOpacity>
-                      )}
-                      {msg.role === 'assistant' && msg.content.includes('[ACTION:POCKETS]') && (
-                        <TouchableOpacity 
-                          style={{ marginTop: 12, backgroundColor: theme.colors.primary, paddingVertical: 10, borderRadius: 12, alignItems: 'center' }}
-                          onPress={() => { setShowChat(false); /* Navegar a pockets */ }}
-                        >
-                          <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>Ver mis bolsillos</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
+                {isHistoryLoading ? (
+                  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 40 }}>
+                    <ActivityIndicator size="small" color={theme.colors.primary} />
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.onSurfaceVariant, marginTop: 12 }}>Cargando analista...</Text>
                   </View>
-                ))}
+                ) : (
+                  <>
+                    {messages.map((msg, idx) => (
+                      <View key={idx} style={[styles.bubbleWrap, msg.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant]}>
+                        {msg.role === 'assistant' && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                            <Sparkles size={12} color={theme.colors.primary} />
+                            <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.primary, letterSpacing: 0.8 }}>SAVE AI</Text>
+                          </View>
+                        )}
+                        <View style={msg.role === 'user' ? styles.bubbleUserInner : styles.bubbleAssistantInner}>
+                          {renderMessageContent(
+                            msg,
+                            msg.role === 'user' ? styles.bubbleUserText : styles.bubbleAssistantText
+                          )}
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                )}
 
                 {isTyping && (
                   <View style={styles.typingBubble}>
@@ -549,26 +564,6 @@ export const TopBar = ({ title, userAvatar, userName, userId, transactions = [],
                   </View>
                 )}
 
-                {/* Preguntas rápidas (solo si el chat está vacío o recién inició) */}
-                {messages.length <= 1 && !isTyping && (
-                  <View style={{ marginTop: 16 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '900', color: theme.colors.onSurfaceVariant, letterSpacing: 0.8, marginBottom: 10 }}>
-                      PREGUNTAS RÁPIDAS
-                    </Text>
-                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                      {QUICK_QUESTIONS.map((q, i) => (
-                        <TouchableOpacity
-                          key={i}
-                          style={styles.chip}
-                          onPress={() => sendMessage(q)}
-                          activeOpacity={0.7}
-                        >
-                          <Text style={styles.chipText}>{q}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                )}
               </ScrollView>
 
               {/* Input bar */}

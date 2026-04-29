@@ -1,28 +1,27 @@
 // =====================================================================
-// chat-advisor Edge Function
+// chat-advisor Edge Function — read-only analyst (advisor.v6)
 // =====================================================================
 // POST /functions/v1/chat-advisor
 // Body: { message: string, session_id?: string }
 // Auth: Bearer <user JWT>
 //
-// Flow:
-//   1. Auth user (getUser()).
-//   2. Load live context: profile (for monthly_income), pockets, recent
-//      transactions, user_memory, last 20 chat turns.
-//   3. Persist the user's message.
-//   4. Call OpenAI with tool-calling enabled.
-//   5. Execute any requested tools against the RPCs that already exist
-//      (transfer_between_pockets, register_expense) and feed results back.
-//   6. Persist the assistant turn and return its reply.
+// Cambios vs v5:
+//   - Read-only: tools.ts ahora exporta [] (cero mutaciones).
+//   - Contexto único: ya NO arma el contexto a mano desde profiles +
+//     pockets + transactions. Llama a get_monthly_state() — la fuente
+//     de verdad — y se la pasa al prompt builder.
+//   - El número que ve el chat es el MISMO que ve Dashboard y Pockets.
 // =====================================================================
 
 import { handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { authenticate } from "../_shared/auth.ts";
 import { chatCompletion, OpenAIMessage } from "../_shared/openai.ts";
-import { ADVISOR_PROMPT_VERSION, buildAdvisorSystemPrompt } from "../_shared/prompts.ts";
-import { advisorTools, executeTool } from "../_shared/tools.ts";
+import {
+  ADVISOR_PROMPT_VERSION,
+  buildAdvisorSystemPrompt,
+  MonthlyState,
+} from "../_shared/prompts.ts";
 
-const MAX_TOOL_ITERATIONS = 3;
 const HISTORY_WINDOW = 20;
 
 Deno.serve(async (req) => {
@@ -51,36 +50,26 @@ Deno.serve(async (req) => {
   const { user, userClient, serviceClient } = auth;
 
   // ------------------------------------------------------------------
-  // 1. Context gathering. All reads go through userClient so RLS applies.
+  // 1. Cargar contexto: estado mensual unificado + memoria + historial.
   // ------------------------------------------------------------------
   const [
+    { data: stateData, error: stateErr },
     { data: profile },
-    { data: pockets },
-    { data: txs },
     { data: memory },
     { data: history },
   ] = await Promise.all([
+    userClient.rpc("get_monthly_state", { p_user_id: user.id }),
     userClient
       .from("profiles")
-      .select("id,full_name,monthly_income,financial_profile,financial_score")
+      .select("id,full_name")
       .eq("id", user.id)
       .maybeSingle(),
-    userClient
-      .from("pockets")
-      .select("id,name,category,budget,allocated_budget,target_percentage")
-      .eq("user_id", user.id),
-    userClient
-      .from("transactions")
-      .select("amount,merchant,category,created_at")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(40),
     userClient
       .from("user_memory")
       .select("key,summary,confidence")
       .eq("user_id", user.id)
       .order("confidence", { ascending: false })
-      .limit(40),
+      .limit(20),
     userClient
       .from("chat_messages")
       .select("role,content")
@@ -90,37 +79,21 @@ Deno.serve(async (req) => {
       .limit(HISTORY_WINDOW),
   ]);
 
+  if (stateErr || !stateData) {
+    return errorResponse(
+      `No se pudo cargar el estado mensual: ${stateErr?.message ?? "sin datos"}`,
+      500,
+    );
+  }
+
+  const state = stateData as MonthlyState;
+
   // ------------------------------------------------------------------
-  // 2. Build the system prompt + messages array.
+  // 2. Armar el system prompt y los mensajes.
   // ------------------------------------------------------------------
   const systemPrompt = buildAdvisorSystemPrompt({
     displayName: profile?.full_name ?? "amigo",
-    monthlyIncome:
-      profile?.monthly_income !== null && profile?.monthly_income !== undefined
-        ? Number(profile.monthly_income)
-        : null,
-    financialProfile: profile?.financial_profile ?? null,
-    financialScore: profile?.financial_score ?? null,
-    pockets: (pockets ?? []).map((p: Record<string, unknown>) => ({
-      id: p.id as string,
-      name: p.name as string,
-      category: (p.category as string) ?? "",
-      budget: p.budget !== null && p.budget !== undefined ? Number(p.budget) : null,
-      allocated_budget:
-        p.allocated_budget !== null && p.allocated_budget !== undefined
-          ? Number(p.allocated_budget)
-          : null,
-      target_percentage:
-        p.target_percentage !== null && p.target_percentage !== undefined
-          ? Number(p.target_percentage)
-          : null,
-    })),
-    recentTransactions: (txs ?? []).map((t: Record<string, unknown>) => ({
-      amount: Number(t.amount ?? 0),
-      merchant: (t.merchant as string) ?? "",
-      category: (t.category as string) ?? "",
-      created_at: (t.created_at as string) ?? new Date().toISOString(),
-    })),
+    state,
     memorySnapshot: (memory ?? []).map((m: Record<string, unknown>) => ({
       key: m.key as string,
       summary: m.summary as string,
@@ -144,7 +117,7 @@ Deno.serve(async (req) => {
   ];
 
   // ------------------------------------------------------------------
-  // 3. Persist the user's turn up front + emit a behavioural event.
+  // 3. Persistir el turno del usuario + evento de telemetría.
   // ------------------------------------------------------------------
   await serviceClient.from("chat_messages").insert({
     user_id: user.id,
@@ -157,87 +130,34 @@ Deno.serve(async (req) => {
   await serviceClient.from("user_events").insert({
     user_id: user.id,
     event_type: "chat.message.sent",
-    event_data: { session_id: sessionId, length: userMessage.length },
+    event_data: {
+      session_id: sessionId,
+      length: userMessage.length,
+      prompt_version: ADVISOR_PROMPT_VERSION,
+      // Mini-snapshot del mes para correlacionar conversación con estado.
+      state_snapshot: {
+        income_month: state.income_month,
+        spent_month: state.spent_month,
+        net_month: state.net_month,
+        available_total: state.available_total,
+        pockets_count: state.pockets.length,
+      },
+    },
     source: "edge_fn",
   });
 
   // ------------------------------------------------------------------
-  // 4. LLM loop with tool calls.
+  // 4. Llamar al LLM. Sin tools, sin loops — una sola llamada.
   // ------------------------------------------------------------------
-  let finalText = "";
-  let usage: { prompt_tokens: number; completion_tokens: number } | undefined;
-  let iterations = 0;
+  const completion = await chatCompletion({
+    messages,
+    temperature: 0.3,
+    max_tokens: 400,
+  });
 
-  while (iterations < MAX_TOOL_ITERATIONS) {
-    iterations++;
-
-    const completion = await chatCompletion({
-      messages,
-      tools: advisorTools,
-      temperature: 0.4,
-      max_tokens: 500,
-    });
-
-    const choice = completion.choices[0];
-    const msg = choice.message;
-    usage = completion.usage;
-
-    if (msg.tool_calls && msg.tool_calls.length > 0) {
-      messages.push({
-        role: "assistant",
-        content: msg.content ?? "",
-        tool_calls: msg.tool_calls,
-      });
-
-      for (const call of msg.tool_calls) {
-        let parsedArgs: Record<string, unknown> = {};
-        try {
-          parsedArgs = JSON.parse(call.function.arguments || "{}");
-        } catch {
-          // fall through — model gave malformed JSON, report to itself.
-        }
-
-        const result = await executeTool(call.function.name, parsedArgs, userClient, user.id);
-
-        await serviceClient.from("chat_messages").insert({
-          user_id: user.id,
-          session_id: sessionId,
-          role: "tool",
-          content: result.ok ? "tool executed" : `tool failed: ${result.error}`,
-          tool_name: call.function.name,
-          tool_input: parsedArgs,
-          tool_output: result as unknown as Record<string, unknown>,
-          prompt_version: ADVISOR_PROMPT_VERSION,
-        });
-
-        await serviceClient.from("user_events").insert({
-          user_id: user.id,
-          event_type: "advisor.tool.called",
-          event_data: {
-            tool: call.function.name,
-            ok: result.ok,
-            input: parsedArgs,
-          },
-          source: "edge_fn",
-        });
-
-        messages.push({
-          role: "tool",
-          tool_call_id: call.id,
-          content: JSON.stringify(result),
-        });
-      }
-
-      continue;
-    }
-
-    finalText = msg.content ?? "";
-    break;
-  }
-
-  if (!finalText) {
-    finalText = "Lo siento, no pude generar una respuesta. ¿Puedes reformular?";
-  }
+  const finalText = (completion.choices[0]?.message?.content ?? "").trim() ||
+    "No pude generar una respuesta. ¿Puedes reformular?";
+  const usage = completion.usage;
 
   await serviceClient.from("chat_messages").insert({
     user_id: user.id,
@@ -254,5 +174,6 @@ Deno.serve(async (req) => {
     reply: finalText,
     session_id: sessionId,
     usage: usage ?? null,
+    prompt_version: ADVISOR_PROMPT_VERSION,
   });
 });

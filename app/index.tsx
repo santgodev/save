@@ -37,8 +37,16 @@ function MainApp() {
   const [isFetchingData, setIsFetchingData] = useState(false);
   
   const [actionMenuVisible, setActionMenuVisible] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [chatInitialMessage, setChatInitialMessage] = useState<string | undefined>(undefined);
+  
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(300)).current;
+
+  const openChatWithContext = (msg?: string) => {
+    setChatInitialMessage(msg);
+    setShowChat(true);
+  };
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
@@ -153,7 +161,7 @@ function MainApp() {
 
     // 4. Data ready -> Show appropriate screen
     switch (currentScreen) {
-      case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('scanner')} onViewAll={() => setCurrentScreen('expenses')} />;
+      case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} />;
       case 'scanner': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} />;
       case 'expenses': return <Expenses transactions={transactions} session={session} pockets={pockets} onRefresh={() => loadUserData(session!.user.id)} />;
       case 'pockets': return <Pockets session={session} pockets={pockets} transactions={transactions} onRefresh={() => loadUserData(session!.user.id)} onTransferPress={triggerTransfer} />;
@@ -161,7 +169,7 @@ function MainApp() {
       case 'add_income': return <AddIncome session={session} pockets={pockets} onCancel={() => setCurrentScreen('dashboard')} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('dashboard'); }} />;
       case 'pocket_transfer': return <PocketTransfer session={session} pockets={pockets} initialParams={transferParams ?? undefined} onCancel={() => { setTransferParams(null); setCurrentScreen('pockets'); }} onSaveSuccess={() => { setTransferParams(null); loadUserData(session!.user.id); setCurrentScreen('pockets'); }} />;
       case 'onboarding': return <Onboarding session={session} onComplete={() => loadUserData(session?.user?.id)} />;
-      default: return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('scanner')} onViewAll={() => setCurrentScreen('expenses')} />;
+      default: return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} />;
     }
   };
 
@@ -175,6 +183,9 @@ function MainApp() {
           userId={session.user?.id}
           transactions={transactions}
           pockets={pockets}
+          showChat={showChat}
+          onShowChatChange={setShowChat}
+          initialMessage={chatInitialMessage}
         />
       )}
 
