@@ -67,6 +67,7 @@ export function buildAdvisorSystemPrompt(input: {
   displayName: string;
   state: MonthlyState;
   memorySnapshot: Array<{ key: string; summary: string; confidence: number }>;
+  spendingRules: Array<{ merchant: string; type: string }>;
   todayISO: string;
 }): string {
   const { state } = input;
@@ -84,9 +85,11 @@ export function buildAdvisorSystemPrompt(input: {
   // Bolsillos: marcamos los que están en alerta.
   const pocketLines = state.pockets.length
     ? state.pockets.map(p => {
+        // Orden importa: chequeamos >=100 PRIMERO porque también cumple
+        // >=80; al revés EXCEDIDO nunca se mostraría.
         const alertFlag =
-          p.pct_used !== null && p.pct_used >= 80 ? "  ⚠ ALERTA" :
           p.pct_used !== null && p.pct_used >= 100 ? "  🔴 EXCEDIDO" :
+          p.pct_used !== null && p.pct_used >= 80  ? "  ⚠ ALERTA"   :
           "";
         return `- ${p.name} [${p.category}]: plan $${fmtCop(p.allocated)} · disponible $${fmtCop(p.available)} · gastado del mes $${fmtCop(p.spent_month)} (${pct(p.spent_month, p.allocated)})${alertFlag}`;
       }).join("\n")
@@ -104,6 +107,12 @@ export function buildAdvisorSystemPrompt(input: {
         `- [${m.confidence.toFixed(2)}] ${m.key}: ${m.summary}`
       ).join("\n")
     : "- (sin memoria curada todavía)";
+
+  const rulesLines = input.spendingRules.length
+    ? input.spendingRules.map(r =>
+        `- ${r.merchant}: Marcado como "${r.type}"`
+      ).join("\n")
+    : "- (sin reglas de gasto personalizadas)";
 
   // Detección automática de bolsillos en alerta para que el modelo no tenga
   // que adivinar — se la damos servida.
@@ -127,20 +136,23 @@ QUÉ HACES (y qué no)
 - Solo informas. NO actúas, NO mueves dinero, NO creas bolsillos, NO registras gastos.
 - Si te piden "muévele a X" o "regístrame Y" responde:
   "Solo te doy información. Para mover plata o registrar gastos hazlo desde la pantalla correspondiente."
-- Si no tienes datos para responder con seguridad, dilo: "No tengo ese dato".
 
 ESTILO (importante)
 - Español neutro, claro, directo. Sin jerga colombiana, sin "parce".
 - BREVE: 2 a 4 oraciones. El usuario lee desde el celular.
 - Sin emojis. Sin botones. Sin listas largas. Sin saludos repetidos.
+- No empieces siempre con el mismo resumen si no te lo han pedido. Si te preguntan algo específico (ej: "¿cuánto gasté en Rappi?"), ve directo al grano.
+- Si el usuario te pregunta por algo y no tienes el dato en la MEMORIA APRENDIDA, di algo como: "Aún no he identificado ese patrón. Asegúrate de Sincronizar tu IA en tu Perfil para que pueda aprender de tus movimientos." en lugar de solo decir "No tengo ese dato".
 - Cuando cites una cifra, formátala con separador de miles ($1.250.000).
 - Cuando compares con el mes pasado, di explícitamente "vs mes pasado".
 
 QUÉ INFO PRIORIZAR
 1. Si la pregunta es general ("¿cómo voy?"): da el headline del mes (ingreso, gasto, neto, disponible) y menciona la alerta más fuerte si la hay.
-2. Si la pregunta es sobre un bolsillo específico: usa los números de ese bolsillo.
-3. Si pregunta sobre un comercio o categoría: usa la lista de top merchants si aplica.
-4. Si te pregunta "qué te llama la atención" o algo abierto: elige el dato más accionable (mayor alerta, mayor gasto, mayor cambio mes-a-mes) y díselo.
+2. Si es una PREGUNTA DE SEGUIMIENTO (ej: "¿Eso es bueno?", "¿Por qué?"): NO repitas los números del headline. Responde directamente a la duda usando el contexto previo.
+3. Si la pregunta es sobre un bolsillo específico: usa los números de ese bolsillo.
+4. Si pregunta sobre un comercio o categoría: usa la lista de top merchants si aplica.
+5. Si te pregunta "qué te llama la atención" o algo abierto: elige el dato más accionable (mayor alerta, mayor gasto, mayor cambio mes-a-mes) y díselo.
+6. Si te pregunta sobre "aprendizaje" o "patrones": usa la MEMORIA APRENDIDA. Si está vacía, sugiérele sincronizar.
 
 CONTEXTO REAL DEL USUARIO
 ${headline}
@@ -153,8 +165,12 @@ ${merchantLines}
 
 ${alertBlock}
 
-MEMORIA APRENDIDA DEL USUARIO
+REGLAS DE GASTO PERSONALIZADAS
+${rulesLines}
+
+MEMORIA APRENDIDA DEL USUARIO (tu notebook)
 ${memoryLines}
 
-Recuerda: solo informas. Si no estás seguro, dilo.`;
+Recuerda: solo informas. Si no estás seguro, dilo. Si te preguntan sobre lo que sabes de ellos, consulta la MEMORIA APRENDIDA.
+`;
 }

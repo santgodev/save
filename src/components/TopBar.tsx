@@ -12,6 +12,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { calculateFinancialProfile } from '../utils/profileUtils';
 import { supabase } from '../lib/supabase';
 import { logEvent, EVENTS } from '../lib/events';
+import { useMonthlyState, formatCop } from '../lib/useMonthlyState';
 
 interface TopBarProps {
   title: string;
@@ -57,6 +58,9 @@ export const TopBar = ({
   const [isScoreMinimized, setIsScoreMinimized] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+
+  // Sync with source of truth (get_monthly_state)
+  const { state: monthState } = useMonthlyState();
 
   // Auto-send initial message when chat is opened from outside
   useEffect(() => {
@@ -170,22 +174,21 @@ export const TopBar = ({
   }, [transactions]);
 
   const getProactiveGreeting = () => {
-    const totalGastoMonth = monthTransactions
-      .filter(t => Number(t.amount) < 0)
-      .reduce((acc, t) => acc + Math.abs(Number(t.amount)), 0);
+    // Usamos el estado real del mes (RPC) para el saludo proactivo.
+    // Esto garantiza que el número del saludo coincida con el Dashboard
+    // y con lo que dirá la IA después.
+    const totalGastoMonth = monthState?.spent_month ?? 0;
       
     let insight = "";
-    const criticalPocket = pockets.find(p => {
-      const alloc = Number(p.allocated_budget || 0);
-      const avail = Number(p.budget || 0);
-      if (alloc <= 0) return false;
-      return ((alloc - avail) / alloc) >= 0.8;
+    const criticalPocket = (monthState?.pockets || []).find(p => {
+      if (!p.allocated || p.allocated <= 0) return false;
+      return (p.spent_month / p.allocated) >= 0.8;
     });
 
     if (criticalPocket) {
       insight = `Atención: El bolsillo ${criticalPocket.name} está al 80%.`;
     } else if (totalGastoMonth > 0) {
-      insight = `Consumo actual del mes: $${Math.round(totalGastoMonth).toLocaleString('es-CO')}.`;
+      insight = `Consumo actual del mes: ${formatCop(totalGastoMonth)}.`;
     }
 
     return `Hola${userName ? ` ${userName.split(' ')[0]}` : ''}. ${insight}\n¿Cómo puedo ayudarte con tus datos hoy?\n\n[BOTON:¿Cómo voy este mes?][BOTON:Resumen de gastos]`;

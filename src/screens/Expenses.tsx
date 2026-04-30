@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
-  View, Text, TouchableOpacity, Animated, StyleSheet, Alert, ScrollView, TextInput, Dimensions, ActivityIndicator, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Platform
+  View, Text, TouchableOpacity, Animated, StyleSheet, Alert, ScrollView, TextInput, Dimensions, ActivityIndicator, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Platform, Pressable
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
-import { 
+import {
   Search, Filter, Trash2, ChevronRight, PieChart, ArrowDownRight, TrendingUp, ArrowRightLeft, X,
-  ChevronLeft
+  ChevronLeft, ShieldCheck, Eye, AlertTriangle, Tag, CheckCircle2
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
@@ -25,6 +25,9 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
   const [showFilter, setShowFilter] = useState(false);
   const [deletingTx, setDeletingTx] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [markingTx, setMarkingTx] = useState<any>(null);
+  const [isMarking, setIsMarking] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
 
   const MONTHS = [
@@ -121,8 +124,8 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
     emptyStateTitle: { fontSize: normalize(18), color: theme.colors.onSurfaceVariant, fontWeight: '900', opacity: 0.4 },
     longPressHint: { fontSize: normalize(11), color: theme.colors.onSurfaceVariant, textAlign: 'center', marginTop: 20, marginBottom: 8, fontStyle: 'italic', opacity: 0.5 },
   
-    modalOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', zIndex: 1000 },
-    modalContainer: { width: width * 0.88, borderRadius: 36, padding: 32, paddingBottom: 24, borderWidth: 1, borderColor: theme.colors.divider, ...theme.shadows.premium },
+    modalOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
+    modalContainer: { borderRadius: 36, padding: 32, paddingBottom: 24, borderWidth: 1, borderColor: theme.colors.divider, ...theme.shadows.premium },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
     modalTitle: { fontSize: 12, fontWeight: '900', color: theme.colors.primary, letterSpacing: 2, textTransform: 'uppercase' },
     modalInfo: { alignItems: 'center', marginBottom: 32 },
@@ -134,6 +137,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
     modalConfirmTxt: { color: '#FFF', fontSize: 16, fontWeight: '900' },
     modalCancelBtn: { paddingVertical: 14, alignItems: 'center' },
     modalCancelTxt: { fontSize: 14, fontWeight: '800' },
+    closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.colors.surfaceContainerLow, alignItems: 'center', justifyContent: 'center' },
   }), [theme]);
 
   useEffect(() => {
@@ -144,7 +148,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
     const now = new Date();
     const currentYear = now.getFullYear();
     return (transactions || []).filter(tx => {
-      const date = new Date(tx.date_string || tx.created_at);
+      const date = new Date((tx.date_string || tx.created_at).split('T')[0] + 'T12:00:00');
       return date.getMonth() === selectedMonth && date.getFullYear() === currentYear;
     });
   }, [transactions, selectedMonth]);
@@ -154,14 +158,14 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
       (tx.merchant.toLowerCase().includes(searchQuery.toLowerCase()) ||
        tx.category.toLowerCase().includes(searchQuery.toLowerCase())) &&
       (!filterCategory || tx.category === filterCategory)
-    ).sort((a, b) => new Date(b.date_string || b.created_at || 0).getTime() - new Date(a.date_string || a.created_at || 0).getTime());
+    ).sort((a, b) => new Date((b.date_string || b.created_at || '0').split('T')[0] + 'T12:00:00').getTime() - new Date((a.date_string || a.created_at || '0').split('T')[0] + 'T12:00:00').getTime());
   }, [monthTransactions, searchQuery, filterCategory]);
 
   const totalSpent = useMemo(() => {
-    // Solo sumamos los gastos (excluyendo ingresos y traslados) 
-    // y aplicamos los filtros de búsqueda/categoría para que sea coherente con lo que el usuario ve.
+    // Alinear con la lógica del backend (get_monthly_state):
+    // Solo sumar cantidades negativas y excluir 'Ingreso' y 'Traslado'.
     return filteredTransactions
-      .filter(tx => tx.category !== 'Ingreso')
+      .filter(tx => tx.category !== 'Ingreso' && tx.category !== 'Traslado' && Number(tx.amount) < 0)
       .reduce((acc, tx) => acc + Math.abs(Number(tx.amount)), 0);
   }, [filteredTransactions]);
 
@@ -187,6 +191,45 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
       alert('Error en la operación.');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  // Marca un comercio con una regla de gasto. UPSERT por (user_id, canonical_pattern).
+  // El advisor lee esto en cada turno del chat y modula el tono.
+  //   confidence  → no me alertes por gastos en este merchant
+  //   monitor     → muéstrame si cambia mucho
+  //   reduce      → alértame, quiero gastar menos
+  const markMerchant = async (rule: 'confidence' | 'monitor' | 'reduce') => {
+    if (!markingTx || isMarking) return;
+    setIsMarking(true);
+    try {
+      const pattern = markingTx.merchant ?? '';
+      const canonical = markingTx.canonical_merchant
+        ?? pattern.toLowerCase().trim().replace(/\s+/g, ' ');
+      const { error } = await supabase
+        .from('user_spending_rules')
+        .upsert({
+          user_id: session.user.id,
+          pattern,
+          canonical_pattern: canonical,
+          display_name: pattern,
+          type: rule,
+          last_used_at: new Date().toISOString(),
+        }, { onConflict: 'user_id,canonical_pattern' });
+      if (error) throw error;
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setShowSuccess(true);
+      
+      setTimeout(() => {
+        setMarkingTx(null);
+        setShowSuccess(false);
+        if (onRefresh) onRefresh();
+      }, 1500);
+    } catch (e) {
+      console.error('markMerchant', e);
+      Alert.alert('Ups', 'No pudimos guardar la regla.');
+    } finally {
+      setIsMarking(false);
     }
   };
 
@@ -284,9 +327,15 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
             const amt = Math.abs(tx.amount);
             
             return (
-              <TouchableOpacity 
-                key={tx.id || idx} 
-                style={styles.txRow} 
+              <TouchableOpacity
+                key={tx.id || idx}
+                style={styles.txRow}
+                onPress={() => {
+                  // Tap = marcar comercio (no aplica a Ingreso ni Traslado).
+                  if (isIncome || isTransfer) return;
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setMarkingTx(tx);
+                }}
                 onLongPress={() => handleDeleteTrigger(tx)}
                 activeOpacity={0.7}
               >
@@ -303,7 +352,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
                 
                 <View style={styles.txInfo}>
                   <Text style={styles.txMerchant} numberOfLines={1}>{tx.merchant}</Text>
-                  <Text style={styles.txCategory}>{tx.category} • {new Date(tx.date_string || tx.created_at).toLocaleDateString('es-CO')}</Text>
+                  <Text style={styles.txCategory}>{tx.category} • {new Date((tx.date_string || tx.created_at).split('T')[0] + 'T12:00:00').toLocaleDateString('es-CO')}</Text>
                 </View>
 
                 <View style={styles.txAmtArea}>
@@ -321,7 +370,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
             );
           })
         )}
-        {filteredTransactions.length > 0 && <Text style={styles.longPressHint}>Mantén presionado un movimiento para eliminarlo</Text>}
+        {filteredTransactions.length > 0 && <Text style={styles.longPressHint}>Toca para marcar el comercio · mantén presionado para eliminar</Text>}
       </ScrollView>
 
       {deletingTx && (
@@ -329,7 +378,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setDeletingTx(null)}>
             <BlurView intensity={theme.mode === 'honey' ? 40 : 20} tint="dark" style={StyleSheet.absoluteFill} />
           </TouchableOpacity>
-          <View style={[styles.modalContainer, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.modalContainer, { width: width * 0.88, backgroundColor: theme.colors.surface }]}>
              <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>Eliminar Movimiento</Text>
                 <TouchableOpacity onPress={() => setDeletingTx(null)} style={{ padding: 8 }}>
@@ -357,6 +406,145 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setDeletingTx(null)}>
                 <Text style={[styles.modalCancelTxt, { color: theme.colors.onSurfaceVariant }]}>No, mantener</Text>
              </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Modal: marcar comercio con una regla de gasto (Premium BottomSheet Style) */}
+      {markingTx && (
+        <View style={[StyleSheet.absoluteFillObject, { zIndex: 5000 }]} pointerEvents="box-none">
+          <Pressable style={styles.modalOverlay} onPress={() => setMarkingTx(null)}>
+            <BlurView intensity={theme.mode === 'honey' ? 40 : 20} tint="dark" style={StyleSheet.absoluteFill} />
+          </Pressable>
+          
+          <View style={[
+            styles.modalContainer, 
+            { 
+              backgroundColor: theme.colors.background,
+              borderTopLeftRadius: 32,
+              borderTopRightRadius: 32,
+              borderBottomLeftRadius: 0,
+              borderBottomRightRadius: 0,
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              width: '100%',
+              paddingBottom: Math.max(insets.bottom, 24) + normalize(90),
+              paddingTop: 12,
+              borderTopWidth: 1,
+              borderColor: theme.colors.divider,
+              zIndex: 5000,
+              ...theme.shadows.premium
+            }
+          ]}>
+            <View style={{ width: 40, height: 4, backgroundColor: theme.colors.outlineVariant, borderRadius: 2, alignSelf: 'center', marginBottom: 20 }} />
+            
+            {showSuccess ? (
+              <Animated.View 
+                entering={undefined /* Sería ideal un FadeIn pero no tenemos Reanimated aquí */} 
+                style={{ padding: 40, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <View style={{ 
+                  width: 80, height: 80, borderRadius: 40, 
+                  backgroundColor: theme.colors.successContainer, 
+                  alignItems: 'center', justifyContent: 'center',
+                  marginBottom: 24,
+                  ...theme.shadows.soft
+                }}>
+                  <CheckCircle2 size={44} color={theme.colors.success} strokeWidth={2.5} />
+                </View>
+                <Text style={{ fontSize: 24, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 8 }}>¡Listo!</Text>
+                <Text style={{ fontSize: 15, color: theme.colors.onSurfaceVariant, textAlign: 'center', fontWeight: '600' }}>
+                  Tu preferencia ha sido guardada.
+                </Text>
+              </Animated.View>
+            ) : (
+              <>
+                <View style={[styles.modalHeader, { paddingHorizontal: 24 }]}>
+                  <Text style={[styles.modalTitle, { fontSize: 20 }]}>Etiquetar Comercio</Text>
+                  <TouchableOpacity onPress={() => setMarkingTx(null)} style={styles.closeBtn}>
+                    <X color={theme.colors.onSurface} size={18} strokeWidth={2.5} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{ paddingHorizontal: 24, marginBottom: 24, alignItems: 'center' }}>
+                  <View style={{ 
+                    width: 64, height: 64, borderRadius: 24, 
+                    backgroundColor: theme.colors.primaryContainer, 
+                    alignItems: 'center', justifyContent: 'center',
+                    marginBottom: 16,
+                    borderWidth: 1,
+                    borderColor: theme.colors.primary + '20'
+                  }}>
+                    <Tag size={32} color={theme.colors.primary} />
+                  </View>
+                  <Text style={[styles.modalMerchant, { fontSize: 22, textAlign: 'center' }]}>{markingTx.merchant}</Text>
+                  <Text style={[styles.modalSub, { textAlign: 'center', marginTop: 8, paddingHorizontal: 20 }]}>
+                    Define cómo el asesor debe interpretar tus gastos en este lugar.
+                  </Text>
+                </View>
+
+                <View style={{ gap: 12, paddingHorizontal: 24 }}>
+                  {[
+                    { 
+                      type: 'confidence' as const, 
+                      label: 'Confianza', 
+                      desc: 'Gasto recurrente y necesario. Sin alertas.', 
+                      icon: ShieldCheck, 
+                      color: theme.colors.success,
+                      bg: theme.colors.successContainer 
+                    },
+                    { 
+                      type: 'monitor' as const, 
+                      label: 'Vigilar', 
+                      desc: 'Mantener bajo la lupa. Avísame de cambios.', 
+                      icon: Eye, 
+                      color: theme.colors.primary,
+                      bg: theme.colors.primaryContainer 
+                    },
+                    { 
+                      type: 'reduce' as const, 
+                      label: 'Reducir', 
+                      desc: 'Gasto a optimizar. Ayúdame a gastar menos.', 
+                      icon: AlertTriangle, 
+                      color: theme.colors.error,
+                      bg: theme.colors.errorContainer 
+                    }
+                  ].map((item) => (
+                    <TouchableOpacity
+                      key={item.type}
+                      onPress={() => markMerchant(item.type)}
+                      disabled={isMarking}
+                      activeOpacity={0.7}
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 16,
+                        padding: 18, borderRadius: 24,
+                        backgroundColor: item.bg + (theme.mode === 'honey' ? '40' : '80'),
+                        borderWidth: 1.5, borderColor: item.color + '20',
+                      }}
+                    >
+                      <View style={{ 
+                        width: 44, height: 44, borderRadius: 14, 
+                        backgroundColor: '#FFF', 
+                        alignItems: 'center', justifyContent: 'center',
+                        ...theme.shadows.soft
+                      }}>
+                        {isMarking ? (
+                          <ActivityIndicator size="small" color={item.color} />
+                        ) : (
+                          <item.icon size={22} color={item.color} />
+                        )}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.onSurface }}>{item.label}</Text>
+                        <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 2, fontWeight: '600' }}>{item.desc}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
           </View>
         </View>
       )}

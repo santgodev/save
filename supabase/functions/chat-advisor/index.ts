@@ -56,6 +56,7 @@ Deno.serve(async (req) => {
     { data: stateData, error: stateErr },
     { data: profile },
     { data: memory },
+    { data: rules },
     { data: history },
   ] = await Promise.all([
     userClient.rpc("get_monthly_state", { p_user_id: user.id }),
@@ -70,6 +71,10 @@ Deno.serve(async (req) => {
       .eq("user_id", user.id)
       .order("confidence", { ascending: false })
       .limit(20),
+    userClient
+      .from("user_spending_rules")
+      .select("pattern,display_name,type")
+      .eq("user_id", user.id),
     userClient
       .from("chat_messages")
       .select("role,content")
@@ -98,6 +103,12 @@ Deno.serve(async (req) => {
       key: m.key as string,
       summary: m.summary as string,
       confidence: Number(m.confidence ?? 0.5),
+    })),
+    spendingRules: (rules ?? []).map((r: Record<string, unknown>) => ({
+      // La columna real es `pattern` (raw) o `display_name` (legible).
+      // Preferimos display_name; fallback al pattern.
+      merchant: (r.display_name as string) || (r.pattern as string),
+      type: r.type as string,
     })),
     todayISO: new Date().toISOString().slice(0, 10),
   });

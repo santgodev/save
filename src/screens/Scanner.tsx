@@ -141,7 +141,19 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
   const [extractedData, setExtractedData] = useState<any>(null);
   const [isManualMode, setIsManualMode] = useState(false);
   const [editableMerchant, setEditableMerchant] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('Comida');
+  
+  // Extract dynamic categories from pockets (fallback to default if empty)
+  const availableCategories = useMemo(() => {
+    const defaultCats = ['Comida', 'Transporte', 'Ocio', 'Ahorros', 'Otros'];
+    if (!pockets || pockets.length === 0) return defaultCats;
+    
+    // Get unique categories from pockets
+    const pocketCats = pockets.map(p => p.category).filter(Boolean);
+    const uniqueCats = Array.from(new Set([...pocketCats, ...defaultCats]));
+    return uniqueCats;
+  }, [pockets]);
+
+  const [selectedCategory, setSelectedCategory] = useState(availableCategories[0]);
 
   const isValidTransaction = (data: any) => {
     return (
@@ -225,7 +237,9 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
       if (error) throw error;
       const parsed = data?.parsed ?? {};
 
-      const finalDate = parsed.date || new Date().toISOString().split('T')[0];
+      const dOCR = new Date();
+      const fallbackDate = `${dOCR.getFullYear()}-${String(dOCR.getMonth() + 1).padStart(2, '0')}-${String(dOCR.getDate()).padStart(2, '0')}`;
+      const finalDate = parsed.date || fallbackDate;
       const amount = String(parsed.amount || '0').replace(/[^0-9]/g, '');
       const isValid =
         parsed &&
@@ -267,7 +281,8 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
 
       const iconMap: Record<string, string> = { 'Comida': 'utensils', 'Transporte': 'car', 'Ocio': 'theater', 'Ahorros': 'piggy-bank' };
       const amountValue = parseFloat(editableAmount.replace(/[^0-9.]/g, ''));
-      const today = new Date().toISOString().split('T')[0];
+      const d = new Date();
+      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
       const { error } = await supabase.rpc('register_expense', {
         p_user_id: user.id,
@@ -391,7 +406,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
 
                   <View style={styles.categoryPicker}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
-                      {['Comida', 'Transporte', 'Ocio', 'Ahorros', 'Otros'].map((cat) => (
+                      {availableCategories.map((cat) => (
                         <TouchableOpacity 
                           key={cat} 
                           onPress={() => setSelectedCategory(cat)}

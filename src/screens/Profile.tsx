@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Animated, Dimensions, Alert, Image, Platform
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Animated, Dimensions, Alert, Image, Platform, ActivityIndicator
 } from 'react-native';
 import { 
   Settings, LogOut, Trash2, Bell, ShieldCheck, 
   TrendingUp, Target, Sparkles, ChevronRight,
   Shield, Eye, Octagon, Fingerprint, Info,
-  Palette, Heart
+  Palette, Heart, History
 } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { normalize } from '../theme/theme';
@@ -186,6 +186,7 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [rules, setRules] = useState<any[]>([]);
   const [notifs, setNotifs] = useState({ alerts_high: true, alerts_hormiga: true, daily_tips: true });
+  const [isSyncing, setIsSyncing] = useState(false);
 
   useEffect(() => {
     fetchRules();
@@ -207,6 +208,36 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
       fetchRules();
       onRefresh();
     } catch (e) { console.log(e); }
+  };
+
+  const handleSyncAI = async () => {
+    setIsSyncing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      // Llamamos a ambas funciones en paralelo
+      const [res1, res2] = await Promise.all([
+        supabase.functions.invoke('insight-generator'),
+        supabase.functions.invoke('synthesize-memory')
+      ]);
+
+      if (res1.error) {
+        console.error('Insight Generator Error:', res1.error);
+        throw new Error(`Insight Gen: ${res1.error.message || 'Error desconocido'}`);
+      }
+      if (res2.error) {
+        console.error('Synthesize Memory Error:', res2.error);
+        throw new Error(`Memory Synth: ${res2.error.message || 'Error desconocido'}`);
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("¡Logrado!", "Save ha analizado tus datos recientes y actualizado tu memoria. Ahora puedes preguntarme qué he aprendido de ti.");
+      onRefresh(); // Para actualizar los insights en el Dashboard si cambiaron
+    } catch (e: any) {
+      console.error('Sync Error Details:', e);
+      Alert.alert("Ups", e.message || "No pudimos refrescar la inteligencia en este momento.");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const scoreColor = (score: number) => {
@@ -279,6 +310,44 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
             {(!profileData || profileData.topHabits.length === 0) && (
               <Text style={{ fontStyle: 'italic', color: theme.colors.onSurfaceVariant, fontSize: 13 }}>Escaneando hábitos...</Text>
             )}
+         </View>
+      </View>
+
+      <View style={styles.section}>
+         <View style={styles.sectionHeader}>
+            <Sparkles size={18} color={theme.colors.primary} strokeWidth={2.5} />
+            <Text style={styles.sectionTitle}>Inteligencia Artificial</Text>
+         </View>
+         <View style={styles.settingsCard}>
+            <View style={{ padding: 16 }}>
+               <Text style={{ fontSize: 13, color: theme.colors.onSurfaceVariant, fontWeight: '600', marginBottom: 16 }}>
+                  Refresca tu memoria y genera nuevos insights basados en tus últimos movimientos y chats.
+               </Text>
+               <TouchableOpacity 
+                 activeOpacity={0.8}
+                 onPress={handleSyncAI}
+                 disabled={isSyncing}
+                 style={{ 
+                   backgroundColor: theme.colors.primary, 
+                   padding: 14, 
+                   borderRadius: 16, 
+                   flexDirection: 'row', 
+                   alignItems: 'center', 
+                   justifyContent: 'center', 
+                   gap: 10,
+                   opacity: isSyncing ? 0.6 : 1
+                 }}
+               >
+                  {isSyncing ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <History size={18} color="#FFF" />
+                  )}
+                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 14 }}>
+                    {isSyncing ? 'Sincronizando...' : 'Sincronizar IA'}
+                  </Text>
+               </TouchableOpacity>
+            </View>
          </View>
       </View>
 

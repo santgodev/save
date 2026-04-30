@@ -302,7 +302,7 @@ export const Dashboard = ({
                   </View>
                   <View style={styles.txMain}>
                     <Text style={styles.txMerchantUI} numberOfLines={1}>{tx.merchant}</Text>
-                    <Text style={styles.txDateUI}>{tx.category} • {new Date((tx as any).date_string || tx.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}</Text>
+                    <Text style={styles.txDateUI}>{tx.category} • {new Date(((tx as any).date_string || tx.created_at).split('T')[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}</Text>
                   </View>
                   <Text style={[styles.txAmountUI, { color: tx.category === 'Ingreso' ? theme.colors.success : theme.colors.onSurface }]}>
                     {formatCurrency(Math.abs(tx.amount))}

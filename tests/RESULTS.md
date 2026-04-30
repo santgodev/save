@@ -379,6 +379,95 @@ Notas que quedaron en el aire (no son bugs, son observaciones):
 
 ---
 
+## 2026-04-28 (séptima corrida) — DB CLEANUP + SECURITY HARDENING
+
+**Corredor:** Claude vía Supabase MCP, tras auditoría completa (`docs/DB_AUDIT_2026-04-28.md`).
+**Migraciones aplicadas:**
+- `supabase/migrations/20260428000004_drop_dead_structure.sql` (OK)
+- `supabase/migrations/20260428000005_security_perf_hardening.sql` (OK)
+- `revoke_public_from_internal_functions` (delta inline, OK)
+
+### Lo que cambió
+
+**Cleanup de estructura muerta:**
+- DROP de 3 tablas zombi: `recommendations`, `monthly_snapshots`, `user_behavior_metrics`.
+- DROP de 6 columnas zombi en `profiles`: `savings_goal`, `notification_preferences`, `last_insight`, `spending_trend`, `financial_profile`, `financial_score`. Ahora `profiles` queda con solo lo esencial: `id, full_name, avatar_url, preferred_currency, theme_preference, updated_at`.
+- DROP de columnas zombi: `transactions.category_id`, `transactions.receipt_date`, `pockets.category_id` (default `gen_random_uuid()` apuntando a nada — bug de diseño), `pockets.target_percentage`.
+- DROP de 7 RPCs huérfanos: `update_save_streaks`, `get_financial_health`, `get_monthly_trends`, `get_pocket_real_balance`, `get_ai_ready_context`, `get_user_behavior_summary`, `tg_income_emit_event`.
+- DROP de 4 índices muertos/redundantes.
+- `rls_auto_enable` se MANTIENE (tiene event trigger encima).
+
+**Performance:**
+- `CREATE INDEX transactions_user_date_idx ON (user_id, date_string DESC)` — antes `transactions.user_id` no tenía índice, y el RPC `get_monthly_state` filtra por ahí.
+- `CREATE INDEX pockets_user_id_idx ON (user_id)` — mismo argumento.
+- 19 políticas RLS rewrap: `auth.uid() = X` → `(select auth.uid()) = X`. Antes la función se evaluaba por cada fila escaneada; ahora una vez por query.
+- Borrada la política duplicada `Users can manage their own events` en `user_events` (coexistía con las nuevas `*_select_own` y `*_insert_own`).
+
+**Hardening de seguridad — el cambio crítico:**
+- Las 4 RPCs de mutación (`register_expense`, `register_income`, `transfer_between_pockets`, `delete_transaction_with_reversal`) **NO validaban** `p_user_id = auth.uid()`. Combinado con que estaban expuestas a `anon` vía REST, era un agujero abierto: cualquiera con la URL podía pasar un `p_user_id` ajeno y mutar datos de otro usuario.
+  - Agregado guard al inicio: `IF p_user_id IS DISTINCT FROM auth.uid() THEN RAISE EXCEPTION ... USING ERRCODE='42501'`.
+  - `REVOKE EXECUTE ... FROM PUBLIC` (anon y authenticated heredaban de PUBLIC). `GRANT EXECUTE TO authenticated` explícito en las 5 RPCs que el cliente necesita (las 4 de mutación + `get_monthly_state`).
+  - Trigger functions (`tg_*_emit_event`, `transactions_set_canonical_merchant`, `set_updated_at`, `emit_user_event`) ahora `REVOKE FROM PUBLIC, anon, authenticated` — solo se invocan internamente.
+  - `cron_*` functions: solo `service_role`.
+- `SET search_path = public, pg_temp` en todas las funciones SECURITY DEFINER (defensa contra schema hijack).
+- Bonus: agregados guards a `register_income` que faltaban (monto positivo, distribution debe ser objeto JSON).
+
+### Antes / Después en advisors de Supabase
+
+| Tipo | Antes | Después |
+|---|---|---|
+| `unindexed_foreign_keys` | 4 | 0 ✅ |
+| `auth_rls_initplan` | 19 | 0 ✅ |
+| `multiple_permissive_policies` | 9 | 0 ✅ |
+| `function_search_path_mutable` | 12 | 0 ✅ |
+| `anon_security_definer_function_executable` | 12 | 0 ✅ |
+| `authenticated_security_definer_function_executable` | 12 | 5 (intencionales — son las RPCs que la app sí debe llamar, con guard interno) |
+| `auth_leaked_password_protection` | 1 | 1 (config de Dashboard pendiente) |
+| **Total** | **69** | **6** |
+
+### Verificación de integridad
+
+- 8 tablas vivas en `public` (antes 11): `chat_messages, pockets, profiles, transactions, user_events, user_insights, user_memory, user_spending_rules`.
+- `profiles` con 6 columnas (antes 11).
+- Las 4 RPCs de mutación tienen `auth.uid()` referenciado en su cuerpo. ✅
+- `transactions_user_date_idx` y `pockets_user_id_idx` creados. ✅
+- `get_monthly_state` sigue funcionando — RPC es la fuente única.
+
+### Detección post-aplicación + redeploy: `user_spending_rules` ya en producción
+
+Mientras yo aplicaba el hardening, el usuario actualizó el cliente del Edge Function `chat-advisor/index.ts` y `prompts.ts` para **inyectar `user_spending_rules` al prompt**. Esa era una de las "rescatables" que estaba marcada para Fase B. Pull-up a Fase A.
+
+**Bug encontrado y corregido en el cambio del usuario:** el `select("merchant,type")` apuntaba a una columna inexistente — la tabla tiene `pattern`, `canonical_pattern`, `display_name`, `type`. Ajustado a `select("pattern,display_name,type")` con preferencia de `display_name` y fallback a `pattern` al construir el prompt.
+
+**Deploy chat-advisor v7 → v8** (mismo `ADVISOR_PROMPT_VERSION = "advisor.v6"` porque el contrato del modelo no cambió, solo el contexto inyectado).
+
+Smoke test contra prod: ya hay 1 regla activa (`Jeronimo Martins Colombia SAS` marcada como `confidence`). El próximo turno del chat verá:
+
+```
+REGLAS DE GASTO PERSONALIZADAS
+- Jeronimo Martins Colombia SAS: Marcado como "confidence"
+```
+
+### Pendiente siguiente sesión
+
+- **Redeploy de `chat-advisor`** (sigue en v7 sin las spending_rules — el usuario tocó el archivo local pero no desplegó).
+- **Activar HIBP** en Supabase Dashboard → Auth → Password security (1 click).
+- **Fase B (encender rescatables):**
+  - Edge Function `insight-generator` (cron 1×día con reglas determinísticas) → llena `user_insights`.
+  - Edge Function `synthesize-memory` (cron 1×semana o por threshold con LLM) → llena `user_memory`.
+- UI para que el usuario marque `spending_rules` desde una pantalla simple (hoy solo Profile.tsx las muestra/edita, falta el flujo de creación).
+- Ver logs de los 2 cron jobs de Supabase (`cron_expire_user_insights`, `cron_prune_user_events`) para confirmar que sí están programados — si no, borrar las funciones también.
+
+### Nota arquitectónica para el futuro
+
+Tablas que **MANTUVIMOS vacías** porque tienen rol claro pero les falta el productor:
+- `user_memory` ← chat-advisor la lee. Falta job de síntesis.
+- `user_insights` ← Dashboard la lee. Falta cron generador.
+
+Si en 1 mes seguís sin construir esos productores, **borrá las tablas también** — quedarse con tablas eternamente vacías es ruido cognitivo.
+
+---
+
 ## Plantilla para futuras corridas
 
 ```

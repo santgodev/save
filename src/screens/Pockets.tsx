@@ -152,7 +152,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     await strictClient.from('pockets').insert({
       user_id: session.user.id,
       name: newName.trim(),
-      category: 'Otros',
+      category: newName.trim(),
       budget,
       allocated_budget: budget,
       icon: 'tag'
@@ -166,13 +166,13 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
   const getPocketTransactions = (category: string) => {
     return transactions.filter(tx => {
-      const txDate = new Date(tx.date_string || tx.created_at);
+      const txDate = new Date((tx.date_string || tx.created_at).split('T')[0] + 'T12:00:00');
       return tx.category === category && txDate.getMonth() === selectedMonth;
-    }).sort((a, b) => new Date(b.date_string || b.created_at).getTime() - new Date(a.date_string || a.created_at).getTime()).slice(0, 5);
+    }).sort((a, b) => new Date((b.date_string || b.created_at).split('T')[0] + 'T12:00:00').getTime() - new Date((a.date_string || a.created_at).split('T')[0] + 'T12:00:00').getTime()).slice(0, 5);
   };
 
   const incomeTransactions = transactions.filter(tx => {
-    const txDate = new Date(tx.date_string || tx.created_at);
+    const txDate = new Date((tx.date_string || tx.created_at).split('T')[0] + 'T12:00:00');
     return tx.category === 'Ingreso' && txDate.getMonth() === selectedMonth;
   });
   // OJO: para el TOTAL de ingresos del mes usamos monthState.income_month
@@ -340,7 +340,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                 </View>
               ) : (
                 incomeTransactions
-                  .sort((a, b) => new Date(b.date_string || b.created_at).getTime() - new Date(a.date_string || a.created_at).getTime())
+                  .sort((a, b) => new Date((b.date_string || b.created_at).split('T')[0] + 'T12:00:00').getTime() - new Date((a.date_string || a.created_at).split('T')[0] + 'T12:00:00').getTime())
                   .map((tx, idx) => (
                     <View
                       key={tx.id || idx}
@@ -358,7 +358,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                           {tx.merchant || 'Ingreso'}
                         </Text>
                         <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 2 }}>
-                          {new Date(tx.date_string || tx.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}
+                          {new Date((tx.date_string || tx.created_at).split('T')[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}
                         </Text>
                       </View>
                       <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.primary }}>
@@ -564,7 +564,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                     <View key={tx.id || idx} style={styles.txRow}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.txMerchant}>{tx.merchant}</Text>
-                        <Text style={styles.txDate}>{new Date(tx.date_string || tx.created_at).toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}</Text>
+                        <Text style={styles.txDate}>{new Date((tx.date_string || tx.created_at).split('T')[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}</Text>
                       </View>
                       <Text style={[styles.txAmt, { color: tx.amount < 0 ? theme.colors.onSurface : theme.colors.primary }]}>
                         {tx.amount < 0 ? '- ' : '+ '}{formatCOP(Math.abs(tx.amount))}
