@@ -21,11 +21,21 @@ export const calculateFinancialProfile = (transactions: any[], rules: any[], bud
 
   const today = new Date();
   const currentMonth = today.getMonth();
-  const currentYear = new Date().getFullYear();
+  const currentYear = today.getFullYear();
+
+  // CRÍTICO: filtrar al mes en curso. Antes no había filtro y el score
+  // bajaba con el tiempo porque comparaba TODA la historia contra el
+  // presupuesto mensual. Ahora todo viene del mes actual, igual que
+  // get_monthly_state, Dashboard y el chat-advisor.
+  const monthTx = transactions.filter(t => {
+    const d = new Date(t.date_string || t.created_at);
+    return d.getMonth() === currentMonth && d.getFullYear() === currentYear
+      && t.category !== 'Traslado'; // ignoramos traslados internos
+  });
 
   // 1. Gasto Hormiga: Definimos como < 15,000 COP
   const HORMIGA_THRESHOLD = 15000;
-  const expenses = transactions.filter(t => t.amount < 0);
+  const expenses = monthTx.filter(t => t.amount < 0);
   const totalSpent = expenses.reduce((acc, t) => acc + Math.abs(t.amount), 0);
   const hormigaCount = expenses.filter(t => Math.abs(t.amount) < HORMIGA_THRESHOLD).length;
   const hormigaPct = (hormigaCount / (expenses.length || 1)) * 100;
@@ -45,8 +55,8 @@ export const calculateFinancialProfile = (transactions: any[], rules: any[], bud
   ).size;
   const consistency = (activeDays / 7) * 100;
 
-  // 4. Cash Flow Penalty (Gasto vs Ingreso)
-  const incomes = transactions.filter(t => t.amount > 0);
+  // 4. Cash Flow Penalty (Gasto vs Ingreso del mes)
+  const incomes = monthTx.filter(t => t.amount > 0 && t.category === 'Ingreso');
   const totalActualIncome = incomes.reduce((acc, t) => acc + t.amount, 0);
   const effectiveIncome = monthlyIncome || totalActualIncome || 0;
   
@@ -96,6 +106,6 @@ export const calculateFinancialProfile = (transactions: any[], rules: any[], bud
     scoreMessage,
     trend,
     topHabits,
-    totalAvg: totalSpent / (currentMonth + 1) // simplificado
+    totalAvg: today.getDate() > 0 ? totalSpent / today.getDate() : 0, // gasto promedio diario del mes
   };
 };

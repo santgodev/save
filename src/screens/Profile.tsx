@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Animated, Dimensions, Alert, Image, Platform, ActivityIndicator
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Animated, Dimensions, Image, Platform, ActivityIndicator
 } from 'react-native';
 import { 
   Settings, LogOut, Trash2, Bell, ShieldCheck, 
@@ -11,13 +11,15 @@ import {
 import { useTheme } from '../theme/ThemeContext';
 import { normalize } from '../theme/theme';
 import { supabase } from '../lib/supabase';
+import { notify } from '../lib/notify';
 import { calculateFinancialProfile, ProfileData } from '../utils/profileUtils';
+import type { Session } from '@supabase/supabase-js';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 
-export const Profile = ({ session, transactions, pockets, onRefresh }: { session: any, transactions: any[], pockets: any[], onRefresh: () => void }) => {
+export const Profile = ({ session, transactions, pockets, onRefresh }: { session: Session, transactions: any[], pockets: any[], onRefresh: () => void }) => {
   const insets = useSafeAreaInsets();
   const { theme, mode, setThemeMode } = useTheme();
 
@@ -230,11 +232,11 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
       }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("¡Logrado!", "Save ha analizado tus datos recientes y actualizado tu memoria. Ahora puedes preguntarme qué he aprendido de ti.");
+      notify.success("Listo", "Save analizó tus datos recientes y actualizó tu memoria. Ya puedes preguntarme qué he aprendido de ti.");
       onRefresh(); // Para actualizar los insights en el Dashboard si cambiaron
     } catch (e: any) {
       console.error('Sync Error Details:', e);
-      Alert.alert("Ups", e.message || "No pudimos refrescar la inteligencia en este momento.");
+      notify.error(e.message || "Intenta de nuevo en un momento.", "No pudimos sincronizar");
     } finally {
       setIsSyncing(false);
     }
@@ -388,14 +390,15 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
            style={styles.dangerAction} 
            onPress={() => {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-              Alert.alert("Cerrar Sesión", "¿Seguro que quieres salir?", [
-                { text: "Cancelar", style: "cancel" },
-                { text: "Salir", style: "destructive", onPress: () => supabase.auth.signOut() }
-              ]);
+              notify.confirm("Cerrar sesión", "¿Seguro que quieres salir?", {
+                onConfirm: async () => { await supabase.auth.signOut(); },
+                confirmLabel: "Salir",
+                destructive: true,
+              });
            }}
          >
             <LogOut size={18} color={theme.colors.error} />
-            <Text style={styles.dangerText}>Finalizar Sesión</Text>
+            <Text style={styles.dangerText}>Cerrar sesión</Text>
          </TouchableOpacity>
          <Text style={styles.versionLabel}>SAVE FINTECH v1.2.0 • PREMIUM EDITION</Text>
       </View>

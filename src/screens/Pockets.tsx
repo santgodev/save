@@ -1,11 +1,11 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, TouchableOpacity, Animated, StyleSheet, ScrollView, Dimensions, Pressable, TextInput, Modal, ActivityIndicator, Alert, Platform, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView
+  View, Text, TouchableOpacity, Animated, StyleSheet, ScrollView, Dimensions, Pressable, TextInput, Modal, ActivityIndicator, Platform, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import {
-  ChevronLeft, ChevronRight, ChevronDown, Edit3,
+  ChevronDown, Edit3,
   Plus, X, Trash2, AlertCircle, Clock, ArrowRight, Check
 } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
@@ -17,6 +17,10 @@ import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../constants';
 import { supabase } from '../lib/supabase';
 import { useMonthlyState } from '../lib/useMonthlyState';
+import { formatMoney } from '../lib/format';
+import { notify } from '../lib/notify';
+import { MonthNav } from '../components/MonthNav';
+import type { Session } from '@supabase/supabase-js';
 
 const { width, height } = Dimensions.get('window');
 
@@ -38,7 +42,7 @@ const POCKET_FLAT_COLORS = [
   '#C5B4E3', // periwinkle
 ];
 
-export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferPress }: { pockets: any[], transactions: any[], session: any, onRefresh: () => void, onTransferPress: (params: { fromId?: string, amount?: number }) => void }) => {
+export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferPress }: { pockets: any[], transactions: any[], session: Session, onRefresh: () => void, onTransferPress: (params: { fromId?: string, amount?: number }) => void }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
 
@@ -125,10 +129,18 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
   const deletePocket = async (id: string) => {
     const pocket = pockets.find(p => p.id === id);
-    Alert.alert(`Eliminar "${pocket?.name}"`, '¿Seguro? Esta acción no se puede deshacer.', [
-      { text: 'Cancelar', style: 'cancel' },
+    if (pocket?.is_default_free) {
+      notify.error('No puedes eliminar el bolsillo Libre por defecto.');
+      return;
+    }
+    
+    notify.confirm(
+      `Eliminar "${pocket?.name}"`,
+      'Esta acción no se puede deshacer.',
       {
-        text: 'Eliminar', style: 'destructive', onPress: async () => {
+        confirmLabel: 'Eliminar',
+        destructive: true,
+        onConfirm: async () => {
           const strictClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
             global: { headers: { Authorization: `Bearer ${session.access_token}` } }
           });
@@ -136,9 +148,9 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
           onRefresh();
           closePocket();
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        }
-      }
-    ]);
+        },
+      },
+    );
   };
 
   const syncPocketToCloud = async () => {
@@ -190,16 +202,16 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     Animated.timing(sheetAnim, { toValue: height, duration: 250, useNativeDriver: true }).start(() => setSelectedPocket(null));
   };
 
-  const formatCOP = (n: number) => `$ ${Math.round(n).toLocaleString('es-CO')}`;
+  // formatMoney importado de lib/format. Se mantiene alias formatCOP=formatMoney
+  // local para no tocar 12 callsites; señalado para futuro borrado.
+  const formatCOP = formatMoney;
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     scrollPadding: { paddingHorizontal: 20 },
 
     // Header del mes
-    monthNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, marginBottom: 28 },
-    monthTitle: { fontSize: 20, fontWeight: '900', letterSpacing: -0.3, color: theme.colors.onSurface },
-    navBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.glassWhite, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.8)', ...theme.shadows.soft },
+    // monthNav/monthTitle/navBtn migrados a <MonthNav> compartido.
 
     // Tarjeta de presupuesto
     budgetCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.glassWhite, paddingHorizontal: 20, paddingVertical: 22, borderRadius: theme.radius.xl, marginBottom: 20, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.8)', ...theme.shadows.md },
@@ -293,16 +305,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Navegación de Mes */}
-          <View style={styles.monthNav}>
-            <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedMonth(p => (p - 1 + 12) % 12); }} style={styles.navBtn}>
-              <ChevronLeft size={18} color={theme.colors.onSurface} />
-            </TouchableOpacity>
-            <Text style={styles.monthTitle}>{MONTHS[selectedMonth].label}</Text>
-            <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedMonth(p => (p + 1) % 12); }} style={styles.navBtn}>
-              <ChevronRight size={18} color={theme.colors.onSurface} />
-            </TouchableOpacity>
-          </View>
+          {/* Navegación de Mes — componente compartido */}
+          <MonthNav value={selectedMonth} onChange={setSelectedMonth} />
 
           {/* Tarjeta colapsable de Ingresos */}
           <TouchableOpacity
@@ -517,8 +521,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                     <View style={styles.statsRow}>
                       <View style={[styles.statCard, { backgroundColor: theme.colors.primary + '12' }]}>
                         <Text style={[styles.statLabel, { color: theme.colors.primary }]}>Disponible</Text>
-                        <Text style={[styles.statVal, { color: theme.colors.primary, fontSize: 18 }]} numberOfLines={1} adjustsFontSizeToFit>
-                          {formatCOP(Math.max(0, planAlloc - spent))}
+                        <Text style={[styles.statVal, { color: isOver ? theme.colors.error : theme.colors.primary, fontSize: 18 }]} numberOfLines={1} adjustsFontSizeToFit>
+                          {formatCOP(available)}
                         </Text>
                       </View>
                       <View style={styles.statCard}>
@@ -578,10 +582,12 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                   </View>
                 )}
 
-                <TouchableOpacity style={styles.deleteRow} onPress={() => deletePocket(selectedPocket.id)}>
-                  <Trash2 size={16} color={theme.colors.error} />
-                  <Text style={{ fontSize: 14, fontWeight: '800', color: theme.colors.error }}>Eliminar bolsillo</Text>
-                </TouchableOpacity>
+                {!selectedPocket.is_default_free && (
+                  <TouchableOpacity style={styles.deleteRow} onPress={() => deletePocket(selectedPocket.id)}>
+                    <Trash2 size={16} color={theme.colors.error} />
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: theme.colors.error }}>Eliminar bolsillo</Text>
+                  </TouchableOpacity>
+                )}
               </ScrollView>
             </Animated.View>
           </View>
@@ -619,7 +625,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                   <Text style={{ color: theme.colors.onSurfaceVariant, fontWeight: '800', fontSize: 15 }}>Cancelar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); syncPocketToCloud(); }} style={styles.btnSave}>
-                  <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 15 }}>Crear Bolsillo</Text>
+                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 15 }}>Crear bolsillo</Text>
                 </TouchableOpacity>
               </View>
             </View>

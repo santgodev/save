@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   View, Text, Image, TouchableOpacity, StyleSheet, Platform,
   Modal, ScrollView, ActivityIndicator, TextInput, KeyboardAvoidingView,
-  Keyboard, TouchableWithoutFeedback, PanResponder, LayoutAnimation, Alert
+  Keyboard, TouchableWithoutFeedback, PanResponder, LayoutAnimation
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -12,7 +12,9 @@ import { useTheme } from '../theme/ThemeContext';
 import { calculateFinancialProfile } from '../utils/profileUtils';
 import { supabase } from '../lib/supabase';
 import { logEvent, EVENTS } from '../lib/events';
-import { useMonthlyState, formatCop } from '../lib/useMonthlyState';
+import { useMonthlyState } from '../lib/useMonthlyState';
+import { formatMoney } from '../lib/format';
+import { notify } from '../lib/notify';
 
 interface TopBarProps {
   title: string;
@@ -58,6 +60,14 @@ export const TopBar = ({
   const [isScoreMinimized, setIsScoreMinimized] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+
+  // session_id estable mientras el chat está abierto. Antes el cliente no
+  // enviaba session_id, así que el server caía al default gen_random_uuid()
+  // de chat_messages — un id distinto por cada turno = "1 sesión = 1 mensaje".
+  // Ahora cada apertura del chat es UNA sesión coherente.
+  const sessionIdRef = useRef<string>(
+    `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+  );
 
   // Sync with source of truth (get_monthly_state)
   const { state: monthState } = useMonthlyState();
@@ -188,10 +198,12 @@ export const TopBar = ({
     if (criticalPocket) {
       insight = `Atención: El bolsillo ${criticalPocket.name} está al 80%.`;
     } else if (totalGastoMonth > 0) {
-      insight = `Consumo actual del mes: ${formatCop(totalGastoMonth)}.`;
+      insight = `Consumo actual del mes: ${formatMoney(totalGastoMonth)}.`;
     }
 
-    return `Hola${userName ? ` ${userName.split(' ')[0]}` : ''}. ${insight}\n¿Cómo puedo ayudarte con tus datos hoy?\n\n[BOTON:¿Cómo voy este mes?][BOTON:Resumen de gastos]`;
+    // Saludo coherente con el paradigma read-only del advisor (v6):
+    // pregunta directa "qué quieres saber" en lugar de "cómo te ayudo".
+    return `Hola${userName ? ` ${userName.split(' ')[0]}` : ''}. ${insight}\n¿Qué quieres saber de tus números?\n\n[BOTON:¿Cómo voy este mes?][BOTON:¿En qué se me va más?]`;
   };
 
   const profileData = useMemo(() => calculateFinancialProfile(transactions, [], pockets), [transactions, pockets]);
@@ -244,27 +256,26 @@ export const TopBar = ({
   }, [showChat, userId]);
 
   const clearChat = async () => {
-    Alert.alert(
+    notify.confirm(
       "Reiniciar chat",
-      "¿Estás seguro de que quieres borrar toda la conversación? Save olvidará el contexto de esta charla.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        { 
-          text: "Borrar", 
-          style: "destructive",
-          onPress: async () => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            if (userId) {
-              try {
-                await supabase.from('chat_messages').delete().eq('user_id', userId);
-              } catch (e) {
-                console.warn('[chat] error clearing history', e);
-              }
+      "Save olvidará el contexto de esta conversación.",
+      {
+        confirmLabel: "Borrar",
+        destructive: true,
+        onConfirm: async () => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          if (userId) {
+            try {
+              await supabase.from('chat_messages').delete().eq('user_id', userId);
+            } catch (e) {
+              console.warn('[chat] error clearing history', e);
             }
-            setMessages([{ role: 'assistant', content: getProactiveGreeting() }]);
           }
-        }
-      ]
+          // Reset del session_id: empezar conversación nueva.
+          sessionIdRef.current = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+          setMessages([{ role: 'assistant', content: getProactiveGreeting() }]);
+        },
+      },
     );
   };
 
@@ -295,22 +306,12 @@ export const TopBar = ({
       const session = sessionData?.session;
       const accessToken = session?.access_token;
 
-      // Diagnostic log: remove once the 401 is resolved.
-      console.log('[chat] session debug', {
-        hasSession: !!session,
-        hasToken: !!accessToken,
-        tokenPreview: accessToken ? accessToken.slice(0, 24) + '…' : null,
-        userId: session?.user?.id ?? null,
-        expiresAt: session?.expires_at ?? null,
-        nowEpoch: Math.floor(Date.now() / 1000),
-      });
-
       if (!accessToken) {
-        throw new Error('No hay sesión activa. Por favor vuelve a iniciar sesión.');
+        throw new Error('No hay sesión activa. Vuelve a iniciar sesión.');
       }
 
       const { data, error } = await supabase.functions.invoke('chat-advisor', {
-        body: { message: trimmed },
+        body: { message: trimmed, session_id: sessionIdRef.current },
         headers: { Authorization: `Bearer ${accessToken}` },
       });
 
@@ -332,7 +333,7 @@ export const TopBar = ({
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
       console.warn('[chat] invoke failed', e);
-      const errMsg = e instanceof Error ? e.message : 'Ups, no pude conectarme con Save IA en este momento. Revisa tu conexión.';
+      const errMsg = e instanceof Error ? e.message : 'No pude conectarme con Save. Revisa tu conexión e intenta de nuevo.';
       setMessages(prev => [...prev, { role: 'assistant', content: errMsg }]);
     } finally {
       setIsTyping(false);
@@ -535,7 +536,7 @@ export const TopBar = ({
                 {isHistoryLoading ? (
                   <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 40 }}>
                     <ActivityIndicator size="small" color={theme.colors.primary} />
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.onSurfaceVariant, marginTop: 12 }}>Cargando analista...</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.onSurfaceVariant, marginTop: 12 }}>Cargando conversación...</Text>
                   </View>
                 ) : (
                   <>
@@ -562,7 +563,7 @@ export const TopBar = ({
                   <View style={styles.typingBubble}>
                     <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center' }}>
                       <ActivityIndicator size="small" color={theme.colors.primary} />
-                      <Text style={{ fontSize: 13, color: theme.colors.onSurfaceVariant, fontWeight: '700' }}>Save está analizando...</Text>
+                      <Text style={{ fontSize: 13, color: theme.colors.onSurfaceVariant, fontWeight: '700' }}>Save está pensando...</Text>
                     </View>
                   </View>
                 )}

@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { 
   Plus, ArrowUpRight, ArrowDownLeft, Wallet, 
   Target, TrendingUp, Sparkles, AlertCircle, ChevronRight,
-  Flame, Clock, History, LayoutGrid, Info
+  Flame, Clock, History, LayoutGrid, Info, Briefcase
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
@@ -17,13 +17,15 @@ import { CategoryIcon } from '../components/CategoryIcon';
 import { Transaction } from '../types';
 import { supabase } from '../lib/supabase';
 import { useMonthlyState } from '../lib/useMonthlyState';
+import { formatMoney } from '../lib/format';
+import type { Session } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
 
 interface DashboardProps {
   transactions: Transaction[];
   pockets: any[];
-  session: any;
+  session: Session;
   isDataReady: boolean;
   onOpenScanner: () => void;
   onViewAll: () => void;
@@ -49,12 +51,13 @@ export const Dashboard = ({
   const { theme } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [greeting, setGreeting] = useState('Hola');
+  const [pendingIncomes, setPendingIncomes] = useState<any[]>([]);
 
   useEffect(() => {
     const hours = new Date().getHours();
-    if (hours < 12) setGreeting('¡Buenos días! ☀️');
-    else if (hours < 18) setGreeting('¡Buenas tardes! ☕');
-    else setGreeting('¡Buenas noches! 🌙');
+    if (hours < 12) setGreeting('Buenos días');
+    else if (hours < 18) setGreeting('Buenas tardes');
+    else setGreeting('Buenas noches');
 
     Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
   }, []);
@@ -86,21 +89,12 @@ export const Dashboard = ({
     txAmountUI: { ...theme.typography.bodyLarge, fontWeight: '900' }
   }), [theme, insets.top]);
 
-  const formatCurrency = (amt: number) => `$ ${Math.round(amt).toLocaleString('es-CO')}`;
-
-  // Fuente ÚNICA de verdad — RPC get_monthly_state. Mismos números que
-  // ven Pockets y el chat-advisor.
   const { state: monthState } = useMonthlyState();
 
-  // Mes en curso. Si no cargó todavía, fallback a 0 (la UI muestra 0 en
-  // lugar de números ficticios). Cuando state.income_month/spent_month
-  // entran, todo se reactualiza con el dato real.
   const totalIncomeMonth = monthState?.income_month ?? 0;
   const totalSpentMonth = monthState?.spent_month ?? 0;
   const netFlowMonth = monthState?.net_month ?? 0;
 
-  // FUENTE DE UNICIDAD — El usuario prefiere ver el Flujo del Mes (Ingresos - Gastos)
-  // como el número principal, igual que en la pantalla de Gastos.
   const mainDisplayAmount = monthState?.net_month ?? 0;
   const saldoDisponible = monthState?.available_total ?? 0;
 
@@ -122,8 +116,44 @@ export const Dashboard = ({
             setAiInsight(data[0]);
           }
         });
+
+      // Load pending incomes
+      const today = new Date().toISOString().split('T')[0];
+      supabase
+        .from('pending_income_events')
+        .select(`id, expected_amount, expected_date, status, income_sources(name)`)
+        .eq('user_id', session.user.id)
+        .eq('status', 'pending')
+        .lte('expected_date', today)
+        .then(({ data }) => {
+          if (data) setPendingIncomes(data);
+        });
     }
   }, [isDataReady, session?.user?.id]);
+
+  const confirmPending = async (eventId: string, amount: number) => {
+    try {
+      const { error } = await supabase.rpc('confirm_pending_income', {
+        p_event_id: eventId,
+        p_actual_amount: amount
+      });
+      if (error) throw error;
+      setPendingIncomes(prev => prev.filter(p => p.id !== eventId));
+      onRefresh?.();
+    } catch (e) {
+      console.error('Error confirming:', e);
+    }
+  };
+
+  const dismissPending = async (eventId: string) => {
+    try {
+      const { error } = await supabase.rpc('dismiss_pending_income', { p_event_id: eventId });
+      if (error) throw error;
+      setPendingIncomes(prev => prev.filter(p => p.id !== eventId));
+    } catch (e) {
+      console.error('Error dismissing:', e);
+    }
+  };
 
   const getFallbackInsight = () => {
     // Todo viene del mismo monthState — sin recalcular desde transactions.
@@ -136,19 +166,21 @@ export const Dashboard = ({
     const mostCritical = pocketStats[0];
 
     if (mostCritical && mostCritical.ratio >= 1) {
-      return `Presupuesto agotado: en ${mostCritical.name} excediste el plan por ${formatCurrency(mostCritical.spent_month - mostCritical.allocated)}.`;
+      return `Presupuesto agotado: en ${mostCritical.name} excediste el plan por ${formatMoney(mostCritical.spent_month - mostCritical.allocated)}.`;
     }
     if (consumptionRatio >= 1) {
-      return `Alerta: gastaste el 100% del plan mensual (${formatCurrency(totalSpentMonth)}).`;
+      return `Alerta: gastaste el 100% del plan mensual (${formatMoney(totalSpentMonth)}).`;
     }
     if (consumptionRatio >= 0.8) {
       return `Atención: llevas ${Math.round(consumptionRatio * 100)}% del plan del mes.`;
     }
     if (totalSpentMonth === 0) return 'Sin actividad este mes. Todo el plan está disponible.';
-    return `Llevas ${formatCurrency(totalSpentMonth)} gastados este mes. Toca para ver el detalle.`;
+    return `Llevas ${formatMoney(totalSpentMonth)} gastados este mes. Toca para ver el detalle.`;
   };
 
-  const fmt = (n: number) => n.toLocaleString('es-CO');
+  // helper local "fmt" eliminado — usar formatMoney
+  const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const currentMonthName = monthState?.month ? monthNames[monthState.month - 1] : 'Mes';
 
   return (
     <View style={styles.container}>
@@ -160,26 +192,100 @@ export const Dashboard = ({
       >
         <Animated.View style={{ opacity: fadeAnim }}>
           
-          {/* HEADER SIMPLE Y DIRECTO */}
-          <View style={[styles.headerSection, { alignItems: 'center', paddingTop: 10 }]}>
-            <Text style={{ ...theme.typography.bodyLarge, color: theme.colors.onSurfaceVariant, fontWeight: '600', marginBottom: 12 }}>
-              {greeting}, {userProfile?.full_name?.split(' ')[0] || 'Usuario'}
-            </Text>
-            <Text style={{ fontSize: 13, color: theme.colors.primary, fontWeight: '800', letterSpacing: 1, marginBottom: 8, opacity: 0.8 }}>
-              RESUMEN DE FLUJO
-            </Text>
-            <Text style={{ fontSize: 44, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -1 }}>
-              {formatCurrency(mainDisplayAmount)}
-            </Text>
-
-            <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
-              <View style={{ backgroundColor: theme.colors.primary + '15', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, alignItems: 'center', borderWidth: 1, borderColor: theme.colors.primary + '30' }}>
-                <Text style={{ fontSize: 9, fontWeight: '900', color: theme.colors.primary, textTransform: 'uppercase', marginBottom: 2 }}>Ingresos Abril</Text>
-                <Text style={{ fontSize: 13, fontWeight: '900', color: theme.colors.primary }}>$ {totalIncomeMonth.toLocaleString('es-CO')}</Text>
+          {/* HEADER PREMIUM — BALANCE & BUDGET HEALTH */}
+          <View style={[styles.headerSection, { paddingTop: 10 }]}>
+            <View style={{ marginBottom: 24 }}>
+              <Text style={{ ...theme.typography.bodyLarge, color: theme.colors.onSurfaceVariant, fontWeight: '600', marginBottom: 4 }}>
+                {greeting}, {userProfile?.full_name?.split(' ')[0] || 'Usuario'}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                <Text style={{ ...theme.typography.display, color: theme.colors.onSurface }}>
+                  {formatMoney(mainDisplayAmount)}
+                </Text>
+                <Text style={{ ...theme.typography.label, color: theme.colors.onSurfaceVariant, opacity: 0.6 }}>
+                  ESTE MES
+                </Text>
               </View>
-              <View style={{ backgroundColor: theme.colors.error + '15', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, alignItems: 'center', borderWidth: 1, borderColor: theme.colors.error + '30' }}>
-                <Text style={{ fontSize: 9, fontWeight: '900', color: theme.colors.error, textTransform: 'uppercase', marginBottom: 2 }}>Gastos Abril</Text>
-                <Text style={{ fontSize: 13, fontWeight: '900', color: theme.colors.error }}>$ {totalSpentMonth.toLocaleString('es-CO')}</Text>
+            </View>
+
+            {/* BUDGET PROGRESS BAR — ELEGANT & FUNCTIONAL */}
+            <View style={{ backgroundColor: theme.colors.surface, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: theme.colors.divider, ...theme.shadows.sm }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
+                <View>
+                  <Text style={{ ...theme.typography.label, color: theme.colors.onSurfaceVariant, marginBottom: 4 }}>PLAN DE GASTOS</Text>
+                  <Text style={{ ...theme.typography.h3, color: theme.colors.onSurface }}>{formatMoney(totalSpentMonth)} <Text style={{ fontSize: 13, color: theme.colors.onSurfaceVariant, fontWeight: '400' }}>de {formatMoney(monthState?.allocated_total || 0)}</Text></Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ ...theme.typography.label, color: theme.colors.primary, marginBottom: 4 }}>DISPONIBLE</Text>
+                  <Text style={{ ...theme.typography.h3, color: theme.colors.primary }}>{formatMoney(Math.max(0, (monthState?.allocated_total || 0) - totalSpentMonth))}</Text>
+                </View>
+              </View>
+
+              {/* THE BAR */}
+              <View style={{ height: 14, backgroundColor: theme.colors.surfaceContainerHighest, borderRadius: 7, overflow: 'hidden', position: 'relative', marginBottom: 12 }}>
+                <LinearGradient
+                  colors={[theme.colors.primary, (theme.colors as any).pastel.lavender || theme.colors.primary]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={{ 
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    width: `${Math.min(100, (totalSpentMonth / (monthState?.allocated_total || 1)) * 100)}%`,
+                    borderRadius: 7,
+                    shadowColor: theme.colors.primary,
+                    shadowOffset: { width: 0, height: 0 },
+                    shadowOpacity: 0.5,
+                    shadowRadius: 10,
+                  }}
+                />
+                
+                {/* DAY INDICATOR (The 'Pace' Dot) */}
+                {(() => {
+                  const dayOfMonth = new Date().getDate();
+                  const totalDays = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+                  const monthProgress = (dayOfMonth / totalDays) * 100;
+                  return (
+                    <View style={{ 
+                      position: 'absolute', 
+                      left: `${monthProgress}%`, 
+                      top: -2, 
+                      bottom: -2, 
+                      width: 4, 
+                      backgroundColor: theme.colors.onSurface, 
+                      borderRadius: 2,
+                      zIndex: 20,
+                      borderWidth: 1,
+                      borderColor: theme.colors.surface
+                    }} />
+                  );
+                })()}
+              </View>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.onSurface, opacity: 0.2 }} />
+                  <Text style={{ ...theme.typography.caption, color: theme.colors.onSurfaceVariant, fontWeight: '700' }}>DÍA {new Date().getDate()} DE {new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()}</Text>
+                </View>
+
+                {(() => {
+                  const dayOfMonth = new Date().getDate();
+                  const totalDays = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+                  const monthProgress = dayOfMonth / totalDays;
+                  const spendingProgress = (monthState?.allocated_total || 0) > 0 ? (totalSpentMonth / monthState!.allocated_total) : 0;
+                  
+                  const isOnTrack = spendingProgress <= monthProgress;
+                  const diffPct = Math.abs(Math.round((spendingProgress - monthProgress) * 100));
+
+                  return (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isOnTrack ? theme.colors.successContainer + '30' : theme.colors.errorContainer + '30', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                      <Text style={{ ...theme.typography.caption, fontWeight: '900', color: isOnTrack ? theme.colors.success : theme.colors.error }}>
+                        {isOnTrack ? 'A BUEN RITMO' : 'SOBREPASADO'}
+                      </Text>
+                    </View>
+                  );
+                })()}
               </View>
             </View>
           </View>
@@ -222,6 +328,45 @@ export const Dashboard = ({
               </View>
               <ChevronRight size={18} color={theme.colors.onSurfaceVariant} opacity={0.5} />
             </TouchableOpacity>
+          )}
+
+          {/* INGRESOS PENDIENTES */}
+          {pendingIncomes.length > 0 && (
+            <View style={{ marginBottom: 32 }}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitleOrganic}>Pagos Pendientes</Text>
+              </View>
+              {pendingIncomes.map(event => (
+                <View key={event.id} style={{ backgroundColor: theme.colors.primaryContainer + '20', borderRadius: theme.radius.xl, padding: 20, borderWidth: 1.5, borderColor: theme.colors.primary, marginBottom: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                    <View style={{ backgroundColor: theme.colors.primary, width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}>
+                      <Briefcase size={20} color="#FFF" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.onSurface }}>{event.income_sources?.name || 'Salario'}</Text>
+                      <Text style={{ fontSize: 11, color: theme.colors.primary, fontWeight: '800', letterSpacing: 1, marginTop: 2 }}>ESPERADO HOY</Text>
+                    </View>
+                    <Text style={{ fontSize: 20, fontWeight: '900', color: theme.colors.primary }}>{formatMoney(event.expected_amount)}</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 12 }}>
+                     <TouchableOpacity 
+                       activeOpacity={0.8}
+                       onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); confirmPending(event.id, event.expected_amount); }}
+                       style={{ flex: 1, backgroundColor: theme.colors.primary, paddingVertical: 14, borderRadius: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                     >
+                        <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 15 }}>Confirmar</Text>
+                     </TouchableOpacity>
+                     <TouchableOpacity 
+                       activeOpacity={0.8}
+                       onPress={() => dismissPending(event.id)}
+                       style={{ backgroundColor: theme.colors.surfaceContainerHigh, paddingVertical: 14, paddingHorizontal: 20, borderRadius: 16, alignItems: 'center' }}
+                     >
+                        <Text style={{ color: theme.colors.onSurfaceVariant, fontWeight: '800', fontSize: 15 }}>Aún no</Text>
+                     </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
           )}
 
           {/* QUICK ADD GIGANTE (EL REY) */}
@@ -270,7 +415,7 @@ export const Dashboard = ({
                         <Text style={{ ...theme.typography.bodyMedium, fontWeight: '800', color: theme.colors.onSurface }} numberOfLines={1}>{mp.name}</Text>
                       </View>
                       <Text style={{ ...theme.typography.bodyMedium, fontWeight: '900', color: isOver ? theme.colors.error : theme.colors.onSurfaceVariant }}>
-                        {isOver ? 'Exceso ' : ''} $ {Math.abs(isOver ? (mp.spent_month - mp.allocated) : remaining).toLocaleString('es-CO')} {!isOver ? 'disponibles' : ''}
+                        {isOver ? 'Excedido ' : ''}{formatMoney(Math.abs(isOver ? (mp.spent_month - mp.allocated) : remaining))}{!isOver ? ' disponible' : ''}
                       </Text>
                     </View>
                   );
@@ -290,7 +435,7 @@ export const Dashboard = ({
           {transactions.slice(0, 3).length === 0 ? (
             <View style={{ padding: 40, alignItems: 'center', opacity: 0.3 }}>
               <History size={48} color={theme.colors.onSurfaceVariant} strokeWidth={1} />
-              <Text style={{ marginTop: 12, fontWeight: '800', textAlign: 'center' }}>No hay movimientos recientes</Text>
+              <Text style={{ marginTop: 12, fontWeight: '800', textAlign: 'center' }}>Sin movimientos este mes</Text>
             </View>
           ) : (
             transactions.slice(0, 3).map((tx) => {
@@ -305,7 +450,7 @@ export const Dashboard = ({
                     <Text style={styles.txDateUI}>{tx.category} • {new Date(((tx as any).date_string || tx.created_at).split('T')[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}</Text>
                   </View>
                   <Text style={[styles.txAmountUI, { color: tx.category === 'Ingreso' ? theme.colors.success : theme.colors.onSurface }]}>
-                    {formatCurrency(Math.abs(tx.amount))}
+                    {tx.category === 'Ingreso' ? '+ ' : ''}{formatMoney(Math.abs(tx.amount))}
                   </Text>
                 </TouchableOpacity>
               );

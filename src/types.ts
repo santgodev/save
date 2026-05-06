@@ -18,6 +18,7 @@ export interface Pocket {
   spent: number;
   budget: number;
   icon: string;
+  is_default_free?: boolean;
 }
 
 export type Screen = 'dashboard' | 'scanner' | 'expenses' | 'pockets' | 'profile' | 'onboarding' | 'add_income' | 'pocket_transfer';

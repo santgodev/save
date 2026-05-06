@@ -1,284 +1,360 @@
-# Architecture Review — Save (organic-ledger)
+# Save — Arquitectura (estado actual)
 
-**Fecha:** 2026-04-20
-**Alcance:** Evaluación integral de la arquitectura vista desde el enfoque del producto.
-**Relación con otros docs:**
-- `AUDIT.md` — auditoría técnica previa (problemas ya conocidos). Este doc **no** repite hallazgos; los referencia.
-- `AI_SYSTEM_DESIGN.md` — diseño de la capa de IA. Este doc evalúa cómo encaja con el todo.
-- `supabase/README.md` — operación de la capa Supabase.
+Última revisión: 2026-04-29.
 
----
+Save es una app colombiana de presupuesto personal: el usuario crea
+**bolsillos** (categorías de gasto), registra gastos manualmente o
+escaneando facturas, distribuye sus ingresos entre bolsillos y consulta
+a un asesor IA (read-only) sobre sus números.
 
-## 1. El producto que estamos construyendo
-
-Save es una app **colombiana** de **finanzas personales** con un modelo mental diferenciador: **bolsillos**. El usuario no ve categorías abstractas sino *sobres* concretos (Mercado, Transporte, Ahorros, etc.), cada uno con presupuesto y saldo. Sobre ese modelo se montan tres diferenciadores:
-
-1. **Scanner de recibos con OCR** — reducir la fricción de registrar gastos en un mercado donde la tarjeta no siempre llega y los recibos son físicos.
-2. **Asesor IA conversacional** — lenguaje natural en español colombiano, con capacidad de *ejecutar acciones* (tool use), no sólo recomendar.
-3. **Memoria y aprendizaje** — la app aprende hábitos y da insights proactivos, no solo almacena transacciones.
-
-Esto impone unas restricciones que no son obvias si miras sólo el stack técnico:
-
-- **Mercado emergente**: latencia de red variable, usuarios con planes de datos limitados. Offline-first importa más que en apps gringas.
-- **Categoría "finanzas"**: una cuenta corrupta o perdida no es un bug, es pérdida de confianza irreversible. Integridad > velocidad de iteración.
-- **Producto de hábito**: el valor crece con el uso (más data → mejor asesor). El churn del primer mes es el riesgo existencial, no el costo por usuario.
-- **Individual, no empresarial**: no hay multi-tenant complejo, pero hay privacidad de datos muy sensible (todas las compras de una persona).
-- **IA como feature diferenciador**, no como commodity: el asesor *es* el producto, no un chatbot adosado.
-
-Con este lente, ahora la arquitectura.
+Este documento es el mapa actual del sistema. Si vienes a tocar algo
+empieza aquí.
 
 ---
 
-## 2. Arquitectura actual en una imagen
+## Stack en una línea
+
+**React Native (Expo SDK 54) + Supabase (PostgreSQL 15 + Edge Functions Deno)
++ OpenAI gpt-4o-mini + Google Vision OCR.**
+
+---
+
+## El principio rector: Source of Truth única
+
+Todo número financiero que el usuario ve viene del mismo RPC SQL:
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                    CLIENTE — Expo / React Native                      │
-│                                                                       │
-│   app/index.tsx  ← switch de 270 líneas; "router" casero             │
-│     │                                                                 │
-│     ├─ screens/    Dashboard, Scanner, Pockets (33KB), Onboarding…   │
-│     ├─ components/ TopBar (con chat dentro), BottomNav, CategoryIcon │
-│     ├─ theme/      ThemeContext + StyleSheet (NativeWind casi unused)│
-│     ├─ lib/        supabase.ts, events.ts                            │
-│     └─ utils/      profileUtils, patterns, merchant                  │
-│                                                                       │
-│   Sin estado global real. Prop drilling 4-5 niveles.                  │
-│   Sin react-query, sin cache, sin optimistic updates, sin offline.    │
-│   API keys ahora limpias (tras el refactor reciente).                 │
-└──────────────────────────────────┬───────────────────────────────────┘
-                                   │
-                         Supabase JS + JWT
-                                   │
-┌──────────────────────────────────▼───────────────────────────────────┐
-│                        SUPABASE  (vxdnudkaelhqntrrwdwa)               │
-│                                                                       │
-│   ┌───────────────────┐   ┌─────────────────────┐                    │
-│   │ Postgres + RLS    │   │ Edge Functions      │                    │
-│   │                   │   │                     │                    │
-│   │ profiles          │   │ chat-advisor  v4    │                    │
-│   │ transactions      │   │   · gpt-4o-mini     │                    │
-│   │ pockets           │   │   · tool calling    │                    │
-│   │ user_monthly_…    │   │ ocr-receipt   v3    │                    │
-│   │ chat_messages   ★ │   │   · Google Vision   │                    │
-│   │ user_events     ★ │   │   · gpt-4o-mini     │                    │
-│   │ user_memory     ★ │   │                     │                    │
-│   │ user_insights   ★ │   │ verify_jwt=false    │                    │
-│   │                   │   │ (ES256 workaround)  │                    │
-│   │ RPCs:             │   └─────────────────────┘                    │
-│   │ · register_expense                                                │
-│   │ · transfer_between_pockets                                        │
-│   │                                                                   │
-│   │ Triggers ★: transactions, pockets, income → user_events          │
-│   │ pg_cron ★: podar eventos 180d, expirar insights                  │
-│   └───────────────────┘                                               │
-│                                                                       │
-│   ★ = agregado en la fase reciente (AI_SYSTEM_DESIGN)                 │
-└───────────────────────────────────────────────────────────────────────┘
-                                   │
-                  OpenAI (chat) + Google Vision (OCR)
+public.get_monthly_state(p_user_id uuid, p_year int, p_month int) RETURNS jsonb
 ```
+
+Devuelve un JSON con TODO lo necesario para representar un mes:
+ingreso_mensual, gasto_mensual, neto, bolsillos (plan/disponible/gastado/%),
+top_merchants, comparación con mes anterior, currency.
+
+**Ningún cliente recalcula nada por su cuenta.** Si una pantalla muestra
+otro número, está mal — debe pedirlo al RPC.
+
+Consumidores actuales:
+- `useMonthlyState()` hook (cliente) → Dashboard, Pockets.
+- `chat-advisor` Edge Function → cada turno del chat.
+- `insight-generator` Edge Function → cron diario.
 
 ---
 
-## 3. Evaluación por capa, enfrentada al producto
+## DB — public schema actual
 
-Para cada capa: **¿está bien pensada para Save específicamente?**
+Después del cleanup de la 7ª corrida (`drop_dead_structure` +
+`security_perf_hardening`), las tablas vivas son **8**:
 
-### 3.1 Capa de datos (Postgres + RLS)
-
-**Decisiones buenas:**
-
-- **Postgres + RLS por usuario** es la mejor decisión posible para este producto. La alternativa (un backend propio con queries manuales) costaría 3× más tiempo y sería más inseguro. RLS te da aislamiento criptográfico por `auth.uid()`: un bug en el cliente *no puede* leer datos de otro usuario.
-- **Modelo relacional en vez de documento** (Firebase): correcto. Las operaciones financieras son inherentemente transaccionales (mover plata entre bolsillos es 2 updates atómicos). Postgres te da ACID real.
-- **RPCs con parámetros nombrados** (`register_expense`, `transfer_between_pockets`): buena elección arquitectónica. Encapsula la lógica de negocio lejos del cliente, evita que se implementen reglas de "cómo se mueve plata" en tres pantallas distintas.
-- **Event store (`user_events`) con triggers automáticos**: la pieza más sofisticada del sistema. Hace que *cualquier* cambio en el modelo quede registrado sin que el cliente tenga que colaborar. Es la materia prima para analytics, debugging, y el sistema de memoria.
-
-**Mismatches con el producto:**
-
-- 🟡 **Falta un modelo temporal explícito para presupuestos**. Actualmente `pockets.budget` es un número plano. Pero los presupuestos son inherentemente **mensuales** y cambian. Si mañana quieres mostrar "tu bolsillo Mercado el mes pasado gastaba 40% más", no lo puedes reconstruir. Recomendación: `pocket_period` (pocket_id, year, month, budget_cents, spent_cents, carried_over_cents).
-- 🟡 **`user_monthly_income` tiene RLS enabled pero sin policies** (visto en Supabase advisors). En este proyecto eso significa que *nadie* puede leer la tabla — ni siquiera su dueño. Probablemente por eso el advisor no ve tu ingreso. Fix crítico de 2 líneas de SQL.
-- 🟡 **No hay tabla de categorías canónicas**. Cada pocket tiene un campo `category` como string libre. Para un advisor que razone sobre "gasto en transporte", eso es frágil: si un bolsillo dice "Transporte" y el otro dice "transporte", para el modelo son diferentes. Recomendación: tabla `categories` con id estable y el pocket.category_id FK.
-- 🟢 **Falta integridad en transacciones**. Una transferencia entre bolsillos debería ser *una* operación lógica, no dos rows independientes de `transactions`. Hoy si falla la segunda mitad, queda inconsistente. La RPC `transfer_between_pockets` probablemente ya usa una transacción Postgres, pero no hay registro explícito del "par" de movimientos. Recomendación: columna `transfer_group_id` en transactions.
-
-**Veredicto capa de datos:** 7.5/10. Fundamento sólido, ajustes necesarios pero no re-arquitectura.
-
-### 3.2 Capa de backend (Edge Functions)
-
-**Decisiones buenas:**
-
-- **Edge Functions en vez de backend propio**: excelente para una app en esta etapa. Cero ops, escala a cero, cobra por invocación. Para un app financiero de usuario individual, no necesitas un Node server 24/7 quemando plata.
-- **Deno + TypeScript**: correcto. El ecosistema está en Supabase nativamente, evitas tooling de Node (webpack, babel, etc.).
-- **Separación `_shared/`**: auth, cors, openai, prompts, tools están aislados. Permite que si mañana agregas una tercera función (ej. `weekly-synth`), reusas todo. Esto es el patrón que recomendaba AI_SYSTEM_DESIGN.md y está implementado.
-- **Tool calling en vez de regex matching** en respuestas del modelo: decisión correcta (estaba como riesgo en AUDIT). Hoy el asesor puede *ejecutar* acciones (transferir plata, crear bolsillos) con confirmación estructurada en vez de imprimir `[ACTION:TRANSFER]` y esperar que el cliente lo parseé.
-
-**Mismatches con el producto:**
-
-- 🔴 **`verify_jwt = false` por workaround ES256**: funciona, pero es deuda. Cuando Supabase arregle la incompatibilidad del gateway con llaves ES256, hay que revertir a `verify_jwt = true` para tener defensa en profundidad (actualmente solo nuestra `authenticate()` chequea el JWT — si hay un bug ahí, la función queda abierta). Poner un `TODO` con fecha de revisión.
-- 🟡 **`user_client` vs `service_client` mezclados sin claridad**. Usamos `serviceClient` (bypass RLS) para persistir turnos de asistente y eventos; `userClient` para leer contexto y ejecutar tools. El patrón es correcto pero frágil: un error de tipeo (usar `serviceClient` donde debería ir `userClient`) rompe RLS. Recomendación: ponerlos en scopes separados, o hacer un wrapper que prohíba usar serviceClient para ciertas tablas.
-- 🟡 **No hay idempotencia en `chat-advisor`**. Si el usuario manda el mismo mensaje dos veces por un retry del cliente, se ejecutan dos turnos completos de OpenAI + dos tool calls potencialmente destructivos. Para una app financiera donde las "tools" pueden mover plata, esto es un riesgo real. Recomendación: pasar un `request_id` desde el cliente y hashear contra chat_messages antes de ejecutar.
-- 🟢 **Sin rate limiting**. No hay protección contra usuarios (o atacantes con cuentas válidas) que quemen tu presupuesto de OpenAI con requests en loop. Para una app de usuario individual es bajo riesgo, pero documentable.
-
-**Veredicto capa de backend:** 8/10. Diseño limpio, hace lo correcto. Los huecos son operacionales, no de diseño.
-
-### 3.3 Capa del cliente (Expo / React Native)
-
-Aquí es donde la arquitectura está más desalineada con el producto. Lo desarrollo con más detalle.
-
-**Problemas estructurales (todos heredados de AUDIT, sin resolver):**
-
-- 🔴 **"Router" casero con switch de 270 líneas en `app/index.tsx`**. Expo-router 6 está instalado pero no se usa. Cada pantalla se importa *eagerly* al boot. En una app con 9 pantallas ya empieza a pesar; cuando sean 15 (Insights, Goals, Reports, Notifications…), va a doler. **Además**: sin file-based routing no tienes deep links nativos, lo cual impide mostrar notificaciones que abran directo una pantalla (crítico para la estrategia de "consejos proactivos" de AI_SYSTEM_DESIGN).
-- 🔴 **Sin estado global real**. `transactions`, `pockets`, `session` se pasan como props desde `index.tsx` hacia abajo 4-5 niveles. Cuando el asesor crea un bolsillo vía tool call, el cliente **no tiene forma de enterarse** sin hacer un refetch manual completo. Esto es una limitación *arquitectónica*, no de feature: el modelo mental del producto pide que la app reaccione a cambios hechos en el servidor (por la IA, por triggers, por otros dispositivos del mismo usuario), y el cliente actual no puede.
-- 🔴 **Sin caché ni offline**. Cada arranque hace `select('*') from transactions where user_id = ...`. Para un usuario con 2 años de historia serían miles de filas. En un mercado donde la conexión es variable (el usuario abre la app en TransMilenio sin LTE), **la app actualmente no funciona**. El enfoque producto-mercado hace esto más grave que en una SaaS de escritorio.
-- 🟡 **`src/components/TopBar.tsx` tiene el chat completo adentro** (~450 líneas después del refactor). No es un problema funcional pero es un *smell*: el chat es una superficie grande que merece su propio feature module (componentes, hooks, estado, estilos).
-- 🟡 **Archivos gigantes** (Pockets.tsx ~33KB, AddIncome.tsx ~22KB). Mezclan lógica de negocio, efectos de Supabase, animaciones, y estilo en un solo archivo. Esto hace imposible agregar tests y difícil onboardear a un segundo dev.
-- 🟡 **Tipos Supabase no generados**. El cliente usa `any[]` en muchas firmas y `Record<string, unknown>` en otros. Un cambio de schema (agregar columna) no rompe TypeScript, rompe runtime. Con `supabase gen types typescript` este riesgo desaparece.
-
-**Decisiones correctas que no hay que tocar:**
-
-- Expo SDK 54 + RN 0.81 + React 19: moderno, soporte largo, managed workflow. Para esta etapa de producto, correcto no salirse de Expo.
-- `LargeSafeStorage` con fallbacks cross-platform en `supabase.ts`: defensivo pero necesario — crashes raros de auth son un killer en apps móviles.
-- Haptics + animaciones con Reanimated: buena UX, no sobreingeniería.
-
-**Veredicto capa del cliente:** 5/10. Funciona hoy, pero es el cuello de botella para todo lo que viene (IA proactiva, offline, multi-device, tests).
-
-### 3.4 Cross-cutting
-
-| Tema | Estado | Impacto en el producto |
+| Tabla | Filas (prod) | Rol |
 |---|---|---|
-| **i18n** | ❌ | Bajo hoy (solo Colombia), crítico si expanden a MX/PE/CL. |
-| **Accesibilidad** | ⚠️ | Medio. App financiera para todos los adultos significa que deberías pensar en lectores de pantalla y tamaños de texto grandes. Hoy los botones usan iconos sin labels accesibles. |
-| **Testing** | ❌ | **Alto**. Cero tests en app financiera es una decisión con consecuencias cuando agregues el primer bug de "la transferencia perdió plata". |
-| **CI/CD** | ❌ | **Alto**. No hay staging environment. Si haces un `apply_migration` malo vía MCP o CLI, estás tocando prod. |
-| **Error tracking** | ❌ | **Medio-alto**. Cuando un usuario reporte "la app crashea", no tienes forma de saber qué pasó. Sentry es 1 día de trabajo. |
-| **Analytics del negocio** | 🟢 Parcial | El event store está, pero no hay dashboard que lo consuma. Así no sabes funnel, retención, features usadas. |
+| `profiles` | 1 | id, full_name, avatar_url, preferred_currency, theme_preference, updated_at. **Mínima.** |
+| `transactions` | 30+ | merchant, amount (negativo = gasto, positivo = ingreso), category, date_string (`YYYY-MM-DD`), canonical_merchant (auto-poblado por trigger), metadata jsonb. |
+| `pockets` | 13 | name, category, allocated_budget (plan), budget (saldo disponible), icon. **`budget` es cache decrementado por `register_expense`/`transfer`.** |
+| `user_events` | 138+ | Append-only behavioural log. event_type + jsonb. Alimenta análisis offline. |
+| `chat_messages` | n | role + content + tool_calls + session_id. NOT NULL session_id (default `gen_random_uuid()`). |
+| `user_memory` | 0 hoy | Hechos durables del usuario sintetizados por LLM. UNIQUE (user_id, key). Productor: `synthesize-memory`. |
+| `user_insights` | 0 hoy | Alertas proactivas. severity + dedupe_key + status + expires_at. Productor: `insight-generator`. |
+| `user_spending_rules` | 1 | Patrón de comercio + tipo (confidence/monitor/reduce). Editado desde Profile y Expenses. |
 
----
+**Tablas borradas en la 7ª corrida** (referencia histórica):
+`recommendations`, `monthly_snapshots`, `user_behavior_metrics`,
+`user_monthly_income`. Si necesitas snapshots o métricas de comportamiento,
+recréalas con propósito y un productor real.
 
-## 4. Riesgos arquitectónicos priorizados por lente del producto
+### Columnas removidas de `profiles`
 
-### 🔴 Riesgo 1 — La IA va a sentirse desconectada de la app
+`savings_goal`, `notification_preferences`, `last_insight`, `spending_trend`,
+`financial_profile`, `financial_score`, `monthly_income`. Ninguna se usaba.
+Si reaparece la necesidad, se recrean.
 
-**Síntoma:** El asesor creó un bolsillo vía tool call (funciona en server) pero la pantalla del usuario no se actualiza hasta que refetchea manualmente. **Hoy ya está pasando.**
+### Triggers vivos
 
-**Causa:** sin estado global reactivo (react-query o Zustand), la mutación server-side no se propaga al cliente.
-
-**Impacto producto:** el asesor se siente "hablante" en vez de "ejecutor". El diferenciador competitivo del chat se diluye.
-
-**Arreglo:** instalar `@tanstack/react-query`, envolver las lecturas de Supabase en `useQuery`, invalidar los queries correctos después de `functions.invoke('chat-advisor')`. 3-5 días de trabajo. **Habilita además:** optimistic updates, pull-to-refresh gratis, stale-while-revalidate.
-
-### 🔴 Riesgo 2 — La app no funciona sin red
-
-**Síntoma:** abre la app en un lugar con conexión intermitente → pantalla blanca o "No hay datos" porque `loadUserData` falló.
-
-**Causa:** cero persistencia local de datos de dominio.
-
-**Impacto producto:** en Colombia, los momentos de uso más frecuentes (mercado, transporte, restaurante) son exactamente donde la conexión es peor. Un usuario que abre la app y no ve nada, no vuelve.
-
-**Arreglo:** `@tanstack/react-query` + `@tanstack/query-async-storage-persister` te da cache persistente gratis. Para escritura offline más robusta, `supabase-cache-helpers` o solución custom con cola de mutaciones.
-
-### 🟠 Riesgo 3 — No puedes iterar sin romper cosas
-
-**Síntoma:** un cambio en `Pockets.tsx` ya tiene riesgo de romper otra cosa porque el archivo es 33KB y no hay tests.
-
-**Causa:** archivos monolito + cero tests + cero CI.
-
-**Impacto producto:** velocidad de iteración cae exponencialmente con el número de features. Para una app que depende del feedback del asesor (y por tanto, de iteración rápida en el prompt y en las tools), esto es tóxico.
-
-**Arreglo:** Fase de refactor de 2 semanas. Partir Pockets.tsx en `<PocketsList>`, `<PocketCard>`, `<usePockets>` hook. Instalar Jest + @testing-library/react-native. Pipeline de GitHub Actions que corra lint + tsc + tests en cada PR.
-
-### 🟠 Riesgo 4 — No hay staging. Un `apply_migration` malo es producción muerta
-
-**Síntoma:** trabajando ya directamente contra el proyecto `vxdnudkaelhqntrrwdwa`.
-
-**Causa:** no hay un segundo proyecto Supabase ni ramas de DB.
-
-**Impacto producto:** cualquier cambio de schema es un acto de fe. Para un app financiera, eso es inaceptable en el mediano plazo.
-
-**Arreglo:** usar **Supabase Branches** (feature pagada, ~$10/mes) o crear un proyecto `organic-ledger-staging` y apuntar la build de dev ahí. 1 día de setup.
-
-### 🟡 Riesgo 5 — El modelo de presupuesto es puntual, no temporal
-
-Ya descrito en 3.1. No es urgente, pero el día que quieras mostrar un gráfico de "tu gasto por mes en Mercado a lo largo del año", vas a tener que migrar data y eso se pone feo si hay 10k usuarios. Mejor hacerlo con 100 usuarios.
-
-### 🟡 Riesgo 6 — Observabilidad ciega
-
-Sin Sentry y sin dashboard sobre `user_events`, los primeros 6 meses de producto son decisiones a ciegas. Para un advisor IA donde la calidad de respuesta es existencial, no poder contestar "¿qué % de respuestas del asesor fueron útiles?" es un problema.
-
----
-
-## 5. Recomendaciones priorizadas
-
-Ordenadas por **impacto producto / costo de implementación**.
-
-### Fase A — 2 semanas (desbloquear el núcleo)
-
-1. **Instalar react-query** y migrar 5 queries clave: pockets, transactions, profile, chat history, insights. Invalidar correctamente después de `functions.invoke`. *Desbloquea: IA reactiva + offline light + menos código duplicado.*
-2. **Generar tipos Supabase** con `supabase gen types typescript`. Eliminar `any[]` en las firmas de los hooks nuevos. *Desbloquea: refactor seguro hacia adelante.*
-3. **Arreglar RLS de `user_monthly_income`** (2 líneas de SQL). *Desbloquea: el asesor finalmente ve tu ingreso.*
-4. **Instalar Sentry para RN**. 1 día. *Desbloquea: visibilidad de crashes reales.*
-
-### Fase B — 1 mes (modernizar el cliente)
-
-5. **Migrar a file-based routing de expo-router**. Eliminar el switch de 270 líneas. *Desbloquea: deep links → notificaciones proactivas del asesor.*
-6. **Partir Pockets.tsx, AddIncome.tsx, Scanner.tsx en componentes <10KB**. *Desbloquea: tests y contribución de segunda persona.*
-7. **Sacar el chat de TopBar.tsx a `src/features/chat/`** (componentes + hooks + estilos). *Desbloquea: el chat deja de bloquear cambios cosméticos del header.*
-8. **CI/CD básico**: GitHub Actions + proyecto Supabase de staging. *Desbloquea: cambios de schema sin pánico.*
-
-### Fase C — 2 meses (escalabilidad del dominio)
-
-9. **Tabla `categories` canónica** con FK desde pockets y transactions. Migrar data existente. *Desbloquea: asesor razonando en categorías estables + analytics coherentes.*
-10. **Tabla `pocket_period`** para presupuesto mensual histórico. *Desbloquea: reportes históricos, proyecciones, y el mensaje "el mes pasado gastabas 40% menos en esto".*
-11. **Idempotencia en chat-advisor** (request_id hashing). *Desbloquea: confianza para ejecutar tools destructivas.*
-12. **Primeros tests**: un smoke test E2E por feature principal (scan receipt → save, chat → receive reply, transfer between pockets). *Desbloquea: refactoring sin miedo.*
-
-### Fase D — 3+ meses (madurez)
-
-13. **Offline-first completo** con cola de mutaciones locales que sincroniza cuando hay red.
-14. **Sistema de insights** (tabla `user_insights` ya existe) conectado al asesor: cada noche un job genera 1-3 insights y los expone en el dashboard.
-15. **i18n** cuando aparezca el primer usuario no-colombiano.
-16. **Rate limiting** en Edge Functions (por user_id + día).
-
----
-
-## 6. ¿La arquitectura está bien pensada para Save?
-
-**Respuesta corta:** La arquitectura del **backend** está sustancialmente bien pensada para el producto. La del **cliente** no.
-
-**Expandido:**
-
-El backend (Supabase + RLS + Edge Functions + event store + triggers) es **la decisión arquitectónica correcta** para una app de finanzas personales individuales con IA. Te da aislamiento por usuario gratis, escala a cero, tiene integridad transaccional real, y deja la infra administrada a un tercero competente. El diseño de la capa de IA específicamente (AI_SYSTEM_DESIGN) muestra pensamiento maduro: event store, memoria destilada, insights estructurados, tool calling, versiones de prompt. Eso es el 70% del trabajo duro.
-
-El cliente, en cambio, **está optimizado para una app más simple** de la que quieren construir. El "router" casero, el prop drilling, el cero-cache, los archivos monolito — todo eso funciona para una app con 3 pantallas y 50 usuarios. No funciona para una app donde:
-
-1. La IA modifica el estado desde afuera (necesita reactividad).
-2. Los usuarios están en mercados con conexión variable (necesita offline).
-3. El feature set va a crecer 3x en 6 meses (necesita modularidad).
-4. Es finanzas (necesita tests y observabilidad).
-
-**La buena noticia:** ninguno de los problemas del cliente es estructural-profundo. Son deuda acumulada por moverse rápido, y el arreglo (Fases A+B) son 6 semanas de trabajo concentrado que te posicionan para escalar.
-
-**La mala noticia:** cada semana que no se haga este refactor, agregar features se vuelve más caro, y cuando llegue el primer bug financiero serio, la falta de tests + observabilidad lo va a convertir en incidente de confianza.
-
-**Decisión clave para el founder:** en los próximos 30 días, ¿priorizar features nuevas (más pantallas, más insights) o consolidar la capa cliente?
-
-Mi recomendación con alta confianza: **consolidar**. El diferenciador del producto (IA que ejecuta + memoria que aprende) no se nota hasta que la app sea reactiva y esté siempre disponible. Hoy no lo está. Arreglarlo es prerrequisito, no opción.
-
----
-
-## 7. Resumen ejecutivo (1 página)
-
-| Capa | Nota | Encaja con el producto | Acción |
+| Trigger | Tabla | Función | Para qué |
 |---|---|---|---|
-| Datos (Postgres+RLS) | 7.5/10 | Sí | Ajustes: RLS de income, tabla categorías, tabla pocket_period |
-| Backend (Edge Functions) | 8/10 | Sí | Ajustes: idempotencia, rate limit, revertir verify_jwt |
-| Cliente (RN/Expo) | 5/10 | **No** para la app que quieren construir | Refactor de 6 semanas: react-query, expo-router real, tipos Supabase, split de monolitos |
-| Cross-cutting | 3/10 | No | Sentry + CI + staging + primeros tests |
+| `trg_transactions_set_canonical` | transactions | `transactions_set_canonical_merchant` | Pobla `canonical_merchant` automáticamente al INSERT/UPDATE. |
+| `transactions_emit_event` | transactions | `tg_transactions_emit_event` | Emite a `user_events` para analytics. |
+| `pockets_emit_event` | pockets | `tg_pockets_emit_event` | Idem para pockets. |
+| `user_memory_set_updated_at` | user_memory | `set_updated_at` | Mantiene `updated_at` fresco. |
 
-**Top 3 que haría esta semana:**
+### Funciones / RPCs activos
 
-1. Instalar react-query y migrar las 5 queries principales.
-2. `supabase gen types typescript` + eliminar los `any[]`.
-3. Arreglar el RLS de `user_monthly_income` (2 líneas SQL).
+**Lectura (read-only):**
+- `get_monthly_state(uuid, int, int)` — source of truth (descrito arriba).
+- `canonicalize_merchant(text)` — IMMUTABLE, usada por el trigger.
 
-**Top 1 riesgo no discutido antes:** el día que un usuario reporte "mi transferencia se perdió plata" no tenemos forma de reproducir ni auditar porque (a) no hay tests, (b) no hay Sentry, (c) el event store no está consultado todavía. Arreglar ese trípode es seguro financiero, no solo técnico.
+**Mutación (con guard `auth.uid() = p_user_id` interno):**
+- `register_expense(uuid, text, numeric, text, text, text, jsonb)` — valida monto positivo, fecha legible (YYYY-MM-DD, rango 2000-01-01..today+1), merchant no vacío, fallback a "Otros" si la categoría no existe.
+- `register_income(uuid, numeric, jsonb, text, text)` — distribuye entre bolsillos del usuario, valida monto positivo y tipo de jsonb.
+- `transfer_between_pockets(uuid, uuid, uuid, numeric)` — valida monto positivo, no self-transfer, ambos bolsillos del usuario, saldo suficiente.
+- `delete_transaction_with_reversal(uuid, uuid)` — borra y reversa el saldo del bolsillo.
+
+**Operacionales (cron):**
+- `cron_expire_user_insights()` — marca insights expirados (status='expired').
+- `cron_prune_user_events()` — purga events viejos.
+
+Todas las RPCs sensibles tienen `REVOKE EXECUTE FROM PUBLIC` aplicado.
+Solo las 5 que el cliente necesita tienen `GRANT EXECUTE TO authenticated`
+explícito.
+
+### RLS
+
+Todas las tablas tienen RLS habilitado. Patrón:
+```sql
+USING ((select auth.uid()) = user_id)
+WITH CHECK ((select auth.uid()) = user_id)
+```
+El `(select auth.uid())` (envuelto en subquery) evita la re-evaluación
+por fila — corregido en la corrida 7.
+
+### Índices clave
+
+- `transactions(user_id, date_string DESC)` — el RPC filtra por user+mes.
+- `pockets(user_id)` — selects RLS-bound.
+- `user_events(user_id, event_type, created_at DESC)` — para analytics.
+- `user_memory(user_id, key)` UNIQUE — para UPSERT.
+- `user_spending_rules(user_id, canonical_pattern)` UNIQUE — para UPSERT.
+
+---
+
+## Edge Functions (`supabase/functions/`)
+
+### `chat-advisor` — versión deployada: v8 (prompt: `advisor.v6`)
+
+POST `/functions/v1/chat-advisor` — body: `{ message, session_id? }`.
+
+Flujo:
+1. Auth (`Authorization: Bearer <user JWT>`).
+2. Carga en paralelo: `get_monthly_state` + `profiles.full_name` + `user_memory` + `user_spending_rules` + últimos 20 `chat_messages`.
+3. Arma `system_prompt` con `buildAdvisorSystemPrompt()` desde `_shared/prompts.ts`.
+4. Una sola llamada a OpenAI (gpt-4o-mini, temperature 0.3, max_tokens 400).
+5. Persiste user turn + assistant turn en `chat_messages` con `prompt_version` etiquetado.
+
+**Read-only** desde la migración v6: `tools.ts` exporta `[]`. El modelo
+no tiene capacidad de mutar nada. Si pide hacer algo redirige al usuario
+a la pantalla correspondiente.
+
+Estilo: español neutro, sin emojis, sin botones obligatorios, 2-4
+oraciones, formatea cifras con `$1.250.000`, indica explícitamente
+"vs mes pasado" en comparaciones.
+
+### `ocr-receipt` — versión deployada: v5 (prompt: `ocr.v2`)
+
+POST `/functions/v1/ocr-receipt` — body: `{ image_base64, category?, auto_register? }`.
+
+Flujo:
+1. Auth.
+2. Google Vision text detection sobre la imagen.
+3. OpenAI estructura el texto raw en `{ amount, merchant, date, items, confidence }`.
+4. Sanitización defensiva: si `merchant` matchea blacklist (`Desconocido`, `Factura Escaneada`, `Recibo`, `Sin nombre`, `N/A`, `null`) → fuerza a `null`. Si `amount <= 0` → fuerza a `null`.
+5. Devuelve `{ parsed, needs_review, registered, register_skipped_reason, prompt_version }`.
+6. Si `auto_register=true` PERO `needs_review=true` → NO se llama a `register_expense`. Cliente debe abrir un modal de confirmación.
+
+### `insight-generator` — versión deployada: v1
+
+POST `/functions/v1/insight-generator` — body: `{}` (cron) o body con auth de usuario.
+
+2 modos:
+- Con `Authorization: Bearer <user JWT>` → procesa solo a ese usuario.
+- Con `Authorization: Bearer <SERVICE_ROLE_KEY>` → modo cron, itera todos los profiles.
+
+Reglas determinísticas (sin LLM):
+- `pocket_burn` (≥80% warning, ≥100% critical) — `dedupe_key` por bucket de 10%.
+- `recurring_spike` (gasto del mes >30% vs mes pasado).
+- `negative_flow` (gastos > ingresos del mes).
+
+UPSERT a `user_insights` por `(user_id, dedupe_key)`. Programado por `pg_cron` cada día 13:00 UTC (08:00 Bogotá).
+
+### `synthesize-memory` — versión deployada: v1 (prompt: `memory.v1`)
+
+POST `/functions/v1/synthesize-memory` — mismos 2 modos.
+
+Lee 50 últimos events + 20 últimos chat_messages + 50 últimas transactions.
+Si actividad < 5 items → skip (no gastar tokens).
+Llama a gpt-4o-mini con prompt que extrae 3-5 hechos durables
+(`{key, kind: 'habit'|'goal'|'preference'|'risk', summary, confidence}`).
+UPSERT por `(user_id, key)`.
+
+Programado por `pg_cron` los lunes 11:00 UTC (06:00 Bogotá).
+
+### `_shared/`
+
+- `cors.ts` — `corsHeaders`, `handlePreflight`, `jsonResponse`, `errorResponse`.
+- `auth.ts` — `authenticate(req)` valida JWT, devuelve `{ user, userClient, serviceClient }`.
+- `openai.ts` — `chatCompletion()` wrapper. **API key nunca al cliente.**
+- `prompts.ts` — `buildAdvisorSystemPrompt()` + tipo `MonthlyState`. Versionado con `ADVISOR_PROMPT_VERSION = "advisor.v6"`.
+- `tools.ts` — `advisorTools = []` desde v6. Read-only enforced.
+
+---
+
+## Cron jobs (`pg_cron` + `pg_net`)
+
+Definidos en `supabase/migrations/20260429000001_schedule_cron_jobs.sql`:
+
+| Job | Cron | Edge Function | Frecuencia real |
+|---|---|---|---|
+| `insights-daily` | `0 13 * * *` (UTC) | insight-generator | Cada día 08:00 Bogotá |
+| `memory-weekly` | `0 11 * * 1` (UTC) | synthesize-memory | Lunes 06:00 Bogotá |
+
+Ambos hacen `net.http_post` con `Authorization: Bearer <secret>` donde
+el secret viene de `vault.decrypted_secrets WHERE name = 'service_role_key'`.
+
+**Paso manual una vez:** crear el secret en Vault desde Dashboard SQL Editor:
+```sql
+SELECT vault.create_secret('<el-service-role-key>', 'service_role_key');
+```
+
+Sin esto el cron corre pero las llamadas HTTP fallan con 401.
+
+---
+
+## Cliente (`src/`)
+
+```
+src/
+├── App.tsx                  ← root, routing entre screens
+├── constants.ts             ← env URLs + categorías
+├── types.ts                 ← Transaction, Screen, etc.
+│
+├── lib/
+│   ├── supabase.ts          ← client config con AsyncStorage
+│   ├── useMonthlyState.ts   ← hook que envuelve get_monthly_state
+│   ├── format.ts            ← formatMoney (única source de verdad)
+│   ├── notify.ts            ← notify.error/success/info/confirm
+│   └── events.ts            ← logEvent helper para user_events
+│
+├── components/
+│   ├── BottomNav.tsx        ← tab bar
+│   ├── TopBar.tsx           ← header + chat con advisor
+│   ├── BottomSheet.tsx      ← modal compartido (NUEVO)
+│   ├── MonthNav.tsx         ← selector de mes compartido (NUEVO)
+│   ├── CategoryIcon.tsx
+│   └── AnimatedProgressBar.tsx
+│
+├── screens/
+│   ├── Auth.tsx             ← login + signup + OAuth
+│   ├── Onboarding.tsx       ← setup inicial de bolsillos
+│   ├── Dashboard.tsx        ← home: balance del mes + bolsillos top + tx recientes
+│   ├── Expenses.tsx         ← lista de tx con filtros + tap = marcar comercio + long-press = eliminar
+│   ├── Pockets.tsx          ← grid de bolsillos + ajustar plan + transferir
+│   ├── PocketTransfer.tsx   ← UI de mover entre bolsillos
+│   ├── AddIncome.tsx        ← registrar ingreso + distribuir
+│   ├── Scanner.tsx          ← cámara/galería + OCR + edición manual
+│   └── Profile.tsx          ← perfil + score + reglas + cerrar sesión
+│
+├── theme/
+│   ├── theme.ts             ← colors + typography (display/h1/h2/h3/...) + shadows + radius
+│   └── ThemeContext.tsx     ← persistencia de modo en profiles.theme_preference
+│
+└── utils/
+    ├── merchant.ts          ← normalizeMerchant() (cliente — espejo del SQL)
+    ├── patterns.ts          ← detectores de patrones de gasto
+    └── profileUtils.ts      ← calculateFinancialProfile (filtra al mes en curso)
+```
+
+### Convenciones críticas
+
+- **Money formatting**: import `formatMoney` de `lib/format.ts`. NO redefinir.
+- **Notificaciones**: import `notify` de `lib/notify.ts`. NO usar `alert()` ni `Alert.alert` directo.
+- **Estado mensual**: import `useMonthlyState` de `lib/useMonthlyState.ts`. NO recalcular ingreso/gasto/disponible.
+- **Modales centrados**: import `BottomSheet` de `components/BottomSheet.tsx`. Migración progresiva en curso.
+- **Selector de mes**: import `MonthNav` de `components/MonthNav.tsx` con array `MONTHS` exportado.
+- **Tipografía**: usar `theme.typography.display/h1/h2/h3/...` en lugar de `fontSize` literales.
+- **Sesión Supabase**: `session: Session` (de `@supabase/supabase-js`), NO `session: any`.
+
+Todo esto está documentado en detalle en `docs/DESIGN_TOKENS.md`.
+
+---
+
+## Flujos completos
+
+### Registrar un gasto manual (Scanner sin imagen)
+
+```
+Usuario abre Scanner → modo manual
+  → escribe monto + merchant + selecciona categoría
+  → tap "Guardar gasto"
+  → Scanner.tsx llama supabase.rpc('register_expense', { p_user_id, p_merchant, p_amount, p_category, ... })
+  → register_expense (DB):
+      1. Valida auth.uid() = p_user_id
+      2. Valida monto > 0, merchant no vacío, fecha YYYY-MM-DD válida
+      3. Busca bolsillo por categoría (fallback a "Otros")
+      4. INSERT transactions con amount = -ABS(p_amount)
+         → trigger trg_transactions_set_canonical pobla canonical_merchant
+         → trigger transactions_emit_event escribe a user_events
+      5. UPDATE pockets SET budget = budget - ABS(p_amount)
+  → onSaveSuccess callback en cliente refresca Dashboard/Pockets
+```
+
+### Pregunta al chat
+
+```
+Usuario abre chat (TopBar) → escribe "¿cómo voy este mes?"
+  → TopBar.sendMessage llama supabase.functions.invoke('chat-advisor', { message, session_id })
+  → chat-advisor Edge Function:
+      1. Auth → user_id
+      2. En paralelo: get_monthly_state + profile + user_memory + user_spending_rules + history (20)
+      3. buildAdvisorSystemPrompt() arma el prompt con todo
+      4. OpenAI gpt-4o-mini responde
+      5. Persiste user turn + assistant turn en chat_messages
+      6. Devuelve { reply, session_id, prompt_version }
+  → TopBar agrega el mensaje al chat
+```
+
+### Cron de insights (diario)
+
+```
+13:00 UTC → pg_cron dispara
+  → net.http_post a /functions/v1/insight-generator con Bearer service_role_key
+  → insight-generator (modo cron):
+      1. SELECT id FROM profiles → loop
+      2. Por cada user: get_monthly_state → buildInsightsFor → reglas
+      3. UPSERT user_insights con dedupe_key
+  → Dashboard del usuario lee user_insights al abrir
+```
+
+---
+
+## Seguridad — el modelo
+
+**El usuario solo puede operar sobre sus propios datos.**
+
+Triple defensa:
+1. **RLS**: cada tabla con `policy USING ((select auth.uid()) = user_id)`.
+2. **RPC guard**: las 4 RPCs de mutación validan `IF p_user_id IS DISTINCT FROM auth.uid() THEN RAISE EXCEPTION '42501'`.
+3. **REVOKE PUBLIC**: las RPCs sensibles solo son llamables por `authenticated`. `anon` no las ve.
+
+`SECURITY DEFINER` con `SET search_path = public, pg_temp` para evitar
+schema hijack.
+
+**Pendiente operacional:**
+- HIBP password protection (Dashboard → Auth → Sign In → Password security).
+- `service_role_key` en Vault (ver `tests/RESULTS.md` → 8ª corrida).
+
+---
+
+## Observabilidad
+
+- `user_events` (138+ filas) es el log append-only de comportamiento.
+  Tiene índice GIN sobre `event_data` para queries semánticas.
+- `chat_messages` registra cada turno con `prompt_tokens`, `completion_tokens`,
+  `model`, `prompt_version`, `tool_input/output`. Permite cost analysis y
+  comparación de prompts entre versiones.
+- `user_events.event_type = 'chat.message.sent'` incluye un `state_snapshot`
+  con `income_month`, `spent_month`, `net_month`, `available_total` —
+  permite correlacionar conversaciones con el estado real del usuario al
+  momento del mensaje.
+
+**Pendiente:** Sentry / monitoreo de errores en Edge Functions. Hoy si una
+function tira error, lo único que queda es el log de Supabase Dashboard.
+
+---
+
+## Qué leer después
+
+- `docs/AI_SYSTEM_DESIGN.md` — diseño del advisor + jobs de IA.
+- `docs/DESIGN_TOKENS.md` — guía de uso del sistema de design (helpers + componentes).
+- `docs/DB_AUDIT_2026-04-28.md` — auditoría detallada de la DB (parcialmente outdated tras la 7ª corrida — ver `tests/RESULTS.md` para el plan ejecutado).
+- `tests/TEST_REPORT.md` — los 13 bugs originales + 7 descubiertos post-cierre.
+- `tests/RESULTS.md` — bitácora cronológica de las 10 corridas.
+- `supabase/README.md` — setup y deploy de Supabase.

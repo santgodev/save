@@ -8,10 +8,13 @@ import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
 import { normalize } from '../theme/theme';
 import { supabase } from '../lib/supabase';
+import { formatMoney, formatMoneyDigits } from '../lib/format';
+import { notify } from '../lib/notify';
+import type { Session } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
 
-export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, initialParams }: { pockets: any[], session: any, onCancel: () => void, onSaveSuccess: () => void, initialParams?: { fromId?: string, amount?: number } }) => {
+export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, initialParams }: { pockets: any[], session: Session, onCancel: () => void, onSaveSuccess: () => void, initialParams?: { fromId?: string, amount?: number } }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const [amount, setAmount] = useState(initialParams?.amount ? initialParams.amount.toString() : '');
@@ -128,17 +131,14 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
     }
   }, [fromPocketId]);
 
-  const formatCurrency = (val: string) => {
-    const numericValue = val.replace(/[^0-9]/g, '');
-    if (!numericValue) return '';
-    return parseInt(numericValue, 10).toLocaleString('es-CO');
-  };
+  // formatMoneyDigits importado de lib/format.
+  const formatCurrency = formatMoneyDigits;
 
   const handleSave = async () => {
     const val = parseInt(amount.replace(/[^0-9]/g, ''), 10);
-    if (!val || val <= 0) return alert('Monto inválido.');
-    if (!fromPocketId || !toPocketId) return alert('Bolsillos incompletos.');
-    if (fromPocketId === toPocketId) return alert('Origen y destino deben ser distintos.');
+    if (!val || val <= 0) return notify.error('Monto inválido.');
+    if (!fromPocketId || !toPocketId) return notify.error('Bolsillos incompletos.');
+    if (fromPocketId === toPocketId) return notify.error('Origen y destino deben ser distintos.');
 
     setIsSaving(true);
     try {
@@ -155,7 +155,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
       onSaveSuccess();
     } catch(e) {
       console.error(e);
-      alert('Error en el traspaso.');
+      notify.error('Error en el traspaso.');
     } finally {
       setIsSaving(false);
     }
@@ -168,7 +168,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
         <TouchableOpacity style={styles.closeBtn} onPress={onCancel}>
           <X size={24} color={theme.colors.onSurface} strokeWidth={2.5} />
         </TouchableOpacity>
-        <Text style={styles.title}>Traspaso Estratégico</Text>
+        <Text style={styles.title}>Mover entre bolsillos</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -201,7 +201,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setFromPocketId(p.id); }}
                 >
                   <Text style={styles.pocketChipTxt}>{p.name}</Text>
-                  <Text style={[styles.pocketChipSub, fromPocketId === p.id && { color: theme.colors.tertiary }]}>${p.budget.toLocaleString('es-CO')}</Text>
+                  <Text style={[styles.pocketChipSub, fromPocketId === p.id && { color: theme.colors.tertiary }]}>{formatMoney(p.budget)}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -222,7 +222,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setToPocketId(p.id); }}
                 >
                   <Text style={styles.pocketChipTxt}>{p.name}</Text>
-                  <Text style={[styles.pocketChipSub, toPocketId === p.id && { color: theme.colors.primary }]}>${p.budget.toLocaleString('es-CO')}</Text>
+                  <Text style={[styles.pocketChipSub, toPocketId === p.id && { color: theme.colors.primary }]}>{formatMoney(p.budget)}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>

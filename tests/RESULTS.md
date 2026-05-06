@@ -468,6 +468,152 @@ Si en 1 mes seguís sin construir esos productores, **borrá las tablas también
 
 ---
 
+## 2026-04-29 (octava corrida) — FASE B: insights + memoria + UI spending_rules
+
+**Corredor:** Claude vía Supabase MCP.
+**Migración aplicada:** `supabase/migrations/20260429000001_schedule_cron_jobs.sql` (OK).
+**Edge Functions nuevos:** `insight-generator` v1, `synthesize-memory` v1.
+**Cliente:** Expenses.tsx con bottom sheet "Marcar comercio" (3 reglas).
+
+### Lo que se prendió
+
+Las dos tablas semi-muertas que mantuvimos en la 7ª corrida ya tienen sus
+productores en producción:
+
+**`insight-generator/index.ts`** (nuevo, deployed v1)
+- 2 modos: con JWT de usuario procesa solo a ese; con SERVICE_ROLE_KEY
+  hace loop sobre todos los profiles (modo cron).
+- 3 reglas determinísticas (sin LLM, baratas y predecibles):
+  - `pocket_burn` (severity warning ≥80%, critical ≥100%)
+  - `recurring_spike` (gasto del mes >30% vs mes pasado)
+  - `negative_flow` (gastos > ingresos del mes)
+- `dedupe_key` por bucket de 10% de pct_used → no spamea cuando un bolsillo
+  pasa de 81 a 82.
+
+**`synthesize-memory/index.ts`** (nuevo, deployed v1)
+- Mismos 2 modos.
+- Lee 50 últimos events + 20 últimos chat_messages + 50 últimas transactions.
+- Skip si actividad < 5 items (no gastar tokens analizando aire).
+- Llama a GPT-4o-mini con prompt que extrae 3-5 hechos durables
+  ({key, kind, summary, confidence}).
+- UPSERT por `(user_id, key)`. `MEMORY_PROMPT_VERSION = "memory.v1"`.
+
+**`pg_cron` activo:**
+- `insights-daily` → 13:00 UTC (08:00 Bogotá) cada día → POST a insight-generator
+  con Authorization: Bearer service_role_key.
+- `memory-weekly` → 11:00 UTC lunes (06:00 Bogotá) → POST a synthesize-memory.
+- Ambos usan `vault.decrypted_secrets WHERE name='service_role_key'` para
+  el header auth. Si el secret no está en Vault, las llamadas devuelven 401
+  pero no rompen otras cosas.
+
+**UI: bottom sheet de "Marcar comercio" en Expenses.tsx**
+- Tap en una transacción → sheet con 3 chips:
+  Confianza (no me alertes) / Vigilar (avísame si cambia) / Reducir.
+- UPSERT a `user_spending_rules` por `(user_id, canonical_pattern)`.
+- Long-press = eliminar (sigue como estaba).
+- chat-advisor v8 redeployado para inyectar `user_spending_rules` al prompt
+  (campo `pattern,display_name,type` — antes el cliente del usuario pedía
+  `merchant,type` que no existe en la tabla — bug corregido).
+
+### Pendiente operacional
+
+- Crear el secret `service_role_key` en Supabase Vault una vez:
+  `SELECT vault.create_secret('<jwt>', 'service_role_key');`
+  (Sin esto, los crons fallan con 401.)
+- Activar HIBP password protection en Dashboard → Auth.
+
+---
+
+## 2026-04-29 (novena corrida) — AUDIT UX MASIVO
+
+**Corredor:** Claude tras inspección exhaustiva del cliente.
+**Sin migraciones.** Sin deploys de Edge Functions.
+**~10 archivos refactorizados + 4 helpers nuevos.**
+
+### El problema que arregló
+
+El audit detectó **inconsistencias visibles al usuario** acumuladas durante
+los refactors anteriores. La app tenía 5 funciones de formato de dinero
+con outputs distintos según pantalla, alerts mezclados (nativos pulidos
+vs `alert()` pelado de RN), emojis solo en algunas pantallas, y modales
+implementados de 4 maneras diferentes.
+
+### Cambios aplicados
+
+| Capa | Cambio |
+|---|---|
+| `src/lib/format.ts` | NUEVO. `formatMoney`, `formatMoneyDigits`, `formatPercent`, `formatShortDate`. Único punto donde se decide cómo se ve "$1.250.000". |
+| `src/lib/notify.ts` | NUEVO. `notify.error`, `notify.success`, `notify.info`, `notify.confirm`. Wrapper sobre `Alert.alert` nativo. |
+| `src/components/BottomSheet.tsx` | NUEVO. Modal centrado con backdrop blur + tap-outside + header con título y X. |
+| `src/components/MonthNav.tsx` | NUEVO. Selector de mes compartido + array `MONTHS` único. |
+| `src/theme/theme.ts` | + `display` y `displaySmall` en `typography`. |
+| Las 9 pantallas + TopBar | Migradas a `formatMoney` + `notify.*`. Cero `alert()` pelados, cero `Alert.alert` directo. |
+| Pockets, Expenses | Migrados a `<MonthNav>`. Estilos zombi (`monthNav`/`monthTitle`/`navBtn`) eliminados. |
+| Expenses delete modal | Migrado al `<BottomSheet>` compartido. |
+| Dashboard saludos | "¡Buenos días! ☀️" → "Buenos días" (sin emojis). |
+| AddIncome status box | "🚀" → texto plano. |
+| Dashboard header | "SALDO DISPONIBLE" → "BALANCE DEL MES" (alineado con `net_month` real). |
+| Microcopy | "Confirmar y Reversar" → "Eliminar movimiento". "Traspaso Estratégico" → "Mover entre bolsillos". "Etiquetar Comercio" → "Marcar comercio". "¡Logrado!" → "Listo". "Finalizar Sesión" → "Cerrar sesión". |
+| BottomNav | Ícono "Resumen" 22→20 (uniforme con los otros 3). |
+| Empty states | "No hay movimientos recientes" → "Sin movimientos este mes" (consistente). |
+| Pluralización | "$X disponibles" → "$X disponible" (singular). "Exceso" → "Excedido". |
+| Chat saludo | "¿Cómo puedo ayudarte?" → "¿Qué quieres saber de tus números?" (alineado con paradigma read-only). |
+| Loading copy | "Cargando analista..." → "Cargando conversación...". "Save está analizando..." → "Save está pensando...". |
+
+### Antes / Después en métricas
+
+| Métrica | Antes | Después |
+|---|---|---|
+| Funciones de formato de dinero | 5 distintas | 1 (`formatMoney`) |
+| `alert()` pelados | 9 | 0 |
+| `Alert.alert` directo (fuera del wrapper) | 8 | 0 |
+| Emojis en saludos/CTAs | 4 | 0 |
+| Implementaciones de "modal" | 4 (Pockets slide-up, Expenses overlay, AddIncome full-screen, Profile Alert) | 1 patrón compartido (`<BottomSheet>`) — más migraciones progresivas |
+| Componentes `MonthNav` duplicados | 2 (Pockets + Expenses con sus propios `MONTHS` arrays) | 1 (`<MonthNav>`) |
+| Cifras grandes con `fontSize` literal | 7 sitios | 1 sitio + `theme.typography.display` |
+
+---
+
+## 2026-04-29 (décima corrida) — POST-MORTEM: bugs encontrados con `tsc --noEmit`
+
+**Corredor:** Claude tras correr la primera compilación TypeScript estricta de toda la sesión.
+**Sin migraciones.** Sin deploys.
+**5 bugs reales descubiertos.**
+
+### El descubrimiento clave
+
+Hasta acá habíamos refactorizado mucho sin compilar. Cuando finalmente
+corrí `./node_modules/.bin/tsc --noEmit`, salieron **5 bugs serios** que
+nadie había detectado:
+
+| # | Bug | Severidad | Cómo se detectó |
+|---|---|---|---|
+| 1 | **4 archivos truncados** (Dashboard.tsx, Expenses.tsx, Pockets.tsx, Scanner.tsx). Cada uno cortado a la mitad de una línea, faltaban cierres JSX. La app **no compilaba**. | 🔴 Crítico | tsc TS17008/TS17002. Reconstruí los tails de cada uno mirando estructura JSX abierta. Causa probable: edits parciales del usuario o un autoguardado mal. |
+| 2 | `profileUtils.calculateFinancialProfile` calculaba el score sobre **TODA la historia de transacciones** y lo comparaba contra el presupuesto **mensual**. El score bajaba con el tiempo aunque el usuario fuera consistente. | 🟠 Alto | Code review. Fix: filtrar `monthTx` al mes en curso antes de cualquier cálculo. |
+| 3 | TopBar **no enviaba `session_id`** al chat-advisor. El server caía al default `gen_random_uuid()` por insert → cada turno = nueva "sesión" en DB. El bug #12 cerrado en DB quedaba desperdiciado. | 🟠 Alto | Code review del chat. Fix: `useRef` con session_id estable, reset al limpiar chat. |
+| 4 | Diagnostic log de JWT en `sendMessage` quedó en producción. Spammeaba consola con preview del access_token. | 🟡 Medio | Code review. Fix: removido. |
+| 5 | `notify.confirm` esperaba `Promise<void>` pero `supabase.auth.signOut()` devuelve `Promise<{ error }>`. Mismatch de tipos. | 🟢 Bajo | tsc TS2322. Fix: wrapper `async () => { await ... }`. |
+
+### Otros hallazgos de la pasada
+
+- `tsconfig.json` no excluía `supabase/functions/**` — el compilador
+  intentaba parsear archivos que corren en Deno (con imports tipo
+  `https://esm.sh/...`). Agregado `exclude` correcto.
+- `session: any` en 7 pantallas. Migrado a `session: Session`
+  (de `@supabase/supabase-js`). Cero `any` en sesión.
+- Limpiado dead code: `isValidTransaction` en Scanner que nunca se llamaba
+  post-refactor del OCR v5; imports de `Alert` y `ChevronLeft/Right` en 5
+  archivos donde quedaron huérfanos.
+
+### Estado final del cliente
+
+- `tsc --noEmit` pasa con **0 errores**.
+- 0 `alert()` pelados, 0 `Alert.alert` directo, 0 emojis en saludos, 0 `session: any`.
+- Helpers compartidos en uso: `format`, `notify`, `BottomSheet`, `MonthNav`.
+- Source of truth única (`get_monthly_state`) consumida por hook compartido.
+
+---
+
 ## Plantilla para futuras corridas
 
 ```

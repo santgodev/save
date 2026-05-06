@@ -1,373 +1,451 @@
-import React, { useState, useRef, useMemo } from 'react';
-import { 
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  Dimensions, Animated, ActivityIndicator,
-  KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, ScrollView, Pressable, LayoutAnimation, UIManager
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { 
-  ArrowRight, ArrowLeft, Percent, CheckCircle, Plus, X, Sparkles, Brain, Target, ShieldCheck 
-} from 'lucide-react-native';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Animated, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
-import { normalize } from '../theme/theme';
+import { 
+  ArrowRight, ArrowLeft, Landmark, Wallet, Calendar, Check, Wind, Target, Tag, Info, Percent, DollarSign,
+  Utensils, Car, Home, Zap, Heart, Gamepad, GraduationCap
+} from 'lucide-react-native';
 import { supabase } from '../lib/supabase';
-import { createClient } from '@supabase/supabase-js';
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../constants';
-
-const { width } = Dimensions.get('window');
+import { formatMoneyDigits, formatMoney } from '../lib/format';
+import { notify } from '../lib/notify';
+import { getCategoryColorPair } from '../theme/theme';
 
 const CATEGORIES = [
-  { id: 'Comida',     name: 'Alimentación',    icon: 'Utensils',    defaultPct: 25 },
-  { id: 'Transporte', name: 'Transporte',       icon: 'Bus',         defaultPct: 10 },
-  { id: 'Vivienda',   name: 'Hogar / Servicios',icon: 'Home',        defaultPct: 30 },
-  { id: 'Ocio',       name: 'Ocio y Gustos',    icon: 'Sparkles',    defaultPct: 15 },
-  { id: 'Compras',    name: 'Compras',           icon: 'ShoppingBag', defaultPct: 10 },
-  { id: 'Ahorros',   name: 'Ahorro Seguro',    icon: 'TrendingUp',  defaultPct: 20 },
+  { id: 'Alimentación', name: 'Alimentación', icon: 'Utensils' },
+  { id: 'Transporte', name: 'Transporte', icon: 'Car' },
+  { id: 'Vivienda', name: 'Vivienda', icon: 'Home' },
+  { id: 'Servicios', name: 'Servicios', icon: 'Zap' },
+  { id: 'Salud', name: 'Salud', icon: 'Heart' },
+  { id: 'Ocio', name: 'Ocio', icon: 'Gamepad' },
+  { id: 'Ahorros', name: 'Ahorro Seguro', icon: 'Target' },
+  { id: 'Educación', name: 'Educación', icon: 'GraduationCap' },
 ];
 
-const STEP_META = [
-  { title: 'Punto de Partida', sub: 'Establece tus ingresos mensuales para empezar a organizarlos.' },
-  { title: 'Tus Sobres', sub: 'Divide tu dinero como si fueran sobres. "Ahorro Seguro" te protege.' },
-  { title: 'Confirmar Sobres', sub: 'Ajusta qué porcentaje de tu sueldo va para cada sobre.' },
-];
+const CategoryIcon = ({ id, color, size = 24 }: { id: string, color: string, size?: number }) => {
+  const icons: any = { Alimentación: Utensils, Transporte: Car, Vivienda: Home, Servicios: Zap, Salud: Heart, Ocio: Gamepad, Ahorros: Target, Educación: GraduationCap };
+  const Icon = icons[id] || Tag;
+  return <Icon size={size} color={color} />;
+};
 
 export const Onboarding = ({ session, onComplete }: { session: any, onComplete: () => void }) => {
-  const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const [step, setStep] = useState(1);
-  const [income, setIncome] = useState('');
-  const [selectedCats, setSelectedCats] = useState<string[]>(['Ahorros']);
-  const [distributions, setDistributions] = useState<Record<string, { type: 'pct' | 'amt', value: number }>>({});
-  const [customCatName, setCustomCatName] = useState('');
   const [loading, setLoading] = useState(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  const styles = useMemo(() => StyleSheet.create({
-    container: { flex: 1, backgroundColor: theme.colors.background },
-    header: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 16 },
-    progressLine: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-    progressStep: { flex: 1, height: 6, borderRadius: 3, backgroundColor: theme.colors.outlineVariant },
-    progressStepActive: { backgroundColor: theme.colors.primary },
-    stepLabel: { fontSize: 11, fontWeight: '900', color: theme.colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 1.5 },
-    
-    titleArea: { paddingHorizontal: 24, marginVertical: 32 },
-    title: { fontSize: 28, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -1, marginBottom: 12 },
-    subtitle: { fontSize: 15, color: theme.colors.onSurfaceVariant, lineHeight: 22, fontWeight: '600' },
+  // State
+  const [incomeType, setIncomeType] = useState<'fixed' | 'variable' | null>(null);
+  const [incomeAmount, setIncomeAmount] = useState('');
+  const [frequency, setFrequency] = useState<'monthly' | 'bi_weekly' | 'weekly' | 'one_time'>('monthly');
+  const [payDays, setPayDays] = useState<number[]>([]);
+  const [selectedCats, setSelectedCats] = useState<string[]>(['Ahorros']);
+  const [distributions, setDistributions] = useState<Record<string, { value: number, type: 'fixed' | 'percentage' }>>({});
 
-    stepContent: { flex: 1, paddingHorizontal: 24 },
-    
-    // --- STEP 1 ---
-    inputBox: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      backgroundColor: theme.colors.surface, 
-      borderRadius: 32, 
-      paddingHorizontal: 24, 
-      paddingVertical: 24, 
-      borderWidth: 2, 
-      borderColor: theme.colors.outlineVariant, 
-      marginBottom: 20,
-      ...theme.shadows.premium
-    },
-    currencySign: { fontSize: 32, fontWeight: '900', marginRight: 12, color: theme.colors.primary },
-    incomeInput: { flex: 1, fontSize: 44, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -2 },
-    incomeHint: { fontSize: 13, color: theme.colors.onSurfaceVariant, textAlign: 'center', marginBottom: 32, fontWeight: '700' },
-    
-    infoCard: { 
-      backgroundColor: theme.colors.surfaceContainerLow, 
-      borderRadius: 24, 
-      padding: 24, 
-      borderWidth: 1.5, 
-      borderColor: theme.colors.outlineVariant 
-    },
-    infoTitle: { fontSize: 11, fontWeight: '900', color: theme.colors.onSurfaceVariant, textTransform: 'uppercase', marginBottom: 16, letterSpacing: 1 },
-    infoText: { fontSize: 14, color: theme.colors.onSurface, fontWeight: '700', lineHeight: 22, marginBottom: 8 },
+  const incomeNum = parseInt(incomeAmount.replace(/\D/g, '')) || 0;
+  const totalSteps = incomeType === 'variable' ? 3 : 5;
 
-    // --- STEP 2 ---
-    addBox: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-    addInput: { 
-      flex: 1, 
-      backgroundColor: theme.colors.surface, 
-      borderRadius: 20, 
-      paddingHorizontal: 20, 
-      paddingVertical: 18, 
-      fontSize: 16, 
-      fontWeight: '800', 
-      color: theme.colors.onSurface, 
-      borderWidth: 1.5, 
-      borderColor: theme.colors.outlineVariant 
-    },
-    addBtn: { width: 56, height: 56, borderRadius: 20, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' },
-    
-    pocketPill: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      backgroundColor: theme.colors.surface, 
-      borderRadius: 24, 
-      paddingHorizontal: 20, 
-      paddingVertical: 18, 
-      marginBottom: 12, 
-      borderWidth: 1.5, 
-      borderColor: theme.colors.outlineVariant, 
-      gap: 16,
-      ...theme.shadows.soft
-    },
-    pocketPillActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primaryContainer + '08' },
-    pocketName: { flex: 1, fontSize: 16, fontWeight: '900', color: theme.colors.onSurface },
-    
-    chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 },
-    chipSugg: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      gap: 6, 
-      backgroundColor: theme.colors.surfaceContainerHigh, 
-      paddingHorizontal: 16, 
-      paddingVertical: 10, 
-      borderRadius: 16 
-    },
-    chipSuggTxt: { fontSize: 13, fontWeight: '900', color: theme.colors.onSurface },
+  // 🧠 Cálculo de la Cascada (UI Sync)
+  const cascade = useMemo(() => {
+    let remaining = incomeType === 'fixed' ? incomeNum : 0;
+    let totalFixed = 0;
+    let totalPct = 0;
+    const results: Record<string, number> = {};
 
-    // --- STEP 3 ---
-    allocBanner: { 
-      backgroundColor: theme.colors.surface, 
-      borderRadius: 32, 
-      padding: 24, 
-      marginBottom: 32, 
-      borderWidth: 1.5, 
-      borderColor: theme.colors.outlineVariant,
-      ...theme.shadows.premium
-    },
-    allocBar: { height: 16, borderRadius: 8, backgroundColor: theme.colors.surfaceContainerHighest, marginBottom: 16, overflow: 'hidden', flexDirection: 'row' },
-    allocStatus: { fontSize: 12, fontWeight: '900', textAlign: 'center' },
-
-    distCard: { 
-      backgroundColor: theme.colors.surface, 
-      padding: 24, 
-      borderRadius: 28, 
-      marginBottom: 16, 
-      borderWidth: 1.5, 
-      borderColor: theme.colors.outlineVariant,
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 16,
-      ...theme.shadows.soft
-    },
-    distLabel: { fontSize: 16, fontWeight: '900', color: theme.colors.onSurface, flex: 1 },
-    distVal: { fontSize: 16, fontWeight: '900', color: theme.colors.primary },
-    
-    // --- NAV ---
-    nav: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 24, paddingBottom: Platform.OS === 'ios' ? 48 : 32, flexDirection: 'row', gap: 16 },
-    btnNext: { 
-      flex: 1, 
-      height: 64, 
-      borderRadius: 24, 
-      backgroundColor: theme.colors.onSurface, 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      gap: 12 
-    },
-    btnBack: { 
-      width: 64, 
-      height: 64, 
-      borderRadius: 24, 
-      backgroundColor: theme.colors.surfaceContainerHigh, 
-      alignItems: 'center', 
-      justifyContent: 'center' 
-    }
-  }), [theme]);
-
-  const incomeNum = parseInt(income.replace(/[^0-9]/g, '')) || 0;
-  const isIncomeValid = incomeNum >= 500000;
-
-  const transition = (to: number) => {
-    Keyboard.dismiss();
-    Animated.timing(fadeAnim, { toValue: 0, duration: 180, useNativeDriver: true }).start(() => {
-      setStep(to);
-      if (to === 3) applySmartDefaults();
-      Animated.timing(fadeAnim, { toValue: 1, duration: 280, useNativeDriver: true }).start();
+    selectedCats.forEach(id => {
+      const dist = distributions[id] || { value: 0, type: 'fixed' };
+      let amt = 0;
+      if (dist.type === 'fixed') {
+        amt = Math.min(remaining, dist.value);
+        totalFixed += dist.value;
+      } else {
+        amt = Math.round(remaining * (dist.value / 100));
+        totalPct += dist.value;
+      }
+      results[id] = amt;
+      remaining -= amt;
     });
+
+    return { results, remaining, totalFixed, totalPct };
+  }, [incomeType, incomeNum, selectedCats, distributions]);
+
+  const getCurrentStepMeta = () => {
+    if (step === 1) return { title: 'Tu fuente de ingresos', sub: '¿Cómo recibes tu dinero principal?' };
+    if (incomeType === 'fixed') {
+      if (step === 2) return { title: 'Monto y frecuencia', sub: 'Dinos cuánto y cada cuánto te pagan.' };
+      if (step === 3) return { title: 'Fechas de pago', sub: '¿Qué días del mes recibes el dinero?' };
+      if (step === 4) return { title: 'Tus Bolsillos', sub: 'Selecciona las categorías donde repartes tu dinero.' };
+      if (step === 5) return { title: 'Cascada Inteligente', sub: 'Define cómo se reparte tu sueldo automáticamente.' };
+    } else {
+      if (step === 2) return { title: 'Tus Bolsillos', sub: '¿A qué categorías sueles destinar dinero?' };
+      if (step === 3) return { title: 'Reglas de Reparto', sub: 'Define prioridades para cuando recibas dinero.' };
+    }
+    return { title: '', sub: '' };
   };
 
-  const applySmartDefaults = () => {
-    const d: Record<string, { type: 'pct' | 'amt', value: number }> = {};
-    let rem = 80;
-    const others = selectedCats.filter(c => c !== 'Ahorros');
-    others.forEach((id, i) => {
-      const cat = CATEGORIES.find(c => c.id === id);
-      const val = i === others.length - 1 ? rem : Math.min(cat?.defaultPct || 15, rem - 10);
-      d[id] = { type: 'pct', value: val };
-      rem -= val;
+  const isStepValid = (() => {
+    if (step === 1) return !!incomeType;
+    if (incomeType === 'fixed') {
+      if (step === 2) return incomeNum > 0 && !!frequency;
+      if (step === 3) return payDays.length > 0;
+      if (step === 4) return selectedCats.length > 0;
+      if (step === 5) return cascade.totalPct <= 100;
+    } else {
+      if (step === 2) return selectedCats.length > 0;
+      if (step === 3) return cascade.totalPct <= 100;
+    }
+    return false;
+  })();
+
+  const transition = (to: number) => {
+    Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      setStep(to);
+      Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
     });
-    setDistributions(d);
   };
 
   const handleFinish = async () => {
+    if (!session?.user) return;
     setLoading(true);
     try {
-      const strictClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        global: { headers: { Authorization: `Bearer ${session.access_token}` } }
+      // 1. Inicializar Perfil
+      const { error: profileError } = await supabase.from('profiles').upsert({
+        id: session.user.id,
+        full_name: session.user.user_metadata?.full_name || 'Usuario',
+        preferred_currency: 'COP'
       });
-      // user_monthly_income fue deprecada en la migración
-      // 20260428000003_unified_monthly_state. La fuente única de
-      // ingreso es ahora SUM(transactions WHERE category='Ingreso').
-      // El usuario registrará su ingreso real cuando le llegue, vía
-      // la pantalla AddIncome — acá solo usamos `incomeNum` LOCAL
-      // para inicializar el plan de cada bolsillo.
+      if (profileError) {
+        console.error('Profile upsert error:', profileError);
+        throw new Error('No se pudo inicializar tu perfil.');
+      }
 
-      const pocketsToInsert = selectedCats.map(id => {
-        const cat = CATEGORIES.find(c => c.id === id);
-        const planAmount = id === 'Ahorros'
-          ? (incomeNum * 0.2)
-          : (incomeNum * ((distributions[id]?.value || 10) / 100));
+      // 2. Preparar Bolsillos
+      const pocketsToInsert = [
+        { user_id: session.user.id, name: 'Libre', category: 'Otros', budget: 0, allocated_budget: 0, icon: 'Wind', is_default_free: true },
+        ...selectedCats.map(id => {
+          const cat = CATEGORIES.find(c => c.id === id);
+          return {
+            user_id: session.user.id,
+            name: id === 'Ahorros' ? 'Ahorro Seguro' : (cat?.name || id),
+            category: id,
+            budget: 0,
+            allocated_budget: 0,
+            icon: cat?.icon || (id === 'Ahorros' ? 'Target' : 'Tag'),
+            is_default_free: false
+          };
+        })
+      ];
+
+      // Usar upsert para ser resilientes a reintentos
+      const { data: insertedPockets, error: pocketsError } = await supabase
+        .from('pockets')
+        .upsert(pocketsToInsert, { onConflict: 'user_id, category' })
+        .select();
+      
+      if (pocketsError) {
+        console.error('Pockets upsert error:', pocketsError);
+        throw new Error('No se pudieron crear tus bolsillos.');
+      }
+
+      // 3. Crear Fuente de Ingresos
+      const rules = selectedCats.map((id, index) => {
+        const pocket = insertedPockets?.find(p => p.category === id);
+        const dist = distributions[id] || { value: 0, type: 'fixed' };
         return {
-          user_id: session.user.id,
-          name: cat?.name || id,
-          category: id,
-          // Al crear: budget (saldo disponible) = allocated_budget (plan).
-          // Empezamos el ciclo con 0 gastado.
-          budget: planAmount,
-          allocated_budget: planAmount,
-          icon: cat?.icon || 'Tag',
+          pocket_id: pocket?.id || null, // Asegurar que no sea undefined
+          type: dist.type,
+          value: dist.value,
+          priority: index + 1
         };
+      }).filter(r => r.value > 0);
+
+      console.log('Finalizing Onboarding - Rules:', JSON.stringify(rules));
+
+      const { error: incomeError } = await supabase.from('income_sources').insert({
+        user_id: session.user.id,
+        name: incomeType === 'fixed' ? 'Salario Principal' : 'Ingresos Variables',
+        amount: incomeType === 'fixed' ? incomeNum : 1,
+        frequency: incomeType === 'fixed' ? frequency : 'one_time',
+        next_date: new Date().toISOString().split('T')[0],
+        distribution_rules: rules,
+        is_active: incomeType === 'fixed',
+        metadata: { days: payDays, income_type: incomeType }
       });
-      await strictClient.from('pockets').insert(pocketsToInsert);
+
+      if (incomeError) {
+        console.error('Income source insert error detail:', JSON.stringify(incomeError, null, 2));
+        throw new Error('No se pudo guardar tu configuración de ingresos.');
+      }
+
       onComplete();
-    } catch (e) {
-      alert('Error guardando configuración.');
+    } catch (e: any) {
+      notify.error(e.message || 'Error al guardar.');
     } finally {
       setLoading(false);
     }
   };
 
+  const meta = getCurrentStepMeta();
+
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-       <View style={styles.header}>
-          <View style={styles.progressLine}>
-             {[1, 2, 3].map(n => <View key={n} style={[styles.progressStep, n <= step && styles.progressStepActive]} />)}
-          </View>
-          <Text style={styles.stepLabel}>FASE {step} DE 3</Text>
-       </View>
+    <KeyboardAvoidingView style={[styles.container, { backgroundColor: theme.colors.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.header}>
+        <View style={styles.progressLine}>
+          {Array.from({ length: totalSteps }).map((_, i) => (
+            <View key={i} style={[styles.progressStep, { backgroundColor: (i + 1) <= step ? theme.colors.primary : theme.colors.surfaceContainerHighest }]} />
+          ))}
+        </View>
+        <Text style={[styles.title, { color: theme.colors.onSurface, ...theme.typography.h1 }]}>{meta.title}</Text>
+        <Text style={[styles.subtitle, { color: theme.colors.onSurfaceVariant, ...theme.typography.bodyLarge }]}>{meta.sub}</Text>
+      </View>
 
-       <Animated.View style={[{ flex: 1, opacity: fadeAnim }]}>
-          <View style={styles.titleArea}>
-             <Text style={styles.title}>{STEP_META[step-1].title}</Text>
-             <Text style={styles.subtitle}>{STEP_META[step-1].sub}</Text>
-          </View>
-
-          <View style={styles.stepContent}>
-             {step === 1 && (
-                <View>
-                   <View style={styles.inputBox}>
-                      <Text style={styles.currencySign}>$</Text>
-                      <TextInput 
-                        style={styles.incomeInput}
-                        value={incomeNum > 0 ? incomeNum.toLocaleString('es-CO') : ''}
-                        onChangeText={setIncome}
-                        keyboardType="numeric"
-                        placeholder="0"
-                        placeholderTextColor={theme.colors.onSurfaceVariant + '40'}
-                        autoFocus
-                      />
-                   </View>
-                   <Text style={styles.incomeHint}>Tus ingresos mensuales netos.</Text>
-                   <View style={styles.infoCard}>
-                      <Text style={styles.infoTitle}>REFERENCIA COLOMBIA</Text>
-                      <Text style={styles.infoText}>• El mínimo 2026 proyectado es $1.5M COP.</Text>
-                      <Text style={styles.infoText}>• Recomendamos asignar el 20% al Ahorro Seguro.</Text>
-                   </View>
+      <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+          {step === 1 && (
+            <View style={styles.typeGrid}>
+              <TouchableOpacity style={[styles.typeCard, incomeType === 'fixed' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primaryContainer + '30' }]} onPress={() => setIncomeType('fixed')}>
+                <View style={[styles.typeIcon, { backgroundColor: theme.colors.primaryContainer }]}>
+                  <Landmark size={32} color={theme.colors.primary} />
                 </View>
-             )}
+                <Text style={[styles.typeTitle, { color: theme.colors.onSurface, ...theme.typography.h3 }]}>Sueldo Fijo</Text>
+                <Text style={[styles.typeDesc, { color: theme.colors.onSurfaceVariant, ...theme.typography.bodySmall }]}>Empleado, pensionado o contrato con monto mensual fijo.</Text>
+                {incomeType === 'fixed' && <Check size={20} color={theme.colors.primary} style={styles.typeCheck} />}
+              </TouchableOpacity>
 
-             {step === 2 && (
-                 <View style={{ flex: 1 }}>
-                    <View style={styles.addBox}>
-                       <TextInput 
-                         style={styles.addInput} 
-                         placeholder="ej: Suscripciones" 
-                         value={customCatName}
-                         onChangeText={setCustomCatName}
-                         placeholderTextColor={theme.colors.onSurfaceVariant + '60'}
-                       />
-                       <TouchableOpacity style={styles.addBtn} onPress={() => { if(customCatName) { setSelectedCats([...selectedCats, customCatName]); setCustomCatName(''); } }}>
-                          <LinearGradient colors={theme.colors.brandGradient as any} style={styles.addBtn} start={{x:0, y:0}} end={{x:1, y:1}}>
-                             <Plus size={24} color="#FFF" />
-                          </LinearGradient>
-                       </TouchableOpacity>
-                    </View>
-                    <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                       {selectedCats.map(id => (
-                          <View key={id} style={[styles.pocketPill, id === 'Ahorros' && styles.pocketPillActive]}>
-                             <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: (theme.colors.categoryColors[id] || theme.colors.categoryColors['Otros'])[0] + '15', alignItems: 'center', justifyContent: 'center' }}>
-                                <Target size={20} color={(theme.colors.categoryColors[id] || theme.colors.categoryColors['Otros'])[0]} />
-                             </View>
-                             <Text style={styles.pocketName}>{id === 'Ahorros' ? 'Ahorro Seguro' : id}</Text>
-                             {id === 'Ahorros' ? <ShieldCheck size={18} color={theme.colors.primary} /> : <TouchableOpacity onPress={() => setSelectedCats(selectedCats.filter(c => c !== id))}><X size={18} color={theme.colors.onSurfaceVariant} /></TouchableOpacity>}
-                          </View>
-                       ))}
-                       <Text style={[styles.infoTitle, { marginTop: 24 }]}>SUGERENCIAS ESTRATÉGICAS</Text>
-                       <View style={styles.chipRow}>
-                          {CATEGORIES.filter(c => !selectedCats.includes(c.id)).map(c => (
-                             <TouchableOpacity key={c.id} style={styles.chipSugg} onPress={() => setSelectedCats([...selectedCats, c.id])}>
-                                <Plus size={14} color={theme.colors.primary} />
-                                <Text style={styles.chipSuggTxt}>{c.name}</Text>
-                             </TouchableOpacity>
-                          ))}
-                       </View>
-                    </ScrollView>
-                 </View>
-              )}
-
-              {step === 3 && (
-                 <View>
-                    <View style={styles.allocBanner}>
-                       <View style={styles.allocBar}>
-                          <LinearGradient colors={theme.colors.brandGradient as any} style={{ flex: 1 }} start={{x:0, y:0}} end={{x:1, y:0}} />
-                       </View>
-                       <Text style={[styles.allocStatus, { color: theme.colors.primary }]}>Organización Sugerida por tu Asistente</Text>
-                    </View>
-                    <ScrollView>
-                       {selectedCats.map(id => {
-                         const catColor = (theme.colors.categoryColors[id] || theme.colors.categoryColors['Otros'])[0];
-                         return (
-                          <View key={id} style={styles.distCard}>
-                             <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: catColor + '15', alignItems: 'center', justifyContent: 'center' }}>
-                                <Percent size={18} color={catColor} />
-                             </View>
-                             <Text style={styles.distLabel}>{id === 'Ahorros' ? 'Ahorro Seguro' : id}</Text>
-                             <Text style={styles.distVal}>{id === 'Ahorros' ? '20%' : (distributions[id]?.value || 10) + '%'}</Text>
-                          </View>
-                         );
-                       })}
-                    </ScrollView>
-                 </View>
-              )}
-          </View>
-       </Animated.View>
-
-       <View style={[styles.nav, { paddingBottom: Math.max(insets.bottom, 24) }]}>
-          {step > 1 && (
-             <TouchableOpacity style={styles.btnBack} onPress={() => transition(step - 1)}>
-                <ArrowLeft size={24} color={theme.colors.onSurface} strokeWidth={2.5} />
-             </TouchableOpacity>
+              <TouchableOpacity style={[styles.typeCard, incomeType === 'variable' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primaryContainer + '30' }]} onPress={() => setIncomeType('variable')}>
+                <View style={[styles.typeIcon, { backgroundColor: theme.colors.secondaryContainer || '#E2EAE8' }]}>
+                  <Wallet size={32} color={theme.colors.secondary || '#70918E'} />
+                </View>
+                <Text style={[styles.typeTitle, { color: theme.colors.onSurface, ...theme.typography.h3 }]}>Ingresos Variables</Text>
+                <Text style={[styles.typeDesc, { color: theme.colors.onSurfaceVariant, ...theme.typography.bodySmall }]}>Freelancer, emprendedor o ingresos que cambian cada mes.</Text>
+                {incomeType === 'variable' && <Check size={20} color={theme.colors.primary} style={styles.typeCheck} />}
+              </TouchableOpacity>
+            </View>
           )}
-          <TouchableOpacity 
-            style={[styles.btnNext, (step === 1 && !isIncomeValid) && { opacity: 0.5 }]} 
-            onPress={() => step < 3 ? transition(step + 1) : handleFinish()}
-            disabled={step === 1 && !isIncomeValid}
-          >
-             <LinearGradient colors={theme.colors.brandGradient as any} style={[styles.btnNext, { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 24 }]} start={{x: 0, y: 0}} end={{x: 1, y: 1}} />
-             {loading ? <ActivityIndicator color="#FFF" /> : (
-                <>
-                  <Text style={{ color: '#FFF', fontSize: 18, fontWeight: '900' }}>{step === 3 ? 'Empezar a Organizar' : 'Continuar'}</Text>
-                  <ArrowRight size={22} color="#FFF" />
-                </>
-             )}
+
+          {incomeType === 'fixed' && step === 2 && (
+            <View>
+              <Text style={[styles.label, { color: theme.colors.onSurfaceVariant, ...theme.typography.label }]}>¿Cuánto ganas al mes?</Text>
+              <View style={[styles.inputBox, { borderBottomColor: theme.colors.divider }]}>
+                <Text style={{ ...theme.typography.displaySmall, color: theme.colors.primary }}>$</Text>
+                <TextInput
+                  style={[styles.amountInput, { color: theme.colors.onSurface, ...theme.typography.displaySmall }]}
+                  value={formatMoneyDigits(incomeAmount)}
+                  onChangeText={setIncomeAmount}
+                  placeholder="0"
+                  placeholderTextColor={theme.colors.onSurfaceVariant + '40'}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <Text style={[styles.label, { marginTop: 32, color: theme.colors.onSurfaceVariant, ...theme.typography.label }]}>Frecuencia de pago</Text>
+              <View style={styles.freqRow}>
+                <TouchableOpacity style={[styles.freqBtn, frequency === 'monthly' ? { backgroundColor: theme.colors.primary } : { backgroundColor: theme.colors.surfaceContainerHighest }]} onPress={() => { setFrequency('monthly'); setPayDays([]); }}>
+                  <Text style={[styles.freqBtnText, { color: frequency === 'monthly' ? theme.colors.onPrimary : theme.colors.onSurfaceVariant, ...theme.typography.title }]}>Mensual</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.freqBtn, frequency === 'bi_weekly' ? { backgroundColor: theme.colors.primary } : { backgroundColor: theme.colors.surfaceContainerHighest }]} onPress={() => { setFrequency('bi_weekly'); setPayDays([]); }}>
+                  <Text style={[styles.freqBtnText, { color: frequency === 'bi_weekly' ? theme.colors.onPrimary : theme.colors.onSurfaceVariant, ...theme.typography.title }]}>Quincenal</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {incomeType === 'fixed' && step === 3 && (
+            <View style={styles.daysGrid}>
+              {Array.from({ length: 31 }).map((_, i) => {
+                const day = i + 1;
+                const active = payDays.includes(day);
+                return (
+                  <TouchableOpacity key={day} style={[styles.dayCircle, { backgroundColor: active ? theme.colors.primary : theme.colors.surfaceContainerHighest }]} onPress={() => {
+                    if (active) setPayDays(payDays.filter(d => d !== day));
+                    else {
+                      if (frequency === 'monthly') setPayDays([day]);
+                      else if (payDays.length < 2) setPayDays([...payDays, day]);
+                    }
+                  }}>
+                    <Text style={[styles.dayText, { color: active ? theme.colors.onPrimary : theme.colors.onSurfaceVariant, ...theme.typography.bodyLarge, fontWeight: '700' }]}>{day}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
+          {((incomeType === 'variable' && step === 2) || (incomeType === 'fixed' && step === 4)) && (
+            <View>
+              <View style={[styles.pocketCard, { backgroundColor: theme.colors.surfaceContainerHigh, borderColor: theme.colors.primary, borderWidth: 1 }]}>
+                <Wind size={24} color={theme.colors.primary} />
+                <Text style={[styles.pocketName, { color: theme.colors.onSurface, flex: 1, ...theme.typography.title }]}>Libre (Sobrante)</Text>
+                <Check size={18} color={theme.colors.primary} />
+              </View>
+              {CATEGORIES.map(cat => {
+                const active = selectedCats.includes(cat.id);
+                return (
+                  <TouchableOpacity key={cat.id} style={[styles.pocketCard, { backgroundColor: active ? theme.colors.surfaceContainerHigh : theme.colors.surface, borderColor: active ? theme.colors.primary : theme.colors.outlineVariant, borderWidth: 1 }]} onPress={() => {
+                    if (cat.id === 'Ahorros') return;
+                    if (active) setSelectedCats(selectedCats.filter(c => c !== cat.id));
+                    else setSelectedCats([...selectedCats, cat.id]);
+                  }}>
+                    <CategoryIcon id={cat.id} color={active ? theme.colors.primary : theme.colors.onSurfaceVariant} />
+                    <Text style={[styles.pocketName, { flex: 1, color: active ? theme.colors.onSurface : theme.colors.onSurfaceVariant, ...theme.typography.title }]}>{cat.name}</Text>
+                    {active && <Check size={18} color={theme.colors.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
+          {((incomeType === 'variable' && step === 3) || (incomeType === 'fixed' && step === 5)) && (
+            <View>
+              {/* 📊 Feedback de Dinero / Porcentaje */}
+              <View style={[styles.statusBanner, { backgroundColor: theme.colors.surfaceContainerHighest }]}>
+                 {incomeType === 'fixed' ? (
+                   <View style={styles.statusCol}>
+                      <Text style={[styles.statusLabel, { color: theme.colors.onSurfaceVariant, ...theme.typography.label }]}>Dinero Restante</Text>
+                      <Text style={[styles.statusValue, { color: cascade.remaining < 0 ? theme.colors.error : theme.colors.primary, ...theme.typography.h2 }]}>{formatMoney(cascade.remaining)}</Text>
+                   </View>
+                 ) : (
+                   <View style={styles.statusCol}>
+                      <Text style={[styles.statusLabel, { color: theme.colors.onSurfaceVariant, ...theme.typography.label }]}>Total Asignado</Text>
+                      <Text style={[styles.statusValue, { color: theme.colors.primary, ...theme.typography.h2 }]}>{formatMoney(cascade.totalFixed)} + {cascade.totalPct}%</Text>
+                   </View>
+                 )}
+                 <View style={[styles.statusCol, { borderLeftWidth: 1, borderLeftColor: theme.colors.divider, paddingLeft: 16 }]}>
+                    <Text style={[styles.statusLabel, { color: theme.colors.onSurfaceVariant, ...theme.typography.label }]}>Carga Total %</Text>
+                    <Text style={[styles.statusValue, { color: cascade.totalPct > 100 ? theme.colors.error : theme.colors.onSurface, ...theme.typography.h2 }]}>{cascade.totalPct}%</Text>
+                 </View>
+              </View>
+
+              {cascade.totalPct > 100 && (
+                <View style={[styles.errorBanner, { backgroundColor: theme.colors.errorContainer }]}>
+                   <Info size={16} color={theme.colors.error} />
+                   <Text style={[styles.errorText, { color: theme.colors.onErrorContainer, ...theme.typography.bodySmall }]}>No puedes superar el 100% en porcentajes.</Text>
+                </View>
+              )}
+
+              {selectedCats.map((id, index) => {
+                const dist = distributions[id] || { value: 0, type: 'fixed' };
+                const [bg, color] = getCategoryColorPair(id, theme.isDark);
+                return (
+                  <View key={id} style={[styles.ruleCard, { backgroundColor: theme.colors.surface, ...theme.shadows.sm }]}>
+                    <View style={styles.ruleHeader}>
+                      <View style={[styles.priorityBadge, { backgroundColor: theme.colors.primaryContainer }]}>
+                        <Text style={{ color: theme.colors.onPrimaryContainer, ...theme.typography.label, fontSize: 10 }}>{index + 1}</Text>
+                      </View>
+                      <CategoryIcon id={id} color={color} size={20} />
+                      <Text style={[styles.ruleTitle, { color: theme.colors.onSurface, ...theme.typography.title }]}>{id === 'Ahorros' ? 'Ahorro' : id}</Text>
+
+                      <View style={[styles.typeSwitch, { backgroundColor: theme.colors.surfaceContainerLow }]}>
+                        <TouchableOpacity 
+                          style={[styles.typeToggle, dist.type === 'fixed' && { backgroundColor: theme.colors.primary }]} 
+                          onPress={() => setDistributions({...distributions, [id]: { ...dist, type: 'fixed' }})}
+                        >
+                          <DollarSign size={14} color={dist.type === 'fixed' ? theme.colors.onPrimary : theme.colors.onSurfaceVariant} />
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                          style={[styles.typeToggle, dist.type === 'percentage' && { backgroundColor: theme.colors.primary }]} 
+                          onPress={() => setDistributions({...distributions, [id]: { ...dist, type: 'percentage' }})}
+                        >
+                          <Percent size={14} color={dist.type === 'percentage' ? theme.colors.onPrimary : theme.colors.onSurfaceVariant} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    <View style={styles.ruleInputRow}>
+                      <Text style={[styles.rulePrefix, { color: theme.colors.primary, ...theme.typography.h2 }]}>{dist.type === 'fixed' ? '$' : '%'}</Text>
+                      <TextInput
+                        style={[styles.ruleInput, { color: theme.colors.onSurface, ...theme.typography.h2 }]}
+                        value={dist.value > 0 ? (dist.type === 'fixed' ? formatMoneyDigits(String(dist.value)) : String(dist.value)) : ''}
+                        onChangeText={(t) => {
+                          const val = parseInt(t.replace(/\D/g, '')) || 0;
+                          setDistributions({...distributions, [id]: { ...dist, value: val }});
+                        }}
+                        placeholder="0"
+                        placeholderTextColor={theme.colors.onSurfaceVariant + '30'}
+                        keyboardType="numeric"
+                      />
+                      {dist.type === 'fixed' && incomeType === 'fixed' && (
+                        <Text style={[styles.ruleHint, { color: theme.colors.onSurfaceVariant, ...theme.typography.bodySmall }]}>de {formatMoney(incomeNum)}</Text>
+                      )}
+                      {dist.type === 'percentage' && (
+                        <Text style={[styles.ruleHint, { color: theme.colors.onSurfaceVariant, ...theme.typography.bodySmall }]}>del resto</Text>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+        </ScrollView>
+      </Animated.View>
+
+      <View style={[styles.nav, { borderTopColor: theme.colors.divider }]}>
+        {step > 1 && (
+          <TouchableOpacity style={[styles.btnBack, { backgroundColor: theme.colors.surfaceContainerHighest }]} onPress={() => transition(step - 1)}>
+            <ArrowLeft size={24} color={theme.colors.onSurface} />
           </TouchableOpacity>
-       </View>
-      </KeyboardAvoidingView>
-    </TouchableWithoutFeedback>
+        )}
+        <TouchableOpacity 
+          style={[styles.btnNext, { backgroundColor: theme.colors.primary }, (!isStepValid || loading) && { opacity: 0.5 }]} 
+          onPress={() => step < totalSteps ? transition(step + 1) : handleFinish()} 
+          disabled={!isStepValid || loading}
+        >
+          {loading ? (
+            <ActivityIndicator color={theme.colors.onPrimary} />
+          ) : (
+            <>
+              <Text style={{ color: theme.colors.onPrimary, ...theme.typography.title }}>
+                {step === totalSteps ? 'Comenzar' : 'Continuar'}
+              </Text>
+              <ArrowRight size={22} color={theme.colors.onPrimary} />
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 };
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: { padding: 24, paddingTop: 60 },
+  progressLine: { flexDirection: 'row', gap: 6, marginBottom: 24 },
+  progressStep: { flex: 1, height: 4, borderRadius: 2 },
+  title: { marginBottom: 8 },
+  subtitle: { lineHeight: 22 },
+  content: { flex: 1, paddingHorizontal: 24 },
+  typeGrid: { gap: 16 },
+  typeCard: { padding: 20, borderRadius: 24, borderWidth: 2, borderColor: 'transparent' },
+  typeIcon: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  typeTitle: { marginBottom: 4 },
+  typeDesc: { lineHeight: 18 },
+  typeCheck: { position: 'absolute', top: 20, right: 20 },
+  label: { textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 },
+  inputBox: { flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 2, paddingBottom: 8 },
+  amountInput: { flex: 1 },
+  freqRow: { flexDirection: 'row', gap: 12 },
+  freqBtn: { flex: 1, padding: 16, borderRadius: 16, alignItems: 'center' },
+  freqBtnText: { },
+  daysGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
+  dayCircle: { width: 45, height: 45, borderRadius: 22.5, alignItems: 'center', justifyContent: 'center' },
+  dayText: { },
+  pocketCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 20, marginBottom: 12, gap: 16 },
+  pocketName: { },
+  nav: { padding: 24, flexDirection: 'row', gap: 12, borderTopWidth: 1 },
+  btnBack: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  btnNext: { flex: 1, height: 56, borderRadius: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  statusBanner: { flexDirection: 'row', padding: 20, borderRadius: 24, marginBottom: 24, gap: 16 },
+  statusCol: { flex: 1 },
+  statusLabel: { marginBottom: 4 },
+  statusValue: { fontWeight: '800' },
+  errorBanner: { flexDirection: 'row', gap: 8, padding: 12, borderRadius: 12, marginBottom: 16, alignItems: 'center' },
+  errorText: { flex: 1, fontWeight: '600' },
+  ruleCard: { borderRadius: 24, padding: 20, marginBottom: 16 },
+  ruleHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+  priorityBadge: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  ruleTitle: { flex: 1 },
+  typeSwitch: { flexDirection: 'row', borderRadius: 12, padding: 4 },
+  typeToggle: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  ruleInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  rulePrefix: { fontWeight: '700' },
+  ruleInput: { flex: 1, fontWeight: '800' },
+  ruleHint: { fontWeight: '600' }
+});

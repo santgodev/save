@@ -81,7 +81,7 @@ export const BottomNav = ({ activeScreen, setScreen, onAddPress }: { activeScree
             style={styles.navItem} 
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setScreen('dashboard'); }}
           >
-            <LayoutDashboard size={22} color={activeScreen === 'dashboard' ? activeColor : inactiveColor} strokeWidth={activeScreen === 'dashboard' ? 2.5 : 1.5} />
+            <LayoutDashboard size={20} color={activeScreen === 'dashboard' ? activeColor : inactiveColor} strokeWidth={activeScreen === 'dashboard' ? 2.5 : 1.5} />
             <Text style={[styles.navLabel, { color: activeScreen === 'dashboard' ? activeColor : inactiveColor }]}>RESUMEN</Text>
           </TouchableOpacity>
 

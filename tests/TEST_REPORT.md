@@ -302,3 +302,41 @@ no vacío, y resolver la política de "no hay bolsillo" según la opción elegid
 3. Local: `supabase start` y luego `./tests/run_all.sh`.
 
 Cada corrida nueva → agregar entrada con fecha en `RESULTS.md`.
+
+---
+
+## Apéndice: lo que pasó después del 13/13 (ronda UX + Fase B)
+
+Los 13 bugs originales del TEST_REPORT están todos cerrados. Pero las
+corridas 8, 9 y 10 (documentadas en `RESULTS.md`) descubrieron problemas
+**nuevos** que no estaban en este reporte original. Resumen para no
+perderse:
+
+### Bugs reales detectados después del cierre
+
+| # extra | Severidad | Caso | Cerrado |
+|---|---|---|---|
+| #14 | 🔴 Crítico | 4 archivos truncados (`Dashboard`, `Expenses`, `Pockets`, `Scanner`). La app no compilaba con `tsc --noEmit`. | ✅ corrida 10 |
+| #15 | 🟠 Alto | `profileUtils.calculateFinancialProfile` calculaba sobre TODA la historia, comparaba contra presupuesto MENSUAL → score injusto, baja con uso. | ✅ corrida 10 (filtro al mes en curso) |
+| #16 | 🟠 Alto | TopBar no enviaba `session_id` al chat-advisor → cada turno = sesión nueva en DB. Bug #12 (DB) quedaba desperdiciado. | ✅ corrida 10 (`useRef` con sessionId estable) |
+| #17 | 🟡 Medio | Diagnostic log de JWT en producción. Spammeaba consola con preview del access_token. | ✅ corrida 10 |
+| #18 | 🟢 Bajo | `notify.confirm` esperaba `Promise<void>` pero `signOut()` devuelve `Promise<{error}>`. | ✅ corrida 10 |
+| #19 | 🟢 Bajo | Header del Dashboard decía "SALDO DISPONIBLE" pero renderizaba `net_month` (ingreso − gasto). Etiqueta mentía sobre el dato. | ✅ corrida 9 (cambiado a "BALANCE DEL MES") |
+| #20 | 🟢 Bajo | OCR v5 devolvía `needs_review` y `register_skipped_reason` pero Scanner no los leía. | ✅ corrida 9 |
+
+### Mejoras estructurales no-bug pero importantes
+
+- Fase B encendida: `insight-generator` + `synthesize-memory` deployadas y
+  programadas con `pg_cron` (corrida 8).
+- UI para crear `user_spending_rules` desde Expenses (corrida 8).
+- 5 funciones de formato de dinero unificadas en `lib/format.ts` (corrida 9).
+- 9 `alert()` pelados y 8 `Alert.alert` directos migrados a `lib/notify.ts` (corrida 9).
+- Componentes compartidos: `<BottomSheet>`, `<MonthNav>` (corrida 9).
+- `session: Session` (de @supabase/supabase-js) en lugar de `session: any` en 7 pantallas (corrida 10).
+- `tsc --noEmit` pasa con 0 errores (corrida 10).
+
+### Status TL;DR actualizado
+
+**13/13 bugs originales + 7 bugs descubiertos post-cierre = 20/20.**
+Cliente compila estricto. Backend y Edge Functions deployadas y operativas.
+Único pendiente manual: HIBP password protection + secret en Vault.

@@ -249,6 +249,10 @@ export const getTheme = (mode: ThemeMode = 'sage') => {
       body: 'Inter',
     },
     typography: {
+      // Cifras gigantes — el saldo principal del Dashboard, totales de Pockets,
+      // input de monto en AddIncome/PocketTransfer.
+      display: { fontSize: normalize(44), fontWeight: '900' as const, lineHeight: normalize(52), letterSpacing: -1.5 },
+      displaySmall: { fontSize: normalize(32), fontWeight: '900' as const, lineHeight: normalize(40), letterSpacing: -1 },
       h1: { fontSize: normalize(32), fontWeight: '800' as const, lineHeight: normalize(40), letterSpacing: -1 },
       h2: { fontSize: normalize(24), fontWeight: '700' as const, lineHeight: normalize(32), letterSpacing: -0.5 },
       h3: { fontSize: normalize(20), fontWeight: '700' as const, lineHeight: normalize(28) },

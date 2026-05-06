@@ -8,10 +8,13 @@ import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
 import { normalize } from '../theme/theme';
 import { supabase } from '../lib/supabase';
+import { formatMoney, formatMoneyDigits } from '../lib/format';
+import { notify } from '../lib/notify';
+import type { Session } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
 
-export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pockets: any[], session: any, onCancel: () => void, onSaveSuccess: () => void }) => {
+export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pockets: any[], session: Session, onCancel: () => void, onSaveSuccess: () => void }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const [amount, setAmount] = useState('');
@@ -169,11 +172,9 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pocke
     }
   }, [selectedPockets, distType, val]);
 
-  const formatCurrency = (val: string) => {
-    const numericValue = val.replace(/[^0-9]/g, '');
-    if (!numericValue) return '';
-    return parseInt(numericValue, 10).toLocaleString('es-CO');
-  };
+  // formatMoneyDigits importado de lib/format. Solo formatea el contenido
+  // del input numérico (sin signo $).
+  const formatCurrency = formatMoneyDigits;
 
   const handleToggle = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -237,8 +238,8 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pocke
   const handleSave = async () => {
     let finalPreview = { ...preview };
     const val = parseInt(amount.replace(/[^0-9]/g, ''), 10);
-    if (!val || val <= 0) return alert('Ingresa un monto válido.');
-    if (selectedPockets.length === 0) return alert('Selecciona al menos un bolsillo.');
+    if (!val || val <= 0) return notify.error('Ingresa un monto válido.');
+    if (selectedPockets.length === 0) return notify.error('Selecciona al menos un bolsillo.');
 
     if (distType === 'manual' && remainder > 0) {
       if (variosPocket) {
@@ -246,10 +247,10 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pocke
         const currentVarios = finalPreview[variosPocket.id] || 0;
         finalPreview[variosPocket.id] = currentVarios + remainder;
       } else {
-        return alert(`Faltan $ ${remainder.toLocaleString('es-CO')} por asignar.`);
+        return notify.error(`Faltan ${formatMoney(remainder)} por asignar.`);
       }
     } else if (distType === 'manual' && remainder < 0) {
-        return alert(`Te pasaste por $ ${Math.abs(remainder).toLocaleString('es-CO')}.`);
+        return notify.error(`Te pasaste por ${formatMoney(Math.abs(remainder))}.`);
     }
 
     setIsSaving(true);
@@ -269,7 +270,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pocke
       setTimeout(() => onSaveSuccess(), 1800);
     } catch(e: any) {
       console.error(e);
-      alert('Error guardando el ingreso.');
+      notify.error('Error guardando el ingreso.');
     } finally {
       setIsSaving(false);
     }
@@ -283,13 +284,13 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pocke
         </View>
         <Text style={{ fontSize: 26, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 8, letterSpacing: -0.5 }}>¡Listo!</Text>
         <Text style={{ fontSize: 16, color: theme.colors.onSurfaceVariant, fontWeight: '700', marginBottom: 32, textAlign: 'center' }}>
-          $ {parseInt(amount.replace(/[^0-9]/g, '')).toLocaleString('es-CO')} distribuidos en tus bolsillos
+          {formatMoney(parseInt(amount.replace(/[^0-9]/g, '')))} distribuidos en tus bolsillos
         </Text>
         <View style={{ width: '100%', gap: 10 }}>
           {pockets.filter(p => selectedPockets.includes(p.id) && preview[p.id] > 0).map(p => (
             <View key={p.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: theme.colors.glassWhite, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.divider }}>
               <Text style={{ fontWeight: '800', color: theme.colors.onSurface }}>{p.name}</Text>
-              <Text style={{ fontWeight: '900', color: theme.colors.primary }}>+ $ {preview[p.id].toLocaleString('es-CO')}</Text>
+              <Text style={{ fontWeight: '900', color: theme.colors.primary }}>+ {formatMoney(preview[p.id])}</Text>
             </View>
           ))}
         </View>
@@ -369,12 +370,12 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pocke
             >
                <Text style={[styles.statusTxt, { color: remainder > 0 ? theme.colors.primary : theme.colors.error }]}>
                  {remainder > 0 
-                   ? `Faltan $ ${remainder.toLocaleString('es-CO')} por asignar` 
-                   : `Te pasaste por $ ${Math.abs(remainder).toLocaleString('es-CO')}`}
+                   ? `Faltan ${formatMoney(remainder)} por asignar`
+                   : `Te pasaste por ${formatMoney(Math.abs(remainder))}`}
                </Text>
                {remainder > 0 && variosPocket && (
                  <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.primary, marginTop: 4 }}>
-                   Toca aquí para mandar el resto a Varios 🚀
+                   Toca aquí para mandar el resto a Varios
                  </Text>
                )}
                {remainder > 0 && !variosPocket && (
@@ -462,7 +463,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pocke
                 ) : (
                   <TouchableOpacity onPress={() => handleToggle(p.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                     {isSelected && addValue > 0 && (
-                      <View style={styles.previewTag}><Text style={styles.previewTagTxt}>+ ${addValue.toLocaleString('es-CO')}</Text></View>
+                      <View style={styles.previewTag}><Text style={styles.previewTagTxt}>+ {formatMoney(addValue)}</Text></View>
                     )}
                     {isSelected ? <CheckCircle2 size={24} color={theme.colors.primary} fill={theme.colors.primary + '10'} /> : <Circle size={24} color={theme.colors.outlineVariant} />}
                   </TouchableOpacity>

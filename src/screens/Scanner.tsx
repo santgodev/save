@@ -14,10 +14,12 @@ import { AnimatedProgressBar } from '../components/AnimatedProgressBar';
 import { supabase } from '../lib/supabase';
 import { normalizeMerchant } from '../utils/merchant';
 import { logEvent, EVENTS } from '../lib/events';
+import { notify } from '../lib/notify';
+import type { Session } from '@supabase/supabase-js';
 
 const { width, height } = Dimensions.get('window');
 
-export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBack: () => void; onSaveSuccess: () => void; session?: any; pockets?: any[] }) => {
+export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBack: () => void; onSaveSuccess: () => void; session?: Session; pockets?: any[] }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
 
@@ -155,15 +157,8 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
 
   const [selectedCategory, setSelectedCategory] = useState(availableCategories[0]);
 
-  const isValidTransaction = (data: any) => {
-    return (
-      data &&
-      typeof data.amount === 'number' &&
-      data.amount > 0 &&
-      data.merchant &&
-      data.merchant !== 'Desconocido'
-    );
-  };
+  // isValidTransaction eliminada: la decisión manual/automático ahora viene
+  // del campo `needs_review` del Edge Function ocr-receipt v5.
 
   const takePhoto = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -171,7 +166,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       setIsOpeningPicker(false);
-      alert('Se necesita permiso para acceder a la cámara.');
+      notify.error('Se necesita permiso para acceder a la cámara.');
       return;
     }
 
@@ -229,7 +224,10 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
       }
 
       const { data, error } = await supabase.functions.invoke('ocr-receipt', {
-        body: { image_base64: base64 },
+        body: { 
+          image_base64: base64,
+          categories: availableCategories 
+        },
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       clearInterval(fakeProgress);
@@ -237,29 +235,30 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
       if (error) throw error;
       const parsed = data?.parsed ?? {};
 
+      // El Edge Function ocr-receipt v5 ya nos dice si el ticket vino
+      // débil (merchant null, amount null, o confidence "low").
+      const needsReview: boolean = data?.needs_review === true
+        || !parsed?.merchant
+        || typeof parsed?.amount !== 'number'
+        || parsed.amount <= 0;
+
       const dOCR = new Date();
       const fallbackDate = `${dOCR.getFullYear()}-${String(dOCR.getMonth() + 1).padStart(2, '0')}-${String(dOCR.getDate()).padStart(2, '0')}`;
       const finalDate = parsed.date || fallbackDate;
       const amount = String(parsed.amount || '0').replace(/[^0-9]/g, '');
-      const isValid =
-        parsed &&
-        typeof parsed.amount === 'number' &&
-        parsed.amount > 0 &&
-        parsed.merchant &&
-        parsed.merchant !== 'Desconocido';
 
       setExtractedData({
-        merchant: parsed.merchant || 'Desconocido',
+        merchant: parsed.merchant || '',
         amount,
         date: finalDate,
-        category: 'Comida',
+        category: parsed.category || availableCategories[0],
       });
 
       setEditableAmount(amount);
       setEditableMerchant(parsed.merchant || '');
-      // We still let the user pick the category in the UI.
+      if (parsed.category) setSelectedCategory(parsed.category);
 
-      if (!isValid) setIsManualMode(true);
+      if (needsReview) setIsManualMode(true);
       setProgress(100);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error: any) {
@@ -301,7 +300,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
     } catch (error: any) {
       setIsSaving(false);
       console.error(error);
-      alert('Error guardando el gasto.');
+      notify.error('Error guardando el gasto.');
     }
   };
 
@@ -328,7 +327,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'flex-end', paddingBottom: Math.max(insets.bottom, 24) + 20 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingBottom: Math.max(insets.bottom, 24) + 20 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {(image && progress > 0 && progress < 100) ? (
             <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }]}>
                <BlurView intensity={20} tint="dark" style={{ padding: 40, borderRadius: 32, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
@@ -418,15 +417,14 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
                     </ScrollView>
                   </View>
 
-                  <TouchableOpacity 
-                    onPress={saveToSupabase} 
-                    disabled={isSaving || parseInt(editableAmount.replace(/[^0-9]/g, '') || '0') <= 0} 
-                    style={[styles.premiumConfirmBtn, (isSaving || parseInt(editableAmount.replace(/[^0-9]/g, '') || '0') <= 0) && { opacity: 0.5 }]}
-                    activeOpacity={0.9}
+                  <TouchableOpacity
+                    onPress={saveToSupabase}
+                    disabled={isSaving || parseInt(editableAmount.replace(/[^0-9]/g, '') || '0') <= 0}
+                    style={[styles.premiumConfirmBtn, { backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' }, (isSaving || parseInt(editableAmount.replace(/[^0-9]/g, '') || '0') <= 0) && { opacity: 0.6 }]}
                   >
-                    <LinearGradient colors={theme.colors.brandGradient as any} style={styles.btnGradient} start={{x:0, y:0}} end={{x:1, y:0}}>
-                      {isSaving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.premiumConfirmBtnText}>Guardar Gasto</Text>}
-                    </LinearGradient>
+                    {isSaving
+                      ? <ActivityIndicator color="#FFF" />
+                      : <Text style={styles.premiumConfirmBtnText}>Guardar gasto</Text>}
                   </TouchableOpacity>
                </BlurView>
             </View>

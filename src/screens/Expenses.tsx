@@ -6,17 +6,22 @@ import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import {
   Search, Filter, Trash2, ChevronRight, PieChart, ArrowDownRight, TrendingUp, ArrowRightLeft, X,
-  ChevronLeft, ShieldCheck, Eye, AlertTriangle, Tag, CheckCircle2
+  ShieldCheck, Eye, AlertTriangle, Tag, CheckCircle2
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { normalize } from '../theme/theme';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { supabase } from '../lib/supabase';
+import { formatMoney } from '../lib/format';
+import { notify } from '../lib/notify';
+import { MonthNav } from '../components/MonthNav';
+import { BottomSheet } from '../components/BottomSheet';
+import type { Session } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
 
-export const Expenses = ({ transactions, onRefresh, session, pockets }: { transactions: any[], onRefresh?: () => void, session: any, pockets: any[] }) => {
+export const Expenses = ({ transactions, onRefresh, session, pockets }: { transactions: any[], onRefresh?: () => void, session: Session, pockets: any[] }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -83,8 +88,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
     },
     
     // Mes Nav
-    monthNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, marginBottom: 20 },
-    monthTitle: { fontSize: 18, fontWeight: '900', letterSpacing: -0.3, color: theme.colors.onSurface },
+    // monthNav/monthTitle migrados a <MonthNav> compartido.
     navBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.glassWhite, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.8)', ...theme.shadows.soft },
   
     scrollContent: { paddingHorizontal: normalize(24), paddingBottom: 120 },
@@ -184,11 +188,11 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
         setDeletingTx(null);
         if (onRefresh) onRefresh();
       } else {
-        alert('No se pudo eliminar el movimiento.');
+        notify.error('No se pudo eliminar el movimiento.');
       }
     } catch (e) {
       console.error(e);
-      alert('Error en la operación.');
+      notify.error('Error en la operación.');
     } finally {
       setIsDeleting(false);
     }
@@ -227,7 +231,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
       }, 1500);
     } catch (e) {
       console.error('markMerchant', e);
-      Alert.alert('Ups', 'No pudimos guardar la regla.');
+      notify.error('No pudimos guardar la regla.');
     } finally {
       setIsMarking(false);
     }
@@ -244,16 +248,8 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Animated.View style={[styles.headerContainer, { opacity: fadeAnim, paddingTop: Math.max(insets.top, 16) + 104 }]}>
-        {/* Navegación de Mes */}
-        <View style={styles.monthNav}>
-          <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedMonth(p => (p - 1 + 12) % 12); }} style={styles.navBtn}>
-            <ChevronLeft size={18} color={theme.colors.onSurface} />
-          </TouchableOpacity>
-          <Text style={styles.monthTitle}>{MONTHS[selectedMonth].label}</Text>
-          <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedMonth(p => (p + 1) % 12); }} style={styles.navBtn}>
-            <ChevronRight size={18} color={theme.colors.onSurface} />
-          </TouchableOpacity>
-        </View>
+        {/* Navegación de Mes — componente compartido */}
+        <MonthNav value={selectedMonth} onChange={setSelectedMonth} />
 
         <View style={styles.overviewCard}>
            <View style={styles.overviewHeader}>
@@ -261,7 +257,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
               <Text style={[styles.overviewTitle, { color: theme.colors.primary }]}>TOTAL GASTADO</Text>
            </View>
            <Text style={[styles.totalAmountText, { color: theme.colors.onSurface }]}>
-              $ {totalSpent.toLocaleString('es-CO')}
+              {formatMoney(totalSpent)}
            </Text>
            <View style={styles.trendRow}>
               <TrendingUp size={14} color={theme.colors.onSurfaceVariant} />
@@ -362,7 +358,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
                       isTransfer && { color: theme.colors.secondary },
                       !isIncome && !isTransfer && { color: theme.colors.onSurface }
                   ]}>
-                    {isIncome ? '+ ' : ''}$ {amt.toLocaleString('es-CO')}
+                    {isIncome ? '+ ' : ''}{formatMoney(amt)}
                   </Text>
                   <ChevronRight size={16} color={theme.colors.outlineVariant} />
                 </View>
@@ -373,42 +369,33 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
         {filteredTransactions.length > 0 && <Text style={styles.longPressHint}>Toca para marcar el comercio · mantén presionado para eliminar</Text>}
       </ScrollView>
 
-      {deletingTx && (
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setDeletingTx(null)}>
-            <BlurView intensity={theme.mode === 'honey' ? 40 : 20} tint="dark" style={StyleSheet.absoluteFill} />
-          </TouchableOpacity>
-          <View style={[styles.modalContainer, { width: width * 0.88, backgroundColor: theme.colors.surface }]}>
-             <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Eliminar Movimiento</Text>
-                <TouchableOpacity onPress={() => setDeletingTx(null)} style={{ padding: 8 }}>
-                   <X color={theme.colors.onSurfaceVariant} size={20} />
-                </TouchableOpacity>
-             </View>
-             
-             <View style={styles.modalInfo}>
-                <View style={[styles.modalIconCircle, { backgroundColor: theme.colors.error + '12' }]}>
-                   <Trash2 size={28} color={theme.colors.error} />
-                </View>
-                <Text style={styles.modalMerchant}>{deletingTx.merchant}</Text>
-                <Text style={styles.modalAmt}>$ {Math.abs(deletingTx.amount).toLocaleString('es-CO')}</Text>
-                <Text style={styles.modalSub}>Al borrarlo, el presupuesto de tus bolsillos se ajustará automáticamente.</Text>
-             </View>
-             
-             <TouchableOpacity 
-               style={[styles.modalConfirmBtn, { backgroundColor: theme.colors.error }, isDeleting && { opacity: 0.7 }]} 
-               onPress={handleConfirmDelete}
-               disabled={isDeleting}
-             >
-                {isDeleting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.modalConfirmTxt}>Confirmar y Reversar</Text>}
-             </TouchableOpacity>
+      <BottomSheet visible={!!deletingTx} onClose={() => setDeletingTx(null)} title="Eliminar movimiento">
+        {deletingTx && (
+          <>
+            <View style={styles.modalInfo}>
+              <View style={[styles.modalIconCircle, { backgroundColor: theme.colors.error + '12' }]}>
+                <Trash2 size={28} color={theme.colors.error} />
+              </View>
+              <Text style={styles.modalMerchant}>{deletingTx.merchant}</Text>
+              <Text style={styles.modalAmt}>{formatMoney(Math.abs(deletingTx.amount))}</Text>
+              <Text style={styles.modalSub}>Al borrarlo, el presupuesto de tus bolsillos se ajustará automáticamente.</Text>
+            </View>
 
-             <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setDeletingTx(null)}>
-                <Text style={[styles.modalCancelTxt, { color: theme.colors.onSurfaceVariant }]}>No, mantener</Text>
-             </TouchableOpacity>
-          </View>
-        </View>
-      )}
+            <TouchableOpacity
+              style={[styles.modalConfirmBtn, { backgroundColor: theme.colors.error }, isDeleting && { opacity: 0.7 }]}
+              onPress={handleConfirmDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.modalConfirmTxt}>Eliminar movimiento</Text>}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setDeletingTx(null)}>
+              <Text style={[styles.modalCancelTxt, { color: theme.colors.onSurfaceVariant }]}>No, mantener</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </BottomSheet>
+
 
       {/* Modal: marcar comercio con una regla de gasto (Premium BottomSheet Style) */}
       {markingTx && (
@@ -441,8 +428,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
             <View style={{ width: 40, height: 4, backgroundColor: theme.colors.outlineVariant, borderRadius: 2, alignSelf: 'center', marginBottom: 20 }} />
             
             {showSuccess ? (
-              <Animated.View 
-                entering={undefined /* Sería ideal un FadeIn pero no tenemos Reanimated aquí */} 
+              <Animated.View
                 style={{ padding: 40, alignItems: 'center', justifyContent: 'center' }}
               >
                 <View style={{ 
@@ -462,7 +448,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
             ) : (
               <>
                 <View style={[styles.modalHeader, { paddingHorizontal: 24 }]}>
-                  <Text style={[styles.modalTitle, { fontSize: 20 }]}>Etiquetar Comercio</Text>
+                  <Text style={[styles.modalTitle, { fontSize: 20 }]}>Marcar comercio</Text>
                   <TouchableOpacity onPress={() => setMarkingTx(null)} style={styles.closeBtn}>
                     <X color={theme.colors.onSurface} size={18} strokeWidth={2.5} />
                   </TouchableOpacity>
@@ -485,63 +471,57 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
                   </Text>
                 </View>
 
-                <View style={{ gap: 12, paddingHorizontal: 24 }}>
-                  {[
-                    { 
-                      type: 'confidence' as const, 
-                      label: 'Confianza', 
-                      desc: 'Gasto recurrente y necesario. Sin alertas.', 
-                      icon: ShieldCheck, 
-                      color: theme.colors.success,
-                      bg: theme.colors.successContainer 
-                    },
-                    { 
-                      type: 'monitor' as const, 
-                      label: 'Vigilar', 
-                      desc: 'Mantener bajo la lupa. Avísame de cambios.', 
-                      icon: Eye, 
-                      color: theme.colors.primary,
-                      bg: theme.colors.primaryContainer 
-                    },
-                    { 
-                      type: 'reduce' as const, 
-                      label: 'Reducir', 
-                      desc: 'Gasto a optimizar. Ayúdame a gastar menos.', 
-                      icon: AlertTriangle, 
-                      color: theme.colors.error,
-                      bg: theme.colors.errorContainer 
-                    }
-                  ].map((item) => (
-                    <TouchableOpacity
-                      key={item.type}
-                      onPress={() => markMerchant(item.type)}
-                      disabled={isMarking}
-                      activeOpacity={0.7}
-                      style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 16,
-                        padding: 18, borderRadius: 24,
-                        backgroundColor: item.bg + (theme.mode === 'honey' ? '40' : '80'),
-                        borderWidth: 1.5, borderColor: item.color + '20',
-                      }}
-                    >
-                      <View style={{ 
-                        width: 44, height: 44, borderRadius: 14, 
-                        backgroundColor: '#FFF', 
-                        alignItems: 'center', justifyContent: 'center',
-                        ...theme.shadows.soft
-                      }}>
-                        {isMarking ? (
-                          <ActivityIndicator size="small" color={item.color} />
-                        ) : (
-                          <item.icon size={22} color={item.color} />
-                        )}
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.onSurface }}>{item.label}</Text>
-                        <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 2, fontWeight: '600' }}>{item.desc}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
+                <View style={{ paddingHorizontal: 24, gap: 12, marginBottom: 16 }}>
+                  <TouchableOpacity
+                    onPress={() => markMerchant('confidence')}
+                    disabled={isMarking}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 14,
+                      padding: 16, borderRadius: 18,
+                      backgroundColor: theme.colors.successContainer,
+                      borderWidth: 1, borderColor: theme.colors.success + '30',
+                    }}
+                  >
+                    <ShieldCheck size={22} color={theme.colors.success} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '900', color: theme.colors.success }}>Confianza</Text>
+                      <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 2 }}>Gasto necesario, no me alertes.</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => markMerchant('monitor')}
+                    disabled={isMarking}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 14,
+                      padding: 16, borderRadius: 18,
+                      backgroundColor: theme.colors.primaryContainer,
+                      borderWidth: 1, borderColor: theme.colors.primary + '30',
+                    }}
+                  >
+                    <Eye size={22} color={theme.colors.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '900', color: theme.colors.primary }}>Vigilar</Text>
+                      <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 2 }}>Avísame si cambia mucho.</Text>
+                    </View>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => markMerchant('reduce')}
+                    disabled={isMarking}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 14,
+                      padding: 16, borderRadius: 18,
+                      backgroundColor: theme.colors.errorContainer,
+                      borderWidth: 1, borderColor: theme.colors.error + '30',
+                    }}
+                  >
+                    <AlertTriangle size={22} color={theme.colors.error} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '900', color: theme.colors.error }}>Reducir</Text>
+                      <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 2 }}>Quiero gastar menos aquí.</Text>
+                    </View>
+                  </TouchableOpacity>
                 </View>
               </>
             )}

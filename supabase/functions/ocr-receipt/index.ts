@@ -59,35 +59,6 @@ function isForbiddenMerchant(value: string | null | undefined): boolean {
   return FORBIDDEN_MERCHANT_PATTERNS.some((rx) => rx.test(trimmed));
 }
 
-async function runVisionOCR(imageBase64: string): Promise<string> {
-  const visionKey = Deno.env.get("GOOGLE_VISION_API_KEY");
-  if (!visionKey) throw new Error("GOOGLE_VISION_API_KEY not set");
-
-  const res = await fetch(
-    `https://vision.googleapis.com/v1/images:annotate?key=${visionKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        requests: [{
-          image: { content: imageBase64 },
-          features: [{ type: "TEXT_DETECTION", maxResults: 1 }],
-        }],
-      }),
-    },
-  );
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Vision ${res.status}: ${text}`);
-  }
-
-  const json = await res.json();
-  const raw = json?.responses?.[0]?.fullTextAnnotation?.text;
-  if (!raw) throw new Error("No text detected on receipt");
-  return String(raw);
-}
-
 // Prompt v2 — endurece el comportamiento sobre merchants:
 // - PROHÍBE explícitamente devolver "Desconocido", "Factura Escaneada",
 //   "Recibo", "Sin nombre". Si no se ve un comercio claro → null.
@@ -103,7 +74,8 @@ const SYSTEM_PROMPT_V2 = [
   "  \"merchant\": string|null,",
   "  \"date\": string|null,           // ISO YYYY-MM-DD",
   "  \"items\": [{\"name\": string, \"amount\": number}],",
-  "  \"confidence\": \"high\"|\"medium\"|\"low\"",
+  "  \"confidence\": \"high\"|\"medium\"|\"low\",",
+  "  \"category\": string|null        // Asigna según lista provista",
   "}",
   "",
   "REGLAS DE merchant (críticas):",
@@ -132,40 +104,49 @@ const SYSTEM_PROMPT_V2 = [
   "No expliques. No agregues texto fuera del JSON. No uses markdown.",
 ].join("\n");
 
-async function structureReceipt(rawText: string): Promise<StructuredReceipt> {
+async function analyzeReceiptWithVision(imageBase64: string, categories: string[]): Promise<StructuredReceipt & { category?: string }> {
+  const prompt = [
+    SYSTEM_PROMPT_V2,
+    "",
+    "CATEGORÍAS DISPONIBLES (Asigna una de éstas al campo 'category'):",
+    categories.map(c => `- ${c}`).join("\n"),
+    "",
+    "Analiza la imagen adjunta y devuelve el JSON."
+  ].join("\n");
+
   const completion = await chatCompletion({
+    model: "gpt-4o-mini",
     messages: [
-      { role: "system", content: SYSTEM_PROMPT_V2 },
-      { role: "user", content: rawText.slice(0, 4000) },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: prompt },
+          { 
+            type: "image_url", 
+            image_url: { url: `data:image/jpeg;base64,${imageBase64}` } 
+          }
+        ]
+      } as any
     ],
     temperature: 0,
     response_format: { type: "json_object" },
-    max_tokens: 500,
+    max_tokens: 800,
   });
 
   const content = completion.choices[0]?.message?.content ?? "{}";
-  let parsed: StructuredReceipt;
+  let parsed: StructuredReceipt & { category?: string };
   try {
-    parsed = JSON.parse(content) as StructuredReceipt;
+    parsed = JSON.parse(content);
   } catch {
     throw new Error("OpenAI returned non-JSON receipt data");
   }
 
-  // Sanitización defensiva — el modelo todavía puede equivocarse y
-  // meternos un placeholder. Si lo hace, lo neutralizamos acá ANTES
-  // de devolver al cliente o de llamar register_expense.
-  if (isForbiddenMerchant(parsed.merchant)) {
-    parsed.merchant = null;
-  }
-  if (typeof parsed.amount !== "number" || parsed.amount <= 0) {
-    parsed.amount = null;
-  }
-
-  // Reglas duras de confidence post-sanitizado:
+  // Sanitización
+  if (isForbiddenMerchant(parsed.merchant)) parsed.merchant = null;
+  if (typeof parsed.amount !== "number" || parsed.amount <= 0) parsed.amount = null;
+  
   if (parsed.merchant == null || parsed.amount == null) {
     parsed.confidence = "low";
-  } else if (!parsed.confidence) {
-    parsed.confidence = "medium";
   }
 
   return parsed;
@@ -176,14 +157,14 @@ Deno.serve(async (req) => {
   if (pre) return pre;
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
 
-  let body: { image_base64?: string; category?: string; auto_register?: boolean };
+  let body: { image_base64?: string; categories?: string[]; auto_register?: boolean; category?: string };
   try {
     body = await req.json();
   } catch {
     return errorResponse("Invalid JSON body");
   }
 
-  const { image_base64, category, auto_register } = body;
+  const { image_base64, categories = [], auto_register, category } = body;
   if (!image_base64) return errorResponse("`image_base64` is required");
 
   let auth;
@@ -195,10 +176,9 @@ Deno.serve(async (req) => {
 
   const { user, userClient, serviceClient } = auth;
 
-  let parsed: StructuredReceipt;
+  let parsed: StructuredReceipt & { category?: string };
   try {
-    const rawText = await runVisionOCR(image_base64);
-    parsed = await structureReceipt(rawText);
+    parsed = await analyzeReceiptWithVision(image_base64, categories);
   } catch (e) {
     await serviceClient.from("user_events").insert({
       user_id: user.id,
@@ -206,6 +186,7 @@ Deno.serve(async (req) => {
       event_data: {
         error: e instanceof Error ? e.message : String(e),
         prompt_version: OCR_PROMPT_VERSION,
+        engine: "openai-vision"
       },
       source: "edge_fn",
     });

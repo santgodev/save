@@ -107,12 +107,9 @@ export function useMonthlyState(options: Options = {}) {
   return { state, loading, error, refresh };
 }
 
-// Helpers de formato — los expongo acá así todas las pantallas usan
-// la misma forma de mostrar dinero (igual al prompt del advisor).
-export function formatCop(n: number | null | undefined): string {
-  if (n === null || n === undefined || Number.isNaN(n)) return '$0';
-  return `$${Math.round(Number(n)).toLocaleString('es-CO', { maximumFractionDigits: 0 })}`;
-}
+// Re-export del helper único para retrocompatibilidad. Nuevos archivos
+// deben importar directo de '../lib/format'.
+export { formatMoney as formatCop } from './format';
 
 export function pctUsedLabel(pocket: { allocated: number; spent_month: number }): string {
   if (!pocket.allocated || pocket.allocated <= 0) return '—';

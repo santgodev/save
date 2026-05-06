@@ -1,50 +1,165 @@
-# Welcome to your Expo app 👋
+# Save
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+App colombiana de presupuesto personal. Bolsillos, gastos, ingresos
+distribuidos, OCR de facturas, asesor IA read-only.
 
-## Get started
+**Stack:** React Native (Expo SDK 54) · Supabase (Postgres 15 + Edge
+Functions Deno) · OpenAI gpt-4o-mini · Google Vision OCR.
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Para arrancar
 
 ```bash
-npm run reset-project
+npm install
+npm start            # Expo dev server
+# luego: i (iOS sim), a (Android emulator), o escanea con Expo Go
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+Necesitas variables de entorno en `.env` o `app.config.ts`:
 
-## Learn more
+```
+EXPO_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<anon>
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+Ver `src/constants.ts` para confirmar cómo se leen.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+---
 
-## Join the community
+## Para deployar
 
-Join our community of developers creating universal apps.
+### Cliente (Expo)
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+```bash
+eas build --platform ios
+eas build --platform android
+# o web preview:
+npx expo export -p web
+```
+
+### Backend (Supabase)
+
+```bash
+# Aplicar migraciones nuevas:
+supabase db push
+
+# Deployar Edge Functions:
+supabase functions deploy chat-advisor
+supabase functions deploy ocr-receipt
+supabase functions deploy insight-generator
+supabase functions deploy synthesize-memory
+```
+
+Detalles y vars de entorno por function en `supabase/README.md`.
+
+---
+
+## Verificar que todo está sano
+
+```bash
+# TypeScript del cliente debe pasar limpio:
+./node_modules/.bin/tsc --noEmit
+
+# Regresiones SQL contra prod:
+# (ver tests/README.md — opciones MCP, CLI o local)
+```
+
+---
+
+## Estructura
+
+```
+.
+├── app/                       ← Expo Router (mínimo, casi todo en src/)
+├── src/
+│   ├── App.tsx                ← root + routing entre screens
+│   ├── lib/                   ← supabase client, hooks, format, notify, events
+│   ├── components/            ← BottomNav, TopBar (chat), BottomSheet, MonthNav
+│   ├── screens/               ← Auth, Onboarding, Dashboard, Pockets, Expenses,
+│   │                            Scanner, AddIncome, PocketTransfer, Profile
+│   ├── theme/                 ← tokens (colors, typography, shadows, radius)
+│   └── utils/                 ← merchant normalize, profile calc, patterns
+├── supabase/
+│   ├── functions/             ← Edge Functions (chat-advisor, ocr-receipt, etc.)
+│   └── migrations/            ← 12 migraciones aplicadas a prod
+├── docs/                      ← arquitectura, IA, design system, auditorías
+├── tests/                     ← regresiones SQL + bitácora cronológica
+└── README.md                  ← este archivo
+```
+
+---
+
+## Documentación
+
+Si vienes a tocar algo, lee en este orden:
+
+1. **`docs/ARCHITECTURE_REVIEW.md`** — el mapa completo del sistema. DB,
+   Edge Functions, cron, cliente, seguridad. Empieza acá.
+2. **`docs/DESIGN_TOKENS.md`** — convenciones del cliente. Cuándo usar
+   `formatMoney`, `notify`, `BottomSheet`, `MonthNav`, `theme.typography`.
+   **Si vas a tocar UI, leelo antes**.
+3. **`docs/AI_SYSTEM_DESIGN.md`** — el chat read-only, los 2 cron jobs
+   (insights + memoria), el OCR. Cómo iterar prompts sin perder
+   trazabilidad.
+4. **`docs/DB_AUDIT_2026-04-28.md`** — auditoría detallada de la DB
+   (tablas, RPCs, índices, RLS, advisors). Parcialmente outdated tras la
+   7ª corrida — el plan ejecutado está en `tests/RESULTS.md`.
+5. **`docs/THEME_DESIGN_SYSTEM.md`** — paleta y tokens visuales (colors,
+   shadows, radius).
+6. **`tests/TEST_REPORT.md`** — los 13 bugs originales + 7 descubiertos
+   post-cierre. TL;DR del estado de calidad.
+7. **`tests/RESULTS.md`** — bitácora cronológica de las 10 corridas
+   (cada migración aplicada, cada deploy, cada bug arreglado, con
+   verificación post-fix).
+8. **`supabase/README.md`** — setup local de Supabase y deploys.
+
+---
+
+## Pendientes operacionales
+
+Lo único que NO se puede hacer desde código y queda manual:
+
+- **Activar HIBP** (Have I Been Pwned password protection):
+  Dashboard → Auth → Sign In / Sign Up → Password security → toggle on.
+- **Crear secret en Vault** (necesario para que los crons hagan auth):
+  Dashboard SQL Editor →
+  ```sql
+  SELECT vault.create_secret('<service-role-key>', 'service_role_key');
+  ```
+
+Ambos están explicados en `tests/RESULTS.md` corrida 8 y en
+`docs/AI_SYSTEM_DESIGN.md`.
+
+---
+
+## Convenciones (lo no negociable)
+
+- **Toda plata**: `formatMoney()` de `lib/format.ts`. Cero excepciones.
+- **Toda notificación**: `notify.*` de `lib/notify.ts`. Cero `alert()`.
+- **Todo número del mes**: hook `useMonthlyState()` que consume el RPC
+  `get_monthly_state`. Cero recálculos en cliente.
+- **Sin emojis** en saludos, CTAs, microcopy. La marca es sobria.
+- **`session: Session`** (de `@supabase/supabase-js`), no `session: any`.
+
+Si alguno de estos se rompe, leé `docs/DESIGN_TOKENS.md` y arreglá.
+
+---
+
+## Estado actual (2026-04-29)
+
+- 13/13 bugs originales del TEST_REPORT cerrados.
+- 7 bugs adicionales descubiertos post-cierre, también cerrados.
+- TypeScript estricto pasa con 0 errores.
+- 4 Edge Functions deployadas (chat-advisor v8, ocr-receipt v5,
+  insight-generator v1, synthesize-memory v1).
+- 2 cron jobs activos en `pg_cron` (insights diario, memoria semanal).
+- 8 tablas vivas en `public` (eran 11 — se borraron 3 zombi).
+- Advisors de Supabase: 69 warnings → 6 (los 6 son intencionales o
+  config de Dashboard).
+
+---
+
+## Licencia / contacto
+
+Privado. santgodev.

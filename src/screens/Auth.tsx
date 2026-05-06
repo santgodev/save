@@ -11,11 +11,11 @@ import {
   Image,
   Dimensions,
   ActivityIndicator,
-  Alert,
   TouchableWithoutFeedback,
   Keyboard
 } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { notify } from '../lib/notify';
 import { useTheme } from '../theme/ThemeContext';
 import { Mail, Lock, LogIn, UserPlus, Apple, Chrome, Eye, EyeOff, User } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
@@ -230,11 +230,11 @@ export function Auth({ onLoginSuccess }: AuthProps) {
 
   const handleAuth = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Por favor ingresa todos los campos.');
+      notify.error('Faltan campos por llenar.');
       return;
     }
     if (mode === 'signup' && !fullName.trim()) {
-      Alert.alert('Error', 'Por favor ingresa tu nombre.');
+      notify.error('Falta tu nombre.');
       return;
     }
 
@@ -254,12 +254,12 @@ export function Auth({ onLoginSuccess }: AuthProps) {
             }
         });
         if (error) throw error;
-        Alert.alert('Éxito', '¡Cuenta creada! Revisa tu correo para confirmar.');
+        notify.success('¡Cuenta creada!', 'Revisa tu correo para confirmar.');
         setMode('login');
       }
       if (mode === 'login') onLoginSuccess();
     } catch (error: any) {
-      Alert.alert('Error de Autenticación', error.message);
+      notify.error(error.message, 'No pudimos autenticarte');
     } finally {
       setLoading(false);
     }
@@ -306,12 +306,12 @@ export function Auth({ onLoginSuccess }: AuthProps) {
             if (sessionError) throw sessionError;
             onLoginSuccess();
           } else {
-             Alert.alert('Sesión no encontrada', 'No se pudieron extraer las llaves de acceso.');
+             notify.error('No se pudieron extraer las llaves de acceso.', 'Sesión no encontrada');
           }
         }
       }
     } catch (error: any) {
-      Alert.alert('Error de Autenticación', error.message);
+      notify.error(error.message, 'No pudimos autenticarte');
     } finally {
       setLoading(false);
     }
