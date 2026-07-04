@@ -1,16 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import {
-  View, Text, Image, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, TextInput, Dimensions, Platform, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView
+  View, Text, Image, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, TextInput, Dimensions, Platform, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Animated
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ReceiptText, ImagePlus as ImagePlusIcon, Camera as CameraIcon, X as XIcon, Store, Banknote, Calendar, Tag, Sparkles } from 'lucide-react-native';
+import { ReceiptText, ImagePlus as ImagePlusIcon, Camera as CameraIcon, X as XIcon, Store, Banknote, Calendar, Tag, Sparkles, Check } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { normalize } from '../theme/theme';
 import { AnimatedProgressBar } from '../components/AnimatedProgressBar';
+import { CategoryIcon } from '../components/CategoryIcon';
+import { formatMoneyDigits } from '../lib/format';
+import { Audio } from 'expo-av';
 import { supabase } from '../lib/supabase';
 import { normalizeMerchant } from '../utils/merchant';
 import { logEvent, EVENTS } from '../lib/events';
@@ -19,7 +22,7 @@ import type { Session } from '@supabase/supabase-js';
 
 const { width, height } = Dimensions.get('window');
 
-export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBack: () => void; onSaveSuccess: () => void; session?: Session; pockets?: any[] }) => {
+export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode = 'camera' }: { onGoBack: () => void; onSaveSuccess: () => void; session?: Session; pockets?: any[]; initialMode?: 'camera' | 'manual' }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
 
@@ -140,9 +143,24 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
   const [visionOutput, setVisionOutput] = useState<string | null>(null);
   const [isOpeningPicker, setIsOpeningPicker] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const scaleAnim = React.useRef(new Animated.Value(0.5)).current;
   const [extractedData, setExtractedData] = useState<any>(null);
-  const [isManualMode, setIsManualMode] = useState(false);
+  const [isManualMode, setIsManualMode] = useState(initialMode === 'manual');
   const [editableMerchant, setEditableMerchant] = useState('');
+  
+  const amountInputRef = React.useRef<TextInput>(null);
+
+  React.useEffect(() => {
+    if (initialMode === 'manual') {
+      setTimeout(() => amountInputRef.current?.focus(), 400);
+    } else if (initialMode === 'camera') {
+      // Abrir la cámara automáticamente después de la transición de pantalla
+      setTimeout(() => {
+        takePhoto();
+      }, 400);
+    }
+  }, [initialMode]);
   
   // Extract dynamic categories from pockets (fallback to default if empty)
   const availableCategories = useMemo(() => {
@@ -254,7 +272,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
         category: parsed.category || availableCategories[0],
       });
 
-      setEditableAmount(amount);
+      setEditableAmount(formatMoneyDigits(amount));
       setEditableMerchant(parsed.merchant || '');
       if (parsed.category) setSelectedCategory(parsed.category);
 
@@ -279,13 +297,13 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
       if (!user) throw new Error('Sesión no detectada.');
 
       const iconMap: Record<string, string> = { 'Comida': 'utensils', 'Transporte': 'car', 'Ocio': 'theater', 'Ahorros': 'piggy-bank' };
-      const amountValue = parseFloat(editableAmount.replace(/[^0-9.]/g, ''));
+      const amountValue = parseInt(editableAmount.replace(/[^0-9]/g, ''), 10);
       const d = new Date();
       const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
       const { error } = await supabase.rpc('register_expense', {
         p_user_id: user.id,
-        p_merchant: editableMerchant || 'Factura Escaneada',
+        p_merchant: editableMerchant || (isManualMode ? 'Gasto Rápido' : 'Factura Escaneada'),
         p_amount: Math.abs(amountValue),
         p_category: selectedCategory,
         p_icon: iconMap[selectedCategory] || 'receipt-text',
@@ -295,8 +313,39 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
       if (error) throw error;
 
       setIsSaving(false);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onSaveSuccess();
+      setSaved(true);
+      
+      // Reproducir sonido "ding"
+      (async () => {
+        try {
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: 'https://cdn.freesound.org/previews/270/270404_5123851-lq.mp3' }
+          );
+          await sound.playAsync();
+        } catch (e) {
+          console.warn('Error playing sound', e);
+        }
+      })();
+      
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 150, // Instantáneo y rápido
+          useNativeDriver: true,
+        }),
+        Animated.delay(600), // Se queda un momento
+        Animated.timing(scaleAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        })
+      ]).start(() => {
+        onSaveSuccess();
+      });
+
+      setTimeout(() => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }, 150);
     } catch (error: any) {
       setIsSaving(false);
       console.error(error);
@@ -323,11 +372,11 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
           </TouchableOpacity>
           <View style={{ flex: 1 }} />
           <View style={[styles.scannerBadge, { backgroundColor: theme.colors.primaryContainer, borderColor: theme.colors.primary + '30' }]}>
-            <Text style={[styles.scannerBadgeText, { color: theme.colors.primary }]}>Ingresar Gasto</Text>
+            <Text style={[styles.scannerBadgeText, { color: theme.colors.primary }]}>{initialMode === 'manual' ? 'Gasto Rápido' : 'Ingresar Gasto'}</Text>
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingBottom: Math.max(insets.bottom, 24) + 20 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: Math.max(insets.top, 16) + 80, paddingBottom: Math.max(insets.bottom, 24) + 20 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {(image && progress > 0 && progress < 100) ? (
             <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }]}>
                <BlurView intensity={20} tint="dark" style={{ padding: 40, borderRadius: 32, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
@@ -345,7 +394,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
             </View>
           ) : (
             <View style={{ paddingHorizontal: 16 }}>
-               {!image && (
+               {!image && initialMode !== 'manual' && (
                  <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
                     <TouchableOpacity onPress={takePhoto} style={[styles.mainCameraButton, { flex: 1, backgroundColor: theme.colors.surface, borderWidth: 1.5, borderColor: theme.colors.outlineVariant }]} activeOpacity={0.8}>
                       <CameraIcon size={20} color={theme.colors.primary} />
@@ -377,9 +426,10 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
                     <View style={styles.modernAmountInputRow}>
                       <Text style={styles.modernCurrencySymbol}>$</Text>
                       <TextInput
+                        ref={amountInputRef}
                         style={styles.modernAmountInput}
                         value={editableAmount}
-                        onChangeText={setEditableAmount}
+                        onChangeText={(t) => setEditableAmount(formatMoneyDigits(t))}
                         keyboardType="numeric"
                         selectionColor={theme.colors.primary}
                         placeholder="0"
@@ -392,12 +442,12 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
                   <View style={styles.premiumDetailItem}>
                      <View style={[styles.premiumIconBox, { backgroundColor: theme.colors.surfaceContainerHighest }]}><Store size={20} color={theme.colors.onSurface} /></View>
                      <View style={{ flex: 1 }}>
-                        <Text style={styles.premiumDetailLabel}>Establecimiento</Text>
+                        <Text style={styles.premiumDetailLabel}>Detalle o Comercio</Text>
                         <TextInput 
                           style={styles.premiumDetailInput}
                           value={editableMerchant}
                           onChangeText={setEditableMerchant}
-                          placeholder="Nombre del Comercio"
+                          placeholder="Ej. Sándwich, Gasolina..."
                           placeholderTextColor={theme.colors.onSurfaceVariant + '80'}
                         />
                      </View>
@@ -419,7 +469,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
 
                   <TouchableOpacity
                     onPress={saveToSupabase}
-                    disabled={isSaving || parseInt(editableAmount.replace(/[^0-9]/g, '') || '0') <= 0}
+                    disabled={isSaving || saved || parseInt(editableAmount.replace(/[^0-9]/g, '') || '0') <= 0}
                     style={[styles.premiumConfirmBtn, { backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' }, (isSaving || parseInt(editableAmount.replace(/[^0-9]/g, '') || '0') <= 0) && { opacity: 0.6 }]}
                   >
                     {isSaving
@@ -430,6 +480,58 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets }: { onGoBac
             </View>
           )}
         </ScrollView>
+
+        {saved && (
+          <View style={[StyleSheet.absoluteFillObject, { zIndex: 1000, alignItems: 'center', justifyContent: 'center' }]}>
+            <BlurView intensity={Platform.OS === 'ios' ? 80 : 100} tint="dark" style={StyleSheet.absoluteFillObject} />
+            <Animated.View style={{ 
+              transform: [
+                { translateY: scaleAnim.interpolate({ inputRange: [0, 1], outputRange: [200, 0] }) },
+                { scale: scaleAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }
+              ],
+              opacity: scaleAnim,
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: width * 0.85,
+              paddingVertical: 48,
+              paddingHorizontal: 32,
+              borderRadius: 32,
+              backgroundColor: 'rgba(255,255,255,0.03)',
+              borderWidth: 1,
+              borderColor: 'rgba(255,255,255,0.1)',
+              ...theme.shadows.premium
+            }}>
+              <LinearGradient
+                colors={theme.colors.brandGradient as any}
+                start={{x:0, y:0}} end={{x:1, y:1}}
+                style={{
+                  width: 72, height: 72, borderRadius: 36,
+                  alignItems: 'center', justifyContent: 'center', marginBottom: 24,
+                  borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)',
+                  ...theme.shadows.soft
+                }}
+              >
+                <CategoryIcon 
+                  iconName={pockets?.find(p => p.name === selectedCategory)?.icon || 'sparkles'} 
+                  size={36} color="#FFF" strokeWidth={2} 
+                />
+              </LinearGradient>
+              
+              <Text style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)', marginBottom: 8, letterSpacing: 1, fontWeight: '500' }}>
+                GASTO REGISTRADO
+              </Text>
+              
+              <Text style={{ fontSize: 40, fontWeight: '900', color: '#FFF', marginBottom: 8, letterSpacing: -1 }}>
+                {editableAmount || '$0'}
+              </Text>
+              
+              <Text style={{ fontSize: 16, color: 'rgba(255,255,255,0.8)', fontWeight: '400' }}>
+                en {selectedCategory}
+              </Text>
+
+            </Animated.View>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
   );

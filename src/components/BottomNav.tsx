@@ -3,12 +3,12 @@ import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Platform } from '
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
-import { LayoutDashboard, Wallet, Grid2X2, User, Plus } from 'lucide-react-native';
+import { LayoutDashboard, Wallet, Grid2X2, History, Plus } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Screen } from '../types';
 
-export const BottomNav = ({ activeScreen, setScreen, onAddPress }: { activeScreen: Screen | string; setScreen: (s: Screen | string) => void, onAddPress?: () => void }) => {
+export const BottomNav = ({ activeScreen, setScreen, onAddPress, onAddLongPress }: { activeScreen: Screen | string; setScreen: (s: Screen | string) => void, onAddPress?: () => void, onAddLongPress?: () => void }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   
@@ -41,10 +41,10 @@ export const BottomNav = ({ activeScreen, setScreen, onAddPress }: { activeScree
       justifyContent: 'center',
     },
     navLabel: {
-      fontSize: 9,
+      fontSize: 8,
       fontWeight: '900',
       marginTop: 4,
-      letterSpacing: 0.5,
+      letterSpacing: 0.3,
       textAlign: 'center',
     },
     centerSpace: {
@@ -82,7 +82,7 @@ export const BottomNav = ({ activeScreen, setScreen, onAddPress }: { activeScree
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setScreen('dashboard'); }}
           >
             <LayoutDashboard size={20} color={activeScreen === 'dashboard' ? activeColor : inactiveColor} strokeWidth={activeScreen === 'dashboard' ? 2.5 : 1.5} />
-            <Text style={[styles.navLabel, { color: activeScreen === 'dashboard' ? activeColor : inactiveColor }]}>RESUMEN</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.navLabel, { color: activeScreen === 'dashboard' ? activeColor : inactiveColor }]}>RESUMEN</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
@@ -90,7 +90,7 @@ export const BottomNav = ({ activeScreen, setScreen, onAddPress }: { activeScree
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setScreen('expenses'); }}
           >
             <Wallet size={20} color={activeScreen === 'expenses' ? activeColor : inactiveColor} strokeWidth={activeScreen === 'expenses' ? 2.5 : 1.5} />
-            <Text style={[styles.navLabel, { color: activeScreen === 'expenses' ? activeColor : inactiveColor }]}>GASTOS</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.navLabel, { color: activeScreen === 'expenses' ? activeColor : inactiveColor }]}>MOVIMIENTOS</Text>
           </TouchableOpacity>
 
           <View style={styles.centerSpace}>
@@ -101,6 +101,11 @@ export const BottomNav = ({ activeScreen, setScreen, onAddPress }: { activeScree
                 if (onAddPress) onAddPress(); 
                 else setScreen('scanner');
               }}
+              onLongPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                if (onAddLongPress) onAddLongPress();
+              }}
+              delayLongPress={400}
               activeOpacity={0.8}
             >
               <LinearGradient colors={theme.colors.brandGradient as any} style={styles.fabGradient} start={{x:0, y:0}} end={{x:1, y:1}}>
@@ -114,15 +119,15 @@ export const BottomNav = ({ activeScreen, setScreen, onAddPress }: { activeScree
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setScreen('pockets'); }}
           >
             <Grid2X2 size={20} color={activeScreen === 'pockets' ? activeColor : inactiveColor} strokeWidth={activeScreen === 'pockets' ? 2.5 : 1.5} />
-            <Text style={[styles.navLabel, { color: activeScreen === 'pockets' ? activeColor : inactiveColor }]}>BOLSILLOS</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.navLabel, { color: activeScreen === 'pockets' ? activeColor : inactiveColor }]}>BOLSILLOS</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
             style={styles.navItem} 
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setScreen('profile'); }}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setScreen('history'); }}
           >
-             <User size={20} color={activeScreen === 'profile' ? activeColor : inactiveColor} strokeWidth={activeScreen === 'profile' ? 2.5 : 1.5} />
-             <Text style={[styles.navLabel, { color: activeScreen === 'profile' ? activeColor : inactiveColor }]}>PERFIL</Text>
+             <History size={20} color={activeScreen === 'history' ? activeColor : inactiveColor} strokeWidth={activeScreen === 'history' ? 2.5 : 1.5} />
+             <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.navLabel, { color: activeScreen === 'history' ? activeColor : inactiveColor }]}>HISTORIAL</Text>
           </TouchableOpacity>
 
         </View>

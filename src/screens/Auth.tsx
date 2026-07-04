@@ -265,6 +265,25 @@ export function Auth({ onLoginSuccess }: AuthProps) {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!email) {
+      notify.error('Ingresa tu email para recuperar la contraseña.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: Linking.createURL('/auth/callback'),
+      });
+      if (error) throw error;
+      notify.success('Correo enviado', 'Revisa tu bandeja para restablecer tu contraseña.');
+    } catch (error: any) {
+      notify.error(error.message, 'No pudimos enviar el correo');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleOAuthLogin = async (provider: 'google' | 'apple') => {
     setLoading(true);
     try {
@@ -414,7 +433,7 @@ export function Auth({ onLoginSuccess }: AuthProps) {
             </View>
 
             {mode === 'login' && (
-              <TouchableOpacity style={styles.forgotBtn}>
+              <TouchableOpacity style={styles.forgotBtn} onPress={handleForgotPassword}>
                 <Text style={styles.forgotText}>¿Olvidaste tu contraseña?</Text>
               </TouchableOpacity>
             )}

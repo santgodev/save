@@ -52,12 +52,18 @@ Deno.serve(async (req) => {
   // ------------------------------------------------------------------
   // 1. Cargar contexto: estado mensual unificado + memoria + historial.
   // ------------------------------------------------------------------
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+
   const [
     { data: stateData, error: stateErr },
     { data: profile },
     { data: memory },
     { data: rules },
     { data: history },
+    { data: todayTxs },
+    { data: otherTxs },
   ] = await Promise.all([
     userClient.rpc("get_monthly_state", { p_user_id: user.id }),
     userClient
@@ -82,6 +88,20 @@ Deno.serve(async (req) => {
       .in("role", ["user", "assistant"])
       .order("created_at", { ascending: false })
       .limit(HISTORY_WINDOW),
+    userClient
+      .from("transactions")
+      .select("merchant,amount,category")
+      .eq("user_id", user.id)
+      .eq("date_string", todayISO)
+      .lt("amount", 0)
+      .order("created_at", { ascending: false }),
+    userClient
+      .from("transactions")
+      .select("merchant,amount,category")
+      .eq("user_id", user.id)
+      .in("category", ["Otros", "Sin Categoría", "Uncategorized"])
+      .gte("date_string", monthStart)
+      .lt("amount", 0)
   ]);
 
   if (stateErr || !stateData) {
@@ -105,12 +125,20 @@ Deno.serve(async (req) => {
       confidence: Number(m.confidence ?? 0.5),
     })),
     spendingRules: (rules ?? []).map((r: Record<string, unknown>) => ({
-      // La columna real es `pattern` (raw) o `display_name` (legible).
-      // Preferimos display_name; fallback al pattern.
       merchant: (r.display_name as string) || (r.pattern as string),
       type: r.type as string,
     })),
-    todayISO: new Date().toISOString().slice(0, 10),
+    todayISO,
+    todayTransactions: (todayTxs ?? []).map((t: Record<string, unknown>) => ({
+      merchant: t.merchant as string,
+      amount: Number(t.amount),
+      category: t.category as string,
+    })),
+    otherTransactions: (otherTxs ?? []).map((t: Record<string, unknown>) => ({
+      merchant: t.merchant as string,
+      amount: Number(t.amount),
+      category: t.category as string,
+    })),
   });
 
   const historyMessages: OpenAIMessage[] = (history ?? [])

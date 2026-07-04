@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { X, ArrowRightLeft, ArrowRight, CheckCircle2, ChevronDown, Repeat } from 'lucide-react-native';
+import { X, ArrowRightLeft, ArrowRight, CheckCircle2, ChevronDown, Repeat, ArrowDown } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
@@ -14,114 +14,85 @@ import type { Session } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
 
-export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, initialParams }: { pockets: any[], session: Session, onCancel: () => void, onSaveSuccess: () => void, initialParams?: { fromId?: string, amount?: number } }) => {
+export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, initialParams }: { pockets: any[], session: Session, onCancel: () => void, onSaveSuccess: () => void, initialParams?: { fromId?: string, toId?: string, amount?: number } }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const [amount, setAmount] = useState(initialParams?.amount ? initialParams.amount.toString() : '');
   const [fromPocketId, setFromPocketId] = useState<string | null>(initialParams?.fromId || pockets[0]?.id || null);
-  const [toPocketId, setToPocketId] = useState<string | null>(null);
+  const [toPocketId, setToPocketId] = useState<string | null>(initialParams?.toId || null);
   const [isSaving, setIsSaving] = useState(false);
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
-    header: { 
-      position: 'absolute', 
-      top: 0, 
-      left: 0, 
-      right: 0, 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      justifyContent: 'space-between', 
-      paddingHorizontal: 24, 
-      paddingBottom: 20, 
-      zIndex: 100, 
-      backgroundColor: theme.mode === 'honey' ? 'rgba(252, 250, 238, 0.95)' : 'rgba(247, 247, 242, 0.95)',
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.outlineVariant
-    },
+    // --- NEW STYLES (MATCHING SCANNER) ---
+    scannerContainer: { flex: 1, backgroundColor: theme.colors.background }, // Matches app background
+    scannerTopBar: { position: 'absolute', top: 0, width: '100%', zIndex: 100, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center' },
     closeBtn: { 
       width: 48, 
       height: 48, 
       borderRadius: 24, 
       backgroundColor: theme.colors.surface, 
       alignItems: 'center', 
-      justifyContent: 'center', 
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
-      ...theme.shadows.soft 
-    },
-    title: { fontSize: 20, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -0.5 },
-    scroll: { paddingHorizontal: 24, paddingBottom: 140 },
-    
-    // --- MAIN CARD ---
-    card: { 
-      backgroundColor: theme.colors.surface, 
-      padding: 28, 
-      borderRadius: 36, 
-      borderWidth: 1, 
-      borderColor: theme.colors.outlineVariant,
-      marginBottom: 32,
-      ...theme.shadows.premium 
-    },
-    label: { fontSize: 11, fontWeight: '900', color: theme.colors.onSurfaceVariant, textTransform: 'uppercase', marginBottom: 16, letterSpacing: 1.2 },
-    inputWrap: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 3, borderBottomColor: theme.colors.primary, paddingBottom: 12 },
-    currencySymbol: { fontSize: 36, fontWeight: '900', color: theme.colors.primary, marginRight: 10 },
-    amountInput: { fontSize: 48, fontWeight: '900', color: theme.colors.onSurface, flex: 1, letterSpacing: -2 },
-    
-    // --- TRANSFER FLOW ---
-    transferFlow: { gap: 12 },
-    pocketSelectorSection: { marginBottom: 12 },
-    subLabel: { fontSize: 15, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 16, letterSpacing: -0.3 },
-    
-    pocketScroll: { marginHorizontal: -24, paddingHorizontal: 24 },
-    pocketChip: { 
-      width: width * 0.45,
-      padding: 20, 
-      borderRadius: 24, 
-      backgroundColor: theme.colors.surface, 
-      marginRight: 12, 
-      borderWidth: 1.5, 
-      borderColor: theme.colors.outlineVariant,
-      ...theme.shadows.soft 
-    },
-    pocketChipActiveFrom: { 
-      borderColor: theme.colors.tertiary, 
-      backgroundColor: theme.colors.tertiaryContainer + '10',
-      borderWidth: 2
-    },
-    pocketChipActiveTo: { 
-      borderColor: theme.colors.primary, 
-      backgroundColor: theme.colors.primaryContainer + '10',
-      borderWidth: 2
-    },
-    pocketChipTxt: { fontSize: 16, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 6 },
-    pocketChipSub: { fontSize: 12, fontWeight: '700', color: theme.colors.onSurfaceVariant },
-    
-    arrowCenter: { 
-      alignSelf: 'center', 
-      width: 52, 
-      height: 52, 
-      borderRadius: 26, 
-      backgroundColor: theme.colors.primaryContainer + '40', 
-      alignItems: 'center', 
       justifyContent: 'center',
-      marginVertical: 12,
-      borderWidth: 1,
-      borderColor: theme.colors.primary + '20'
+      borderWidth: 1.5,
+      borderColor: theme.colors.outlineVariant
     },
-
-    footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 24, paddingBottom: 40 },
-    saveBtn: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      height: 68, 
-      borderRadius: 28, 
-      overflow: 'hidden',
+    scannerBadge: { 
+      paddingHorizontal: 14, 
+      paddingVertical: 8, 
+      borderRadius: 20, 
+      borderWidth: 1.5, 
+      borderColor: theme.colors.primary + '30',
+      backgroundColor: theme.colors.primaryContainer,
       ...theme.shadows.premium 
     },
-    saveBtnDisabled: { opacity: 0.6 },
-    saveBtnTxt: { color: '#FFF', fontSize: 18, fontWeight: '900', letterSpacing: -0.5 }
+    scannerBadgeText: { color: theme.colors.primary, fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5 },
+    
+    scannerProgressCard: { 
+      paddingVertical: 24,
+      paddingHorizontal: 16, 
+      borderRadius: 36, 
+      overflow: 'hidden', 
+      backgroundColor: theme.colors.glassWhite,
+      borderWidth: 1.5, 
+      borderColor: 'rgba(255,255,255,0.8)',
+      ...theme.shadows.premium 
+    },
+    
+    premiumAmountBox: { alignItems: 'center', marginBottom: 24 },
+    premiumAmountLabel: { fontSize: 12, color: theme.colors.primary, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
+    modernAmountInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+    modernCurrencySymbol: { fontSize: 24, fontWeight: '800', color: theme.colors.onSurface, marginRight: 4 },
+    modernAmountInput: { fontSize: 52, fontWeight: '900', color: theme.colors.onSurface, textAlign: 'center', letterSpacing: -2, minWidth: 120 },
+    copBadge: { fontSize: 12, fontWeight: '900', color: theme.colors.primary, marginLeft: 8 },
+    
+    premiumDetailItem: { 
+      marginBottom: 0
+    },
+    arrowContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginVertical: 16
+    },
+    premiumIconBox: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primaryContainer },
+    premiumDetailLabel: { fontSize: 11, fontWeight: '900', color: theme.colors.primary, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 12, textAlign: 'center' },
+    premiumDetailValue: { fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, paddingVertical: 4 },
+    
+    categoryPicker: { flexDirection: 'row', gap: 8, marginTop: 12, marginBottom: 24 },
+    catChip: { 
+      paddingHorizontal: 14, 
+      paddingVertical: 10, 
+      borderRadius: 14, 
+      backgroundColor: theme.colors.surface,
+      borderWidth: 1.5,
+      borderColor: theme.colors.outlineVariant
+    },
+    catChipActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+    catText: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },
+    catTextActive: { color: '#FFF' },
+
+    premiumConfirmBtn: { borderRadius: 24, overflow: 'hidden', height: 64, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', ...theme.shadows.soft },
+    premiumConfirmBtnText: { color: '#FFF', fontWeight: '900', fontSize: 17, letterSpacing: -0.3 }
   }), [theme]);
 
   useEffect(() => {
@@ -163,106 +134,88 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) + 16 }]}>
-        <TouchableOpacity style={styles.closeBtn} onPress={onCancel}>
-          <X size={24} color={theme.colors.onSurface} strokeWidth={2.5} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Mover entre bolsillos</Text>
-        <View style={{ width: 44 }} />
-      </View>
-
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.scroll, { paddingTop: Math.max(insets.top, 20) + 96 }]}>
-        <View style={styles.card}>
-          <Text style={styles.label}>FLUJO DE CAPITAL</Text>
-          <View style={styles.inputWrap}>
-            <Text style={styles.currencySymbol}>$</Text>
-            <TextInput
-              style={styles.amountInput}
-              value={formatCurrency(amount)}
-              onChangeText={setAmount}
-              keyboardType="numeric"
-              placeholder="0"
-              placeholderTextColor={theme.colors.onSurfaceVariant + '40'}
-              autoFocus
-            />
+      <KeyboardAvoidingView style={[styles.scannerContainer, { backgroundColor: theme.colors.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        
+        <View style={[styles.scannerTopBar, { paddingTop: Math.max(insets.top, 16) + 16 }]}>
+          <TouchableOpacity 
+            style={[styles.closeBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outlineVariant }]} 
+            onPress={() => { onCancel(); Keyboard.dismiss(); }}
+          >
+            <X size={24} color={theme.colors.onSurface} strokeWidth={2.5} />
+          </TouchableOpacity>
+          <View style={{ flex: 1 }} />
+          <View style={[styles.scannerBadge, { backgroundColor: theme.colors.primaryContainer, borderColor: theme.colors.primary + '30' }]}>
+            <Text style={[styles.scannerBadgeText, { color: theme.colors.primary }]}>Mover Plata</Text>
           </View>
         </View>
 
-        <View style={styles.transferFlow}>
-          <View style={styles.pocketSelectorSection}>
-            <Text style={styles.subLabel}>Bolsillo de Origen</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pocketScroll} nestedScrollEnabled={true} directionalLockEnabled={true}>
-              {pockets.map(p => (
-                <TouchableOpacity 
-                   key={p.id} 
-                   activeOpacity={0.8}
-                   style={[styles.pocketChip, fromPocketId === p.id && styles.pocketChipActiveFrom]}
-                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setFromPocketId(p.id); }}
-                >
-                  <Text style={styles.pocketChipTxt}>{p.name}</Text>
-                  <Text style={[styles.pocketChipSub, fromPocketId === p.id && { color: theme.colors.tertiary }]}>{formatMoney(p.budget)}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
+        <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: Math.max(insets.top, 16) + 80, paddingBottom: Math.max(insets.bottom, 24) + 20, paddingHorizontal: 16 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <BlurView intensity={Platform.OS === 'ios' ? 95 : 100} tint="light" style={styles.scannerProgressCard}>
+              <View style={styles.premiumAmountBox}>
+                <Text style={styles.premiumAmountLabel}>Monto a Mover</Text>
+                <View style={styles.modernAmountInputRow}>
+                  <Text style={styles.modernCurrencySymbol}>$</Text>
+                  <TextInput
+                    style={styles.modernAmountInput}
+                    value={amount}
+                    onChangeText={(t) => setAmount(formatCurrency(t))}
+                    keyboardType="numeric"
+                    selectionColor={theme.colors.primary}
+                    placeholder="0"
+                    placeholderTextColor={theme.colors.outlineVariant}
+                    autoFocus
+                  />
+                  <Text style={styles.copBadge}>COP</Text>
+                </View>
+              </View>
 
-          <View style={styles.arrowCenter}>
-            <ArrowRightLeft size={24} color={theme.colors.primary} />
-          </View>
+              <View style={styles.premiumDetailItem}>
+                  <Text style={styles.premiumDetailLabel}>Bolsillo de Origen</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 4 }}>
+                    {pockets.map(p => (
+                      <TouchableOpacity 
+                        key={`from-${p.id}`} 
+                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setFromPocketId(p.id); }}
+                        style={[styles.catChip, fromPocketId === p.id && styles.catChipActive]}
+                      >
+                        <Text style={[styles.catText, fromPocketId === p.id && styles.catTextActive]}>{p.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+              </View>
 
-          <View style={styles.pocketSelectorSection}>
-            <Text style={styles.subLabel}>Destino de Fondos</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pocketScroll} nestedScrollEnabled={true} directionalLockEnabled={true}>
-              {pockets.map(p => (
-                <TouchableOpacity 
-                  key={p.id} 
-                  activeOpacity={0.8}
-                  style={[styles.pocketChip, toPocketId === p.id && styles.pocketChipActiveTo]}
-                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setToPocketId(p.id); }}
-                >
-                  <Text style={styles.pocketChipTxt}>{p.name}</Text>
-                  <Text style={[styles.pocketChipSub, toPocketId === p.id && { color: theme.colors.primary }]}>{formatMoney(p.budget)}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </ScrollView>
+              <View style={styles.arrowContainer}>
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.primaryContainer, alignItems: 'center', justifyContent: 'center' }}>
+                  <ArrowDown size={20} color={theme.colors.primary} />
+                </View>
+              </View>
 
-      <View style={[styles.footer, { flexDirection: 'row', gap: 12 }]}>
-        <TouchableOpacity
-          activeOpacity={0.8}
-          style={{
-            flex: 1,
-            height: 68,
-            borderRadius: 28,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: theme.colors.surface,
-            borderWidth: 1.5,
-            borderColor: theme.colors.outlineVariant,
-          }}
-          onPress={onCancel}
-        >
-          <Text style={{ fontSize: 17, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>Cancelar</Text>
-        </TouchableOpacity>
+              <View style={styles.premiumDetailItem}>
+                  <Text style={styles.premiumDetailLabel}>Destino de Fondos</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 4 }}>
+                    {pockets.map(p => (
+                      <TouchableOpacity 
+                        key={`to-${p.id}`} 
+                        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setToPocketId(p.id); }}
+                        style={[styles.catChip, toPocketId === p.id && styles.catChipActive]}
+                      >
+                        <Text style={[styles.catText, toPocketId === p.id && styles.catTextActive]}>{p.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+              </View>
 
-        <TouchableOpacity 
-          activeOpacity={0.9}
-          style={[styles.saveBtn, { flex: 2 }, (!amount || fromPocketId === toPocketId) && styles.saveBtnDisabled]} 
-          onPress={handleSave} 
-          disabled={isSaving || !amount || fromPocketId === toPocketId}
-        >
-          <LinearGradient colors={theme.colors.brandGradient as any} style={[StyleSheet.absoluteFill, { borderRadius: 28 }]} start={{x:0, y:0}} end={{x:1, y:0}} />
-          {isSaving ? <ActivityIndicator color="#FFF" /> : (
-            <>
-              <Text style={styles.saveBtnTxt}>Confirmar</Text>
-              <Repeat size={20} color="#FFF" style={{ marginLeft: 10 }} />
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
+              <TouchableOpacity
+                onPress={handleSave}
+                disabled={isSaving || !amount || fromPocketId === toPocketId}
+                style={[styles.premiumConfirmBtn, { marginTop: 32 }, (isSaving || !amount || fromPocketId === toPocketId) && { opacity: 0.6 }]}
+              >
+                {isSaving
+                  ? <ActivityIndicator color="#FFF" />
+                  : <Text style={styles.premiumConfirmBtnText}>Confirmar Traspaso</Text>}
+              </TouchableOpacity>
+            </BlurView>
+        </ScrollView>
       </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
   );

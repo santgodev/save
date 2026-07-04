@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Animated, Dimensions, TouchableOpacity, Platform, ActivityIndicator, RefreshControl
+  View, Text, StyleSheet, ScrollView, Animated, Dimensions, TouchableOpacity, Platform, ActivityIndicator, RefreshControl, SafeAreaView
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -12,11 +12,14 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
-import { normalize } from '../theme/theme';
+import { normalize, getDeterministicColor } from '../theme/theme';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { Transaction } from '../types';
 import { supabase } from '../lib/supabase';
-import { useMonthlyState } from '../lib/useMonthlyState';
+import { useCycleState, useUserCycles } from '../lib/useCycleState';
+import { CycleNav } from '../components/CycleNav';
+import { PocketsEmptyState } from '../components/PocketsEmptyState';
+import { TransactionDetailModal } from '../components/TransactionDetailModal';
 import { formatMoney } from '../lib/format';
 import type { Session } from '@supabase/supabase-js';
 
@@ -50,7 +53,10 @@ export const Dashboard = ({
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [showGreeting, setShowGreeting] = useState(true);
+  const greetingAnim = useRef(new Animated.Value(1)).current;
   const [greeting, setGreeting] = useState('Hola');
+  const [selectedTx, setSelectedTx] = useState<any>(null);
   const [pendingIncomes, setPendingIncomes] = useState<any[]>([]);
 
   useEffect(() => {
@@ -60,11 +66,22 @@ export const Dashboard = ({
     else setGreeting('Buenas noches');
 
     Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
+
+    // Auto-hide greeting after 4 seconds
+    const timer = setTimeout(() => {
+      Animated.timing(greetingAnim, { 
+        toValue: 0, 
+        duration: 500, 
+        useNativeDriver: false 
+      }).start(() => setShowGreeting(false));
+    }, 4000);
+
+    return () => clearTimeout(timer);
   }, []);
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
-    scrollContent: { paddingHorizontal: 24, paddingTop: Math.max(insets.top, 16) + 110, paddingBottom: 150 },
+    scrollContent: { paddingHorizontal: 24, paddingTop: Math.max(insets.top, 16) + 104, paddingBottom: 150 },
     
     headerSection: { marginBottom: 32 },
     sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
@@ -89,7 +106,16 @@ export const Dashboard = ({
     txAmountUI: { ...theme.typography.bodyLarge, fontWeight: '900' }
   }), [theme, insets.top]);
 
-  const { state: monthState } = useMonthlyState();
+  const { cycles, activeCycle } = useUserCycles();
+  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeCycle && !selectedCycleId) {
+      setSelectedCycleId(activeCycle.id);
+    }
+  }, [activeCycle]);
+
+  const { state: monthState, loading: monthLoading } = useCycleState(selectedCycleId || undefined);
 
   const totalIncomeMonth = monthState?.income_month ?? 0;
   const totalSpentMonth = monthState?.spent_month ?? 0;
@@ -166,58 +192,62 @@ export const Dashboard = ({
     const mostCritical = pocketStats[0];
 
     if (mostCritical && mostCritical.ratio >= 1) {
-      return `Presupuesto agotado: en ${mostCritical.name} excediste el plan por ${formatMoney(mostCritical.spent_month - mostCritical.allocated)}.`;
+      return `¡Ojo! Te pasaste en ${mostCritical.name} por ${formatMoney(mostCritical.spent_month - mostCritical.allocated)}. Toca aquí y revisemos cómo podemos cuadrarlo.`;
     }
     if (consumptionRatio >= 1) {
-      return `Alerta: gastaste el 100% del plan mensual (${formatMoney(totalSpentMonth)}).`;
+      return `¡Cuidado! Ya te gastaste el 100% de tu plan mensual. Toca aquí para que descubramos a dónde se fue la plata.`;
     }
     if (consumptionRatio >= 0.8) {
-      return `Atención: llevas ${Math.round(consumptionRatio * 100)}% del plan del mes.`;
+      return `Pilas, ya gastaste el ${Math.round(consumptionRatio * 100)}% de tu plan mensual. Toca aquí y te digo cómo no pasarnos.`;
     }
-    if (totalSpentMonth === 0) return 'Sin actividad este mes. Todo el plan está disponible.';
-    return `Llevas ${formatMoney(totalSpentMonth)} gastados este mes. Toca para ver el detalle.`;
+    if (totalSpentMonth === 0) return 'Aún no hay gastos este mes. ¡Toca aquí cuando empieces a gastar y yo te ayudo a cuidarlos!';
+    return `Llevas ${formatMoney(totalSpentMonth)} gastados este mes. Toca aquí y te cuento un par de curiosidades sobre tus gastos.`;
   };
-
-  // helper local "fmt" eliminado — usar formatMoney
-  const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-  const currentMonthName = monthState?.month ? monthNames[monthState.month - 1] : 'Mes';
 
   return (
     <View style={styles.container}>
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Animated.View style={{ opacity: fadeAnim }}>
-          
-          {/* HEADER PREMIUM — BALANCE & BUDGET HEALTH */}
-          <View style={[styles.headerSection, { paddingTop: 10 }]}>
-            <View style={{ marginBottom: 24 }}>
-              <Text style={{ ...theme.typography.bodyLarge, color: theme.colors.onSurfaceVariant, fontWeight: '600', marginBottom: 4 }}>
-                {greeting}, {userProfile?.full_name?.split(' ')[0] || 'Usuario'}
-              </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-                <Text style={{ ...theme.typography.display, color: theme.colors.onSurface }}>
-                  {formatMoney(mainDisplayAmount)}
+      {(!selectedCycleId || monthLoading) ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+        </View>
+      ) : (
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Animated.View style={{ opacity: fadeAnim }}>
+            
+            {/* HEADER PREMIUM — BALANCE & BUDGET HEALTH */}
+            <View style={[styles.headerSection, { paddingTop: 0 }]}>
+              <CycleNav 
+                cycles={cycles} 
+                activeCycleId={selectedCycleId} 
+                onChange={setSelectedCycleId} 
+              />
+
+            <View style={{ marginBottom: 20, marginTop: 12 }}>
+              <View style={{ flexDirection: 'column', gap: 6 }}>
+                <Text style={{ ...theme.typography.label, color: theme.colors.onSurfaceVariant, opacity: 0.8, letterSpacing: 1 }}>
+                  SALDO TOTAL DISPONIBLE
                 </Text>
-                <Text style={{ ...theme.typography.label, color: theme.colors.onSurfaceVariant, opacity: 0.6 }}>
-                  ESTE MES
+                <Text style={{ ...theme.typography.display, color: theme.colors.onSurface, lineHeight: 48 }}>
+                  {formatMoney(saldoDisponible)}
                 </Text>
               </View>
             </View>
 
             {/* BUDGET PROGRESS BAR — ELEGANT & FUNCTIONAL */}
             <View style={{ backgroundColor: theme.colors.surface, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: theme.colors.divider, ...theme.shadows.sm }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
                 <View>
-                  <Text style={{ ...theme.typography.label, color: theme.colors.onSurfaceVariant, marginBottom: 4 }}>PLAN DE GASTOS</Text>
-                  <Text style={{ ...theme.typography.h3, color: theme.colors.onSurface }}>{formatMoney(totalSpentMonth)} <Text style={{ fontSize: 13, color: theme.colors.onSurfaceVariant, fontWeight: '400' }}>de {formatMoney(monthState?.allocated_total || 0)}</Text></Text>
+                  <Text style={{ ...theme.typography.label, color: theme.colors.onSurfaceVariant, marginBottom: 6 }}>GASTADO ESTE MES</Text>
+                  <Text style={{ ...theme.typography.h3, color: theme.colors.onSurface }}>{formatMoney(totalSpentMonth)}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ ...theme.typography.label, color: theme.colors.primary, marginBottom: 4 }}>DISPONIBLE</Text>
-                  <Text style={{ ...theme.typography.h3, color: theme.colors.primary }}>{formatMoney(Math.max(0, (monthState?.allocated_total || 0) - totalSpentMonth))}</Text>
+                  <Text style={{ ...theme.typography.label, color: theme.colors.primary, marginBottom: 6 }}>INGRESOS DEL MES</Text>
+                  <Text style={{ ...theme.typography.h3, color: theme.colors.primary }}>{formatMoney(totalIncomeMonth)}</Text>
                 </View>
               </View>
 
@@ -232,7 +262,7 @@ export const Dashboard = ({
                     left: 0,
                     top: 0,
                     bottom: 0,
-                    width: `${Math.min(100, (totalSpentMonth / (monthState?.allocated_total || 1)) * 100)}%`,
+                    width: `${Math.min(100, totalIncomeMonth > 0 ? (totalSpentMonth / totalIncomeMonth) * 100 : 0)}%`,
                     borderRadius: 7,
                     shadowColor: theme.colors.primary,
                     shadowOffset: { width: 0, height: 0 },
@@ -273,14 +303,14 @@ export const Dashboard = ({
                   const dayOfMonth = new Date().getDate();
                   const totalDays = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
                   const monthProgress = dayOfMonth / totalDays;
-                  const spendingProgress = (monthState?.allocated_total || 0) > 0 ? (totalSpentMonth / monthState!.allocated_total) : 0;
+                  // FIX BUG 6: usar income_month como denominador, no allocated_total
+                  const spendingProgress = totalIncomeMonth > 0 ? (totalSpentMonth / totalIncomeMonth) : 0;
                   
                   const isOnTrack = spendingProgress <= monthProgress;
-                  const diffPct = Math.abs(Math.round((spendingProgress - monthProgress) * 100));
 
                   return (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isOnTrack ? theme.colors.successContainer + '30' : theme.colors.errorContainer + '30', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
-                      <Text style={{ ...theme.typography.caption, fontWeight: '900', color: isOnTrack ? theme.colors.success : theme.colors.error }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isOnTrack ? theme.colors.primaryContainer : theme.colors.errorContainer + '30', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                      <Text style={{ ...theme.typography.caption, fontWeight: '900', color: isOnTrack ? theme.colors.primary : theme.colors.error }}>
                         {isOnTrack ? 'A BUEN RITMO' : 'SOBREPASADO'}
                       </Text>
                     </View>
@@ -301,10 +331,10 @@ export const Dashboard = ({
                 }
               }}
               style={{ 
-                backgroundColor: theme.colors.glassWhite, 
+                backgroundColor: theme.colors.glassWhite,
                 padding: 18, 
                 borderRadius: 24, 
-                marginBottom: 32, 
+                marginBottom: 24, 
                 borderWidth: 1.5, 
                 borderColor: theme.colors.divider,
                 flexDirection: 'row',
@@ -373,7 +403,7 @@ export const Dashboard = ({
           <TouchableOpacity 
             activeOpacity={0.8} 
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenScanner(); }}
-            style={{ backgroundColor: theme.colors.primary, borderRadius: theme.radius.xl, padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 40, ...theme.shadows.md }}
+            style={{ backgroundColor: theme.colors.primary, borderRadius: theme.radius.xl, padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 32, ...theme.shadows.md }}
           >
             <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: theme.radius.full }}>
               <Plus size={24} color="#FFF" />
@@ -388,8 +418,6 @@ export const Dashboard = ({
             </View>
             <View style={{ gap: 12 }}>
               {(() => {
-                // Top 3 bolsillos con movimiento del mes — del RPC,
-                // mismos números que ve Pockets y el chat.
                 const activePockets = (monthState?.pockets || [])
                   .filter(mp => mp.spent_month > 0)
                   .sort((a, b) => b.spent_month - a.spent_month)
@@ -404,9 +432,21 @@ export const Dashboard = ({
                 }
 
                 return activePockets.map((mp, i) => {
-                  const remaining = mp.available;        // disponible directo, sin doble resta
-                  const isOver = remaining < 0 || (mp.allocated > 0 && mp.spent_month > mp.allocated);
-                  const catColor = (theme.colors as any).chartColors?.[i % 5] || theme.colors.primary;
+                  const originalPocket = pockets.find(p => p.id === mp.id);
+                  let planAlloc = mp.allocated;
+                  
+                  if (originalPocket?.is_default_free) {
+                    const monthIncome = monthState?.income_month ?? 0;
+                    const othersAlloc = pockets.filter(x => !x.is_default_free).reduce((acc, x) => {
+                      const m = (monthState?.pockets || []).find(p => p.id === x.id);
+                      return acc + (m?.allocated ?? (x as any).allocated_budget ?? x.budget ?? 0);
+                    }, 0);
+                    planAlloc = Math.max(0, monthIncome - othersAlloc);
+                  }
+
+                  const remaining = originalPocket?.is_default_free ? (planAlloc - mp.spent_month) : mp.available;
+                  const isOver = remaining < 0 || (planAlloc > 0 && mp.spent_month > planAlloc);
+                  const catColor = getDeterministicColor(mp.name, theme.colors.pocketFlatColors as string[]);
 
                   return (
                     <View key={`sim-${mp.id || i}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: theme.colors.surface, borderRadius: theme.radius.lg, borderWidth: 1, borderColor: theme.colors.divider }}>
@@ -415,7 +455,7 @@ export const Dashboard = ({
                         <Text style={{ ...theme.typography.bodyMedium, fontWeight: '800', color: theme.colors.onSurface }} numberOfLines={1}>{mp.name}</Text>
                       </View>
                       <Text style={{ ...theme.typography.bodyMedium, fontWeight: '900', color: isOver ? theme.colors.error : theme.colors.onSurfaceVariant }}>
-                        {isOver ? 'Excedido ' : ''}{formatMoney(Math.abs(isOver ? (mp.spent_month - mp.allocated) : remaining))}{!isOver ? ' disponible' : ''}
+                        {isOver ? 'Excedido ' : ''}{formatMoney(Math.abs(isOver ? (mp.spent_month - planAlloc) : remaining))}{!isOver ? ' disponible' : ''}
                       </Text>
                     </View>
                   );
@@ -438,18 +478,18 @@ export const Dashboard = ({
               <Text style={{ marginTop: 12, fontWeight: '800', textAlign: 'center' }}>Sin movimientos este mes</Text>
             </View>
           ) : (
-            transactions.slice(0, 3).map((tx) => {
-              const catColor = (theme.colors.categoryColors[tx.category] || theme.colors.categoryColors['Otros'])[0];
+              transactions.slice(0, 3).map((tx) => {
+              const catColor = getDeterministicColor(tx.category, theme.colors.pocketFlatColors as string[]);
               return (
-                <TouchableOpacity key={tx.id} style={styles.txItem} activeOpacity={0.7}>
+                <TouchableOpacity key={tx.id} style={styles.txItem} activeOpacity={0.7} onPress={() => setSelectedTx(tx)}>
                   <View style={[styles.txIconBoxUI, { backgroundColor: catColor + '15' }]}>
-                    <CategoryIcon iconName={tx.category === 'Ingreso' ? 'trending-up' : (tx as any).icon || 'tag'} size={20} color={catColor} />
+                    <CategoryIcon iconName={tx.category === 'Ingreso' ? 'trending-up' : (pockets?.find(p => p.name === tx.category)?.icon || (tx as any).icon || 'tag')} size={20} color={catColor} />
                   </View>
                   <View style={styles.txMain}>
-                    <Text style={styles.txMerchantUI} numberOfLines={1}>{tx.merchant}</Text>
+                    <Text style={styles.txMerchantUI} numberOfLines={1}>{tx.merchant || tx.category}</Text>
                     <Text style={styles.txDateUI}>{tx.category} • {new Date(((tx as any).date_string || tx.created_at).split('T')[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'short' })}</Text>
                   </View>
-                  <Text style={[styles.txAmountUI, { color: tx.category === 'Ingreso' ? theme.colors.success : theme.colors.onSurface }]}>
+                  <Text style={[styles.txAmountUI, { color: tx.category === 'Ingreso' ? theme.colors.primary : theme.colors.onSurface }]}>
                     {tx.category === 'Ingreso' ? '+ ' : ''}{formatMoney(Math.abs(tx.amount))}
                   </Text>
                 </TouchableOpacity>
@@ -459,6 +499,16 @@ export const Dashboard = ({
 
         </Animated.View>
       </ScrollView>
+      )}
+
+
+
+      <TransactionDetailModal 
+        visible={!!selectedTx}
+        transaction={selectedTx}
+        pockets={pockets}
+        onClose={() => setSelectedTx(null)}
+      />
     </View>
   );
 };

@@ -27,21 +27,9 @@ Save es una app móvil de finanzas personales con sistema de "bolsillos" (envelo
 
 ## 1. Seguridad (crítico)
 
-### 1.1 API keys expuestas en el cliente — `CRÍTICO`
+### 1.1 API keys expuestas en el cliente — ✅ `RESUELTO`
 
-**Archivo:** `src/constants.ts`, `.env`
-
-```ts
-export const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
-export const GOOGLE_VISION_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_VISION_API_KEY || '';
-```
-
-El prefijo `EXPO_PUBLIC_` hace que la variable se inyecte en el **bundle JS del cliente**. Cualquier persona puede descargar el APK, descompilarlo con apktool o similar, y leer la key en texto plano. Con esa key:
-- Pueden drenar tu cuota de OpenAI en horas (miles de dólares).
-- Pueden usar tu cuota de Google Vision a tu costo.
-- Les das acceso sin rate limit a APIs que pagas tú.
-
-**Impacto:** 5/5 · **Riesgo:** 5/5 · **Esfuerzo:** 3/5 → **Prioridad: máxima**
+**Fix implementado:** Ambas llamadas fueron migradas a **Supabase Edge Functions** (`ocr-receipt` y `chat-advisor`). Las keys ahora viven seguras en el servidor y el cliente se comunica vía `supabase.functions.invoke`.
 
 **Fix:**
 1. Mover ambas llamadas a **Supabase Edge Functions** (Deno). Ventajas: ya estás en el ecosistema Supabase, la auth del usuario se valida automáticamente, y la key queda server-side.
@@ -119,15 +107,9 @@ Y preferiblemente **no crearlo a mano**: `supabase.from('...')` ya respeta la se
 
 `app/index.tsx` suscribe a auth state en `App` (línea 227) y en `MainApp` (línea 49). El primero no hace nada útil (el `session` no se usa). **Eliminar el del `App`.**
 
-### 2.4 Sin capa de data fetching — `ALTA`
+### 2.4 Sin capa de data fetching — ✅ `RESUELTO PARCIALMENTE`
 
-Cada acción llama `loadUserData(userId)` que hace `select('*')` sobre todas las transacciones y bolsillos. En 6 meses con 500 transacciones por usuario, esto será lento y caro.
-
-**Fix:** introducir **@tanstack/react-query** (react-query). Ventajas:
-- Cache por query con stale-while-revalidate.
-- Invalidación fina (ej. tras crear tx, solo invalida `['transactions', currentMonth]`).
-- Optimistic updates sin refactor grande.
-- Reintentos automáticos con exponential backoff.
+**Fix implementado:** Se construyó un sistema de caché global personalizado (Stale-While-Revalidate) a través de `useMonthlyState.ts` y una precarga inteligente en `App.tsx`. Ahora el `Dashboard` y los `Bolsillos` cargan instantáneamente sin requerir dependencias externas pesadas, mitigando el problema de lentitud y múltiples re-renders. Aún queda pendiente tipar los datos por completo.
 
 ### 2.5 Sin gestión de estado global — `MEDIA`
 
@@ -204,17 +186,9 @@ Pero en `profileUtils.ts` se usa `t.amount` directo como number. **Decidir uno y
 
 `package.json` tiene `nativewind@4.2.3` y hay `tailwind.config.js`, pero prácticamente todos los componentes usan `StyleSheet.create` con objetos enormes. O se adopta NativeWind en serio (refactor gradual con `className`), o se desinstala. Tener ambos mundos duplica la superficie mental.
 
-### 3.6 Archivos temporales en el repo — `BAJA`
+### 3.6 Archivos temporales en el repo — ✅ `RESUELTO`
 
-En la raíz hay:
-- `tmp_prev_dashboard.ts`, `tmp_prev_theme.ts`, `tmp_prev_theme_utf8.ts`
-- `app_index_diff.txt`, `bottom_nav_diff.txt`, `pockets_diff.txt`, `theme_diff.txt`
-
-**Acción:** moverlos a `.trash/` o borrarlos. Añadir al `.gitignore`:
-```
-tmp_*.ts
-*_diff.txt
-```
+Los archivos temporales `tmp_*.ts` y `*_diff.txt` fueron eliminados del repositorio principal manteniendo limpio el directorio de trabajo.
 
 ### 3.7 `alert()` nativo en vez de modal temático
 
@@ -222,17 +196,12 @@ tmp_*.ts
 
 ---
 
-## 4. IA / LLM (deuda específica)
+## 4. IA / LLM (deuda específica) — ✅ `RESUELTO`
 
-Esto se tratará a fondo en `AI_SYSTEM_DESIGN.md`. Los bullets aquí son los problemas detectados:
-
-1. **Prompt regenerado en cada request** sin versión ni evaluación. Un cambio de una palabra puede degradar respuestas y no te das cuenta.
-2. **Contexto solo del mes actual.** La IA no puede responder "¿gasto más en abril que en marzo?".
-3. **No hay memoria de conversación**, ya mencionado.
-4. **Detección de acciones por string matching** (`content.includes('[ACTION:TRANSFER]')`). Frágil — el modelo puede escribir `[action:transfer]` en minúsculas o envolverlo en comillas y se rompe. Usar **Tool Use / Function Calling** de OpenAI.
-5. **No hay caching** de respuestas. Preguntar dos veces "¿cuánto gasté esta semana?" cobra dos veces.
-6. **Sin evaluación ni logging de calidad**. No sabes si la IA está dando consejos buenos o no.
-7. **"Event store" limitado.** Solo guardas transacciones, no eventos de comportamiento (abriste el scanner, editaste un presupuesto, ignoraste un consejo, etc.). Sin eso, la frase "que la IA aprenda del comportamiento" es aspiracional: no hay datos de comportamiento, solo financieros.
+Todos los problemas críticos detectados en el diseño inicial fueron resueltos gracias a una arquitectura basada en Edge Functions y base de datos:
+1. **Tool Use implementado**: Se migraron los string matchings frágiles a verdaderas funciones de OpenAI.
+2. **Memoria y Contexto**: La IA ahora posee un `synthesize-memory` que le permite recordar conversaciones y generar `insights` automáticos (Background tasks).
+3. **Persistencia**: Se guardan los historiales y el motor de IA es resiliente y privado en el lado del servidor.
 
 ---
 
@@ -342,24 +311,18 @@ Cada fase son 1-2 semanas full-time. Se puede ejecutar en paralelo a features.
 
 ---
 
-## Matriz de priorización (top 12)
+## Matriz de priorización Actualizada (Lo pendiente)
 
-| # | Item | Impacto | Riesgo | Esfuerzo | Score |
-|---|---|---|---|---|---|
-| 1 | API keys al server (Edge Functions) | 5 | 5 | 3 | **30** |
-| 2 | Verificar RLS policies | 5 | 5 | 1 | **50** |
-| 3 | Integrar Sentry | 4 | 4 | 1 | **40** |
-| 4 | Tipos generados de Supabase | 4 | 3 | 2 | **28** |
-| 5 | Persistir historial de chat (IA) | 5 | 3 | 2 | **32** |
-| 6 | Migrar a react-query | 4 | 3 | 3 | **21** |
-| 7 | Tests de `profileUtils` + patterns | 4 | 4 | 2 | **32** |
-| 8 | Tool Use en vez de `[ACTION:X]` | 3 | 3 | 2 | **24** |
-| 9 | Eventos de comportamiento (analytics) | 5 | 2 | 3 | **21** |
-| 10 | Migrar a expo-router carpetas | 3 | 2 | 4 | **10** |
-| 11 | Romper pantallas grandes | 3 | 2 | 3 | **15** |
-| 12 | Limpiar tmp_* y diff.txt | 1 | 1 | 1 | **10** |
+| # | Item | Impacto | Riesgo | Esfuerzo | Score | Estado |
+|---|---|---|---|---|---|---|
+| 1 | Verificar RLS policies | 5 | 5 | 1 | **50** | ⚠️ Pendiente |
+| 2 | Integrar Sentry | 4 | 4 | 1 | **40** | ⚠️ Pendiente |
+| 3 | Tipos generados de Supabase | 4 | 3 | 2 | **28** | ⚠️ Pendiente |
+| 4 | Tests de `profileUtils` + patterns | 4 | 4 | 2 | **32** | ⚠️ Pendiente |
+| 5 | Migrar a expo-router carpetas | 3 | 2 | 4 | **10** | ⚠️ Pendiente |
+| 6 | Romper pantallas grandes | 3 | 2 | 3 | **15** | ⚠️ Pendiente |
 
-_Score = (Impacto + Riesgo) × (6 − Esfuerzo)_
+_Puntos 1, 5, 8, 9 y 12 del auditoraje inicial ya fueron resueltos._
 
 ---
 

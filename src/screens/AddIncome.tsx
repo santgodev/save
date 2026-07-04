@@ -1,275 +1,249 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator, TouchableWithoutFeedback, Keyboard } from 'react-native';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
-import { X, CheckCircle2, Circle, ArrowRight, Plus, Wallet, PieChart } from 'lucide-react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { X, CheckCircle2, Circle, ArrowRight, Sparkles, Wallet, DollarSign, Percent } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
-import { normalize } from '../theme/theme';
 import { supabase } from '../lib/supabase';
 import { formatMoney, formatMoneyDigits } from '../lib/format';
 import { notify } from '../lib/notify';
+import { useCycleState } from '../lib/useCycleState';
 import type { Session } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
+const formatCurrency = formatMoneyDigits;
 
-export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pockets: any[], session: Session, onCancel: () => void, onSaveSuccess: () => void }) => {
+export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTransaction }: { pockets: any[], session: Session, onCancel: () => void, onSaveSuccess: () => void, editTransaction?: any }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
-  const [amount, setAmount] = useState('');
-  const [selectedPockets, setSelectedPockets] = useState<string[]>(pockets.map(p => p.id));
-  const [distType, setDistType] = useState<'equal' | 'manual'>('equal');
-  const [manualValues, setManualValues] = useState<Record<string, string>>({});
-  const [source, setSource] = useState('Me pagaron');
+  
+  const isEditing = !!editTransaction;
+  const initialDistType = (editTransaction?.metadata?.distribution_type) || 'smart';
+  const initialAmount = editTransaction ? Math.abs(editTransaction.amount).toString() : '';
+  
+  const { state: monthState } = useCycleState();
+  const unclosedCycle = monthState?.prev_month_closed === false ? monthState.previous_month : null;
+
+  const [distType, setDistType] = useState<'smart' | 'single'>(initialDistType);
+  const [amount, setAmount] = useState(initialAmount ? formatCurrency(initialAmount) : '');
+  const [source, setSource] = useState(editTransaction?.merchant || 'Me pagaron');
+  const [cycleMode, setCycleMode] = useState<'to_pockets' | 'to_free'>('to_pockets');
   const [isSaving, setIsSaving] = useState(false);
-  const [hasSwitchedToManual, setHasSwitchedToManual] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [rules, setRules] = useState<any[]>([]);
+
+  const variosPocket = pockets.find(p => p.is_default_free) || pockets.find(p => p.name.toLowerCase() === 'libre') || pockets.find(p => p.name.toLowerCase() === 'varios') || pockets[0];
+  const initialSinglePocket = (initialDistType === 'single' && editTransaction?.metadata?.distribution) 
+    ? Object.keys(editTransaction.metadata.distribution)[0] 
+    : (variosPocket?.id || pockets[0]?.id);
+  const [singlePocketId, setSinglePocketId] = useState<string>(initialSinglePocket);
+
+  useEffect(() => {
+    const fetchRules = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('income_sources')
+          .select('distribution_rules')
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        let dbRules = (!error && data && data.length > 0) ? (data[0].distribution_rules || []) : [];
+        
+        // Ensure new pockets with a budget are added to the rules
+        const pocketsInRules = new Set(dbRules.map((r: any) => r.pocket_id));
+        let maxPriority = dbRules.reduce((max: number, r: any) => Math.max(max, r.priority || 0), 0);
+        
+        pockets.forEach(p => {
+          if (!p.is_default_free && p.allocated > 0 && !pocketsInRules.has(p.id)) {
+            maxPriority += 1;
+            dbRules.push({
+              pocket_id: p.id,
+              priority: maxPriority,
+              type: 'fixed',
+              value: p.allocated
+            });
+          }
+        });
+
+        setRules(dbRules);
+      } catch (e) {
+        console.error('Error fetching rules:', e);
+      }
+    };
+    fetchRules();
+  }, [session.user.id, pockets]);
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     header: { 
-      position: 'absolute', 
-      top: 0, 
-      left: 0, 
-      right: 0, 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      justifyContent: 'space-between', 
-      paddingHorizontal: 24, 
-      paddingBottom: 20, 
-      zIndex: 100, 
-      backgroundColor: theme.colors.glassWhite,
-      borderBottomWidth: 1.5,
-      borderBottomColor: theme.colors.divider
+      position: 'absolute', top: 0, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', 
+      justifyContent: 'space-between', paddingHorizontal: 24, paddingBottom: 20, zIndex: 100, 
+      backgroundColor: theme.colors.background
     },
     closeBtn: { 
-      width: 48, 
-      height: 48, 
-      borderRadius: 24, 
-      backgroundColor: theme.colors.glassWhite, 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      borderWidth: 1.5, 
-      borderColor: 'rgba(255,255,255,0.8)',
+      width: 48, height: 48, borderRadius: 24, backgroundColor: theme.colors.glassWhite, 
+      alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.7)',
+      ...theme.shadows.soft
+    },
+    scannerBadge: { 
+      paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, 
+      borderColor: 'rgba(255,255,255,0.7)', backgroundColor: theme.colors.glassWhite,
       ...theme.shadows.soft 
     },
-    title: { fontSize: 20, fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -0.5, fontFamily: theme.fonts.headline },
-    scroll: { paddingHorizontal: 24, paddingBottom: 140 },
+    scannerBadgeText: { color: theme.colors.primary, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.5 },
     
-    // --- MAIN CARD ---
-    card: { 
-      backgroundColor: theme.colors.glassWhite, 
-      padding: 28, 
-      borderRadius: 36, 
-      borderWidth: 1.5, 
-      borderColor: 'rgba(255,255,255,0.8)',
-      marginBottom: 32,
-      ...theme.shadows.premium 
-    },
-    label: { fontSize: 11, fontWeight: '900', color: theme.colors.primary, textTransform: 'uppercase', marginBottom: 16, letterSpacing: 1.2 },
-    inputWrap: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 3, borderBottomColor: theme.colors.primary, paddingBottom: 12 },
-    currencySymbol: { fontSize: 36, fontWeight: '900', color: theme.colors.primary, marginRight: 10 },
-    amountInput: { fontSize: 48, fontWeight: '900', color: theme.colors.onSurface, flex: 1, letterSpacing: -2 },
+    scroll: { paddingHorizontal: 24, paddingBottom: 180 },
     
-    // --- DIST MODE SELECTOR ---
-    subLabel: { fontSize: 15, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 20, marginTop: 8, letterSpacing: -0.3 },
-    distRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
-    distBtn: { 
-      flex: 1,
-      backgroundColor: theme.colors.glassWhite, 
-      padding: 16, 
-      borderRadius: 24, 
-      borderWidth: 1.5, 
-      borderColor: 'rgba(255,255,255,0.7)',
-      ...theme.shadows.soft 
-    },
-    distBtnActive: { 
-      borderColor: theme.colors.primary, 
-      backgroundColor: theme.colors.primaryContainer,
-      borderWidth: 2
-    },
-    distBtnTitle: { fontSize: 16, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 6 },
-    distBtnTitleActive: { color: theme.colors.primary },
-    distBtnSub: { fontSize: 11, color: theme.colors.onSurfaceVariant, lineHeight: 15, fontWeight: '700' },
+    // --- Premium Amount Box ---
+    premiumAmountBox: { alignItems: 'center', marginTop: 10, marginBottom: 32 },
+    premiumAmountLabel: { fontSize: 12, color: theme.colors.primary, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+    modernAmountInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+    modernCurrencySymbol: { fontSize: 24, fontWeight: '700', color: theme.colors.onSurface, marginRight: 4 },
+    modernAmountInput: { fontSize: 52, fontWeight: '800', color: theme.colors.onSurface, textAlign: 'center', letterSpacing: -2, minWidth: 120 },
     
-    // --- MANUAL MODE LIST ---
-    manualChipRow: { marginBottom: 24 },
-    manualChip: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      gap: 8, 
-      backgroundColor: theme.colors.glassWhite, 
-      paddingHorizontal: 16, 
-      paddingVertical: 12, 
-      borderRadius: 16, 
-      marginRight: 12, 
-      borderWidth: 1.5, 
-      borderColor: 'rgba(255,255,255,0.7)',
-      ...theme.shadows.soft 
-    },
-    manualChipTxt: { fontSize: 13, fontWeight: '800', color: theme.colors.onSurface },
+    dividerCustom: { height: 1.5, backgroundColor: theme.colors.divider, marginVertical: 24 },
     
-    // --- LIST ITEMS ---
+    subLabel: { fontSize: 14, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 12, marginTop: 8, letterSpacing: -0.3 },
+    
+    // --- Chips (Source and Dist Type) ---
+    chipRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 8 },
+    catChip: { 
+      paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, 
+      backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.divider 
+    },
+    catChipActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+    catText: { fontSize: 13, fontWeight: '700', color: theme.colors.primary },
+    catTextActive: { color: '#FFF' },
+    
+    // --- Premium Segmented Control ---
+    segmentedControl: {
+      flexDirection: 'row', backgroundColor: theme.colors.surfaceContainerLow,
+      borderRadius: 16, padding: 4, marginBottom: 24,
+    },
+    segmentBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 8, paddingVertical: 12, borderRadius: 12,
+    },
+    segmentBtnActive: { backgroundColor: theme.colors.surface, ...theme.shadows.sm },
+    segmentText: { fontSize: 13, fontWeight: '700', color: theme.colors.onSurfaceVariant },
+    segmentTextActive: { color: theme.colors.primary, fontWeight: '800' },
+    
     pocketsList: { gap: 14 },
     pocketItem: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      padding: 20, 
-      borderRadius: 28, 
-      backgroundColor: theme.colors.glassWhite,
-      borderWidth: 1.5, 
-      borderColor: 'rgba(255,255,255,0.7)',
-      ...theme.shadows.soft 
+      flexDirection: 'row', alignItems: 'center', padding: 20, borderRadius: 24, backgroundColor: theme.colors.surface,
+      borderWidth: 1, borderColor: theme.colors.divider,
+      ...theme.shadows.sm
     },
-    pocketItemSelected: { 
-      borderColor: theme.colors.primary, 
-      backgroundColor: theme.colors.primaryContainer,
-      borderWidth: 2
-    },
-    pocketName: { fontSize: 17, fontWeight: '900', color: theme.colors.onSurface },
+    pocketItemSelected: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primaryContainer, borderWidth: 1.5 },
+    pocketName: { fontSize: 16, fontWeight: '700', color: theme.colors.onSurface },
     
-    manualInputBox: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      backgroundColor: theme.colors.primaryContainer, 
-      borderRadius: 16, 
-      paddingHorizontal: 14, 
-      borderWidth: 1, 
-      borderColor: 'rgba(255,255,255,0.5)' 
-    },
-    manualPrefix: { fontSize: 18, fontWeight: '800', color: theme.colors.primary, marginRight: 4 },
-    manualInput: { fontSize: 18, fontWeight: '900', color: theme.colors.onSurface, width: 120, paddingVertical: 10 },
+    ruleCard: { borderRadius: 24, padding: 20, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.divider, ...theme.shadows.sm },
+    ruleHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+    priorityBadge: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+    ruleTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: theme.colors.onSurface },
+    typeSwitch: { flexDirection: 'row', borderRadius: 12, padding: 4, backgroundColor: theme.colors.surfaceContainerLow },
+    typeToggle: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+    ruleInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    rulePrefix: { fontSize: 24, fontWeight: '700', color: theme.colors.primary },
+    ruleInput: { flex: 1, fontSize: 24, fontWeight: '800', color: theme.colors.onSurface },
+    previewResultTag: { backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14 },
+    previewResultTxt: { color: theme.colors.primary, fontSize: 14, fontWeight: '800' },
     
-    previewTag: { backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14 },
-    previewTagTxt: { color: theme.colors.primary, fontSize: 15, fontWeight: '900' },
-    
-    statusBox: { padding: 16, borderRadius: 20, alignItems: 'center', marginTop: 16, borderWidth: 1 },
-    statusTxt: { fontSize: 14, fontWeight: '900' },
-
     footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 24, paddingBottom: 40 },
-    saveBtn: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      height: 68, 
-      borderRadius: 28, 
-      overflow: 'hidden',
-      ...theme.shadows.premium 
-    },
+    premiumConfirmBtn: { borderRadius: 20, overflow: 'hidden', height: 60, backgroundColor: theme.colors.primary, ...theme.shadows.premium },
+    btnInner: { flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 },
+    premiumConfirmBtnText: { color: '#FFF', fontWeight: '900', fontSize: 16 },
     saveBtnDisabled: { opacity: 0.6 },
-    saveBtnTxt: { color: '#FFF', fontSize: 18, fontWeight: '900', letterSpacing: -0.5 }
   }), [theme]);
 
   const val = parseInt(amount.replace(/[^0-9]/g, ''), 10) || 0;
 
-  useEffect(() => {
-    if (distType === 'manual' && selectedPockets.length === 1 && val > 0) {
-      const pid = selectedPockets[0];
-      if (!manualValues[pid]) {
-        setManualValues(p => ({ ...p, [pid]: val.toString() }));
-      }
-    }
-  }, [selectedPockets, distType, val]);
-
-  // formatMoneyDigits importado de lib/format. Solo formatea el contenido
-  // del input numérico (sin signo $).
-  const formatCurrency = formatMoneyDigits;
-
-  const handleToggle = (id: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setSelectedPockets(prev => 
-      prev.includes(id) ? prev.filter(pId => pId !== id) : [...prev, id]
-    );
-  };
-
   const getDistributionPreview = () => {
-    const val = parseInt(amount.replace(/[^0-9]/g, ''), 10) || 0;
-    if (val <= 0 || selectedPockets.length === 0) return {};
-    const filteredPockets = pockets.filter(p => selectedPockets.includes(p.id));
     const distribution: Record<string, number> = {};
+    if (val <= 0) return { distribution, remainingCascade: 0 };
 
-    if (distType === 'manual') {
-      filteredPockets.forEach(p => {
-        distribution[p.id] = parseInt(manualValues[p.id]?.replace(/[^0-9]/g, '') || '0', 10);
+    if (distType === 'smart') {
+      let remaining = val;
+      // Only include rules whose pocket still exists — rules referencing
+      // deleted pockets are silently ignored (amount falls through to Libre).
+      const validPocketIds = new Set(pockets.map(p => p.id));
+      const sortedRules = [...rules]
+        .filter(r => r.pocket_id && validPocketIds.has(r.pocket_id))
+        .sort((a, b) => a.priority - b.priority);
+
+      sortedRules.forEach(rule => {
+        let amt = 0;
+        if (rule.type === 'fixed') {
+          amt = Math.min(remaining, rule.value);
+        } else if (rule.type === 'percentage') {
+          amt = Math.round(remaining * (rule.value / 100));
+        }
+        if (amt > 0) {
+          distribution[rule.pocket_id] = (distribution[rule.pocket_id] || 0) + amt;
+          remaining -= amt;
+        }
       });
-      return distribution;
-    }
+      
+      const remainingCascade = remaining;
 
-    // equal
-    const perPocketRaw = val / filteredPockets.length;
-    const perPocketRounded = Math.round(perPocketRaw / 100) * 100;
-    let runningTotal = 0;
-    filteredPockets.forEach((p, index) => {
-      if (index === filteredPockets.length - 1) {
-        distribution[p.id] = val - runningTotal;
-      } else {
-        distribution[p.id] = perPocketRounded;
-        runningTotal += perPocketRounded;
+      if (remaining > 0 && variosPocket) {
+        distribution[variosPocket.id] = (distribution[variosPocket.id] || 0) + remaining;
       }
-    });
-
-    return distribution;
-  };
-
-  const preview = getDistributionPreview();
-  const currentTotal = Object.values(preview).reduce((a, b) => a + b, 0);
-  const targetTotal = parseInt(amount.replace(/[^0-9]/g, ''), 10) || 0;
-  const remainder = targetTotal - currentTotal;
-  const isManualMismatch = distType === 'manual' && currentTotal !== targetTotal;
-
-  // Encontrar bolsillo varios
-  const variosPocket = pockets.find(p => p.name.toLowerCase() === 'varios');
-
-  const assignRemainderToVarios = () => {
-    if (!variosPocket || remainder <= 0) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    // Asegurarse de que esté seleccionado
-    if (!selectedPockets.includes(variosPocket.id)) {
-      setSelectedPockets(prev => [...prev, variosPocket.id]);
+      return { distribution, remainingCascade };
     }
-    
-    const currentVal = parseInt(manualValues[variosPocket.id]?.replace(/[^0-9]/g, '') || '0', 10);
-    const newVal = currentVal + remainder;
-    setManualValues(prev => ({ ...prev, [variosPocket.id]: newVal.toString() }));
+
+    if (distType === 'single') {
+      if (singlePocketId) distribution[singlePocketId] = val;
+      return { distribution, remainingCascade: 0 };
+    }
+
+    return { distribution, remainingCascade: 0 };
   };
+
+  const { distribution: preview, remainingCascade } = getDistributionPreview();
 
   const handleSave = async () => {
     let finalPreview = { ...preview };
-    const val = parseInt(amount.replace(/[^0-9]/g, ''), 10);
     if (!val || val <= 0) return notify.error('Ingresa un monto válido.');
-    if (selectedPockets.length === 0) return notify.error('Selecciona al menos un bolsillo.');
-
-    if (distType === 'manual' && remainder > 0) {
-      if (variosPocket) {
-        // Auto asignar a varios si el usuario acepta
-        const currentVarios = finalPreview[variosPocket.id] || 0;
-        finalPreview[variosPocket.id] = currentVarios + remainder;
-      } else {
-        return notify.error(`Faltan ${formatMoney(remainder)} por asignar.`);
-      }
-    } else if (distType === 'manual' && remainder < 0) {
-        return notify.error(`Te pasaste por ${formatMoney(Math.abs(remainder))}.`);
-    }
+    if (Object.keys(finalPreview).length === 0) return notify.error('No hay bolsillos asignados.');
 
     setIsSaving(true);
     try {
-      const { error } = await supabase.rpc('register_income', {
+      if (unclosedCycle) {
+        const { error: closureError } = await supabase.rpc('execute_cycle_closure', {
+          p_user_id: session.user.id,
+          p_cycle_id: unclosedCycle.id,
+          p_sweep_mode: cycleMode
+        });
+        if (closureError) throw closureError;
+      }
+
+      let rpcName = isEditing ? 'update_income_with_reversal' : 'register_income';
+      let rpcPayload = isEditing ? {
+        p_tx_id: editTransaction.id,
+        p_user_id: session.user.id,
+        p_new_amount: val,
+        p_new_distribution: finalPreview,
+        p_new_merchant: source
+      } : {
         p_user_id: session.user.id,
         p_amount: val,
         p_distribution: finalPreview,
-        p_mode: distType
-      });
+        p_mode: distType === 'smart' ? 'equal' : 'manual',
+        p_merchant: source,
+        p_cycle_mode: cycleMode
+      };
+
+      const { error } = await supabase.rpc(rpcName, rpcPayload);
 
       if (error) throw error;
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSaved(true);
-      // Esperar 1.8s para que el usuario vea el resumen antes de navegar
       setTimeout(() => onSaveSuccess(), 1800);
-    } catch(e: any) {
-      console.error(e);
+    } catch (e: any) {
+      console.error('[AddIncome] handleSave error:', e);
       notify.error('Error guardando el ingreso.');
     } finally {
       setIsSaving(false);
@@ -284,227 +258,272 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess }: { pocke
         </View>
         <Text style={{ fontSize: 26, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 8, letterSpacing: -0.5 }}>¡Listo!</Text>
         <Text style={{ fontSize: 16, color: theme.colors.onSurfaceVariant, fontWeight: '700', marginBottom: 32, textAlign: 'center' }}>
-          {formatMoney(parseInt(amount.replace(/[^0-9]/g, '')))} distribuidos en tus bolsillos
+          {formatMoney(val)} distribuidos en tus bolsillos
         </Text>
         <View style={{ width: '100%', gap: 10 }}>
-          {pockets.filter(p => selectedPockets.includes(p.id) && preview[p.id] > 0).map(p => (
-            <View key={p.id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: theme.colors.glassWhite, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.divider }}>
-              <Text style={{ fontWeight: '800', color: theme.colors.onSurface }}>{p.name}</Text>
-              <Text style={{ fontWeight: '900', color: theme.colors.primary }}>+ {formatMoney(preview[p.id])}</Text>
-            </View>
-          ))}
+          {Object.entries(preview).filter(([_, v]) => v > 0).map(([id, addValue]) => {
+            const p = pockets.find(p => p.id === id);
+            return p ? (
+              <View key={id} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, backgroundColor: theme.colors.glassWhite, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.divider }}>
+                <Text style={{ fontWeight: '800', color: theme.colors.onSurface }}>{p.name}</Text>
+                <Text style={{ fontWeight: '900', color: theme.colors.primary }}>+ {formatMoney(addValue)}</Text>
+              </View>
+            ) : null;
+          })}
         </View>
       </View>
     );
   }
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-    >
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) + 16 }]}>
         <TouchableOpacity style={styles.closeBtn} onPress={onCancel}>
           <X size={24} color={theme.colors.onSurface} strokeWidth={2.5} />
         </TouchableOpacity>
-        <Text style={styles.title}>Entró Plata</Text>
+        <View style={styles.scannerBadge}>
+           <Text style={styles.scannerBadgeText}>{isEditing ? 'Editar Ingreso' : 'Ingresar Plata'}</Text>
+        </View>
         <View style={{ width: 44 }} />
       </View>
 
-      <ScrollView 
-        keyboardShouldPersistTaps="handled" 
-        nestedScrollEnabled={true}
-        scrollEventThrottle={16}
-        decelerationRate="normal"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scroll, { paddingTop: Math.max(insets.top, 20) + 96 }]}
-      >
-        <View style={styles.card}>
-          <Text style={styles.label}>¿CUÁNTO ENTRÓ?</Text>
-          <View style={styles.inputWrap}>
-            <Text style={styles.currencySymbol}>$</Text>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingTop: Math.max(insets.top, 20) + 104 }]}>
+        
+        {/* --- AMOUNT HERO --- */}
+        <View style={styles.premiumAmountBox}>
+          <Text style={styles.premiumAmountLabel}>¿Cuánto Entró?</Text>
+          <View style={styles.modernAmountInputRow}>
+            <Text style={styles.modernCurrencySymbol}>$</Text>
             <TextInput
-              style={styles.amountInput}
-              value={formatCurrency(amount)}
-              onChangeText={setAmount}
+              style={styles.modernAmountInput}
+              value={amount}
+              onChangeText={(t) => setAmount(formatCurrency(t))}
               keyboardType="numeric"
               placeholder="0"
               placeholderTextColor={theme.colors.onSurfaceVariant + '40'}
               autoFocus
             />
           </View>
+        </View>
 
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 24, flexWrap: 'wrap' }}>
-             {['Me pagaron', 'Venta', 'Ingreso Extra'].map(opt => (
-                <TouchableOpacity 
-                  key={opt}
-                  onPress={() => { setSource(opt); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                  style={{ 
-                    backgroundColor: source === opt ? theme.colors.primary : theme.colors.background, 
-                    borderWidth: 1.5,
-                    borderColor: source === opt ? theme.colors.primary : theme.colors.outlineVariant,
-                    paddingHorizontal: 16, 
-                    paddingVertical: 10, 
-                    borderRadius: 16 
-                  }}
-                >
-                  <Text style={{ fontWeight: '800', color: source === opt ? '#FFF' : theme.colors.onSurfaceVariant }}>{opt}</Text>
-                </TouchableOpacity>
-             ))}
-          </View>
+        <View style={styles.dividerCustom} />
 
-          {distType === 'manual' && remainder !== 0 && (
+        <Text style={styles.subLabel}>¿De dónde viene?</Text>
+        <View style={styles.chipRow}>
+           {['Me pagaron', 'Venta', 'Ingreso Extra'].map(opt => (
+              <TouchableOpacity 
+                key={opt}
+                onPress={() => { setSource(opt); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                style={[styles.catChip, source === opt && styles.catChipActive]}
+              >
+                <Text style={[styles.catText, source === opt && styles.catTextActive]}>{opt}</Text>
+              </TouchableOpacity>
+           ))}
+        </View>
+
+         {!isEditing && (
+           <>
+             <View style={styles.dividerCustom} />
+             <Text style={styles.subLabel}>¿Cómo quieres tratar este ingreso?</Text>
+             <View style={styles.segmentedControl}>
+               <TouchableOpacity 
+                 activeOpacity={0.8} 
+                 style={[styles.segmentBtn, cycleMode === 'accumulate' && styles.segmentBtnActive]} 
+                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCycleMode('accumulate'); }}
+               >
+                 <ArrowRight size={18} color={cycleMode === 'accumulate' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
+                 <Text style={[styles.segmentText, cycleMode === 'accumulate' && styles.segmentTextActive]}>Sumar al actual</Text>
+               </TouchableOpacity>
+
+               <TouchableOpacity 
+                 activeOpacity={0.8} 
+                 style={[styles.segmentBtn, cycleMode === 'start_fresh' && styles.segmentBtnActive]} 
+                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCycleMode('start_fresh'); }}
+               >
+                 <Sparkles size={18} color={cycleMode === 'start_fresh' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
+                 <Text style={[styles.segmentText, cycleMode === 'start_fresh' && styles.segmentTextActive]}>Empezar en blanco</Text>
+               </TouchableOpacity>
+             </View>
+             <Text style={{ fontSize: 11, color: theme.colors.onSurfaceVariant, marginTop: 10, paddingHorizontal: 12, textAlign: 'center', opacity: 0.8 }}>
+               {cycleMode === 'accumulate' ? 'Se suma a la quincena/mes que ya llevas.' : 'Cierra las cuentas de hoy y empieza un nuevo periodo limpio desde cero.'}
+             </Text>
+           </>
+         )}
+
+         <View style={styles.dividerCustom} />
+
+        <Text style={styles.subLabel}>Modalidad de Asignación</Text>
+        <View style={styles.segmentedControl}>
+          {rules.length > 0 && (
             <TouchableOpacity 
-              onPress={assignRemainderToVarios}
-              disabled={!variosPocket || remainder <= 0}
-              style={[
-                styles.statusBox, 
-                { 
-                  backgroundColor: remainder > 0 ? theme.colors.primaryContainer : theme.colors.errorContainer, 
-                  borderColor: remainder > 0 ? theme.colors.primary : theme.colors.error,
-                  marginTop: 24,
-                  opacity: (remainder > 0 && !!variosPocket) ? 1 : 0.7
-                }
-              ]}
+              activeOpacity={0.8} 
+              style={[styles.segmentBtn, distType === 'smart' && styles.segmentBtnActive]} 
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDistType('smart'); }}
             >
-               <Text style={[styles.statusTxt, { color: remainder > 0 ? theme.colors.primary : theme.colors.error }]}>
-                 {remainder > 0 
-                   ? `Faltan ${formatMoney(remainder)} por asignar`
-                   : `Te pasaste por ${formatMoney(Math.abs(remainder))}`}
-               </Text>
-               {remainder > 0 && variosPocket && (
-                 <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.primary, marginTop: 4 }}>
-                   Toca aquí para mandar el resto a Varios
-                 </Text>
-               )}
-               {remainder > 0 && !variosPocket && (
-                 <Text style={{ fontSize: 10, fontWeight: '700', color: theme.colors.error, marginTop: 4, textAlign: 'center' }}>
-                   No tienes un bolsillo llamado "Varios". Créalo para auto-asignar.
-                 </Text>
-               )}
+              <Sparkles size={18} color={distType === 'smart' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
+              <Text style={[styles.segmentText, distType === 'smart' && styles.segmentTextActive]}>Inteligente</Text>
             </TouchableOpacity>
           )}
+
+          <TouchableOpacity 
+            activeOpacity={0.8} 
+            style={[styles.segmentBtn, distType === 'single' && styles.segmentBtnActive]} 
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDistType('single'); }}
+          >
+            <Wallet size={18} color={distType === 'single' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
+            <Text style={[styles.segmentText, distType === 'single' && styles.segmentTextActive]}>Bolsillo específico</Text>
+          </TouchableOpacity>
         </View>
 
-        <View>
-          <Text style={styles.subLabel}>Distribución de Fondos</Text>
-          <View style={[styles.distRow, { gap: 14 }]}>
-            <TouchableOpacity 
-              activeOpacity={0.8}
-              style={[styles.distBtn, distType === 'equal' && styles.distBtnActive]} 
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDistType('equal'); }}
-            >
-              <PieChart size={22} color={distType === 'equal' ? theme.colors.primary : theme.colors.onSurfaceVariant} style={{ marginBottom: 12 }} />
-              <Text style={[styles.distBtnTitle, distType === 'equal' && styles.distBtnTitleActive]}>Equitativo</Text>
-              <Text style={styles.distBtnSub}>Divide en partes iguales entre todos los bolsillos.</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              activeOpacity={0.8}
-              style={[styles.distBtn, distType === 'manual' && styles.distBtnActive]} 
-              onPress={() => { 
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
-                setDistType('manual'); 
-                if (!hasSwitchedToManual) { setHasSwitchedToManual(true); }
-              }}
-            >
-              <Wallet size={22} color={distType === 'manual' ? theme.colors.primary : theme.colors.onSurfaceVariant} style={{ marginBottom: 12 }} />
-              <Text style={[styles.distBtnTitle, distType === 'manual' && styles.distBtnTitleActive]}>Manual</Text>
-              <Text style={styles.distBtnSub}>Tú defines cuánto va a cada bolsillo.</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {distType === 'manual' && (
-          <View style={styles.manualChipRow}>
-             <Text style={[styles.label, { marginBottom: 12 }]}>AGREGAR BOLSILLOS</Text>
-             <ScrollView 
-               horizontal 
-               showsHorizontalScrollIndicator={false}
-               nestedScrollEnabled={true}
-               directionalLockEnabled={true}
-             >
-                {pockets.filter(p => !selectedPockets.includes(p.id)).map(p => (
-                  <TouchableOpacity key={p.id} style={styles.manualChip} onPress={() => handleToggle(p.id)}>
-                    <Plus size={16} color={theme.colors.primary} />
-                    <Text style={styles.manualChipTxt}>{p.name}</Text>
-                  </TouchableOpacity>
-                ))}
-             </ScrollView>
-          </View>
-        )}
-
-        <Text style={styles.subLabel}>Destinos Confirmados</Text>
         <View style={styles.pocketsList}>
-          {pockets.filter(p => distType !== 'manual' || selectedPockets.includes(p.id)).map(p => {
-            const isSelected = selectedPockets.includes(p.id);
-            const addValue = preview[p.id] || 0;
+          {distType === 'smart' ? (
+            <>
+              {[...rules].sort((a, b) => a.priority - b.priority).map((rule, index) => {
+                const p = pockets.find(p => p.id === rule.pocket_id);
+                if (!p) return null;
+                const addValue = preview[p.id] || 0;
+
+                return (
+                  <View key={rule.pocket_id} style={styles.ruleCard}>
+                    <View style={styles.ruleHeader}>
+                      <View style={[styles.priorityBadge, { backgroundColor: theme.colors.primaryContainer }]}>
+                        <Text style={{ color: theme.colors.onPrimaryContainer, fontSize: 10, fontWeight: '900' }}>{index + 1}</Text>
+                      </View>
+                      <Text style={styles.ruleTitle}>{p.name}</Text>
+
+                      <View style={styles.typeSwitch}>
+                        <TouchableOpacity 
+                          style={[styles.typeToggle, rule.type === 'fixed' && { backgroundColor: theme.colors.primary }]} 
+                          onPress={() => {
+                            const newRules = [...rules];
+                            const idx = newRules.findIndex(r => r.pocket_id === rule.pocket_id);
+                            newRules[idx] = { ...rule, type: 'fixed' };
+                            setRules(newRules);
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          }}
+                        >
+                          <DollarSign size={14} color={rule.type === 'fixed' ? '#FFF' : theme.colors.onSurfaceVariant} />
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                          style={[styles.typeToggle, rule.type === 'percentage' && { backgroundColor: theme.colors.primary }]} 
+                          onPress={() => {
+                            const newRules = [...rules];
+                            const idx = newRules.findIndex(r => r.pocket_id === rule.pocket_id);
+                            newRules[idx] = { ...rule, type: 'percentage' };
+                            setRules(newRules);
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          }}
+                        >
+                          <Percent size={14} color={rule.type === 'percentage' ? '#FFF' : theme.colors.onSurfaceVariant} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    <View style={styles.ruleInputRow}>
+                      <Text style={styles.rulePrefix}>{rule.type === 'fixed' ? '$' : '%'}</Text>
+                      <TextInput
+                        style={styles.ruleInput}
+                        value={rule.value > 0 ? (rule.type === 'fixed' ? formatMoneyDigits(String(rule.value)) : String(rule.value)) : ''}
+                        onChangeText={(t) => {
+                          const v = parseInt(t.replace(/\D/g, '')) || 0;
+                          const newRules = [...rules];
+                          const idx = newRules.findIndex(r => r.pocket_id === rule.pocket_id);
+                          newRules[idx] = { ...rule, value: v };
+                          setRules(newRules);
+                        }}
+                        placeholder="0"
+                        placeholderTextColor={theme.colors.onSurfaceVariant + '40'}
+                        keyboardType="numeric"
+                      />
+                      
+                      <View style={styles.previewResultTag}>
+                        <Text style={styles.previewResultTxt}>+ {formatMoney(addValue)}</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+
+              {variosPocket && remainingCascade > 0 && (
+                <View style={[styles.ruleCard, { opacity: 0.8 }]}>
+                    <View style={styles.ruleHeader}>
+                       <Text style={[styles.ruleTitle, { color: theme.colors.onSurfaceVariant }]}>{variosPocket.name} (Sobrante)</Text>
+                    </View>
+                    <View style={styles.ruleInputRow}>
+                        <View style={{ flex: 1 }} />
+                        <View style={[styles.previewResultTag, { backgroundColor: theme.colors.surface }]}>
+                          <Text style={[styles.previewResultTxt, { color: theme.colors.onSurfaceVariant }]}>+ {formatMoney(remainingCascade)}</Text>
+                        </View>
+                    </View>
+                </View>
+              )}
+            </>
+          ) : pockets.map(p => {
+            const isSingleSelected = distType === 'single' && singlePocketId === p.id;
             return (
-              <View key={p.id} style={[styles.pocketItem, isSelected && styles.pocketItemSelected]}>
+              <View key={p.id} style={[styles.pocketItem, isSingleSelected && styles.pocketItemSelected]}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.pocketName}>{p.name}</Text>
-                  {distType !== 'manual' && !isSelected && <Text style={{ fontSize: 11, color: theme.colors.onSurfaceVariant, fontWeight: '700' }}>Excluido del reparto</Text>}
                 </View>
 
-                {distType === 'manual' ? (
-                  <View style={styles.manualInputBox}>
-                    <Text style={styles.manualPrefix}>$</Text>
-                    <TextInput
-                      style={styles.manualInput}
-                      value={formatCurrency(manualValues[p.id] || '')}
-                      onChangeText={(v) => { setManualValues(prev => ({ ...prev, [p.id]: v })); }}
-                      keyboardType="numeric"
-                      placeholder="0"
-                      placeholderTextColor={theme.colors.onSurfaceVariant + '40'}
-                    />
-                    <TouchableOpacity onPress={() => handleToggle(p.id)} style={{ marginLeft: 12 }}><X size={20} color={theme.colors.error} /></TouchableOpacity>
-                  </View>
-                ) : (
-                  <TouchableOpacity onPress={() => handleToggle(p.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    {isSelected && addValue > 0 && (
-                      <View style={styles.previewTag}><Text style={styles.previewTagTxt}>+ {formatMoney(addValue)}</Text></View>
-                    )}
-                    {isSelected ? <CheckCircle2 size={24} color={theme.colors.primary} fill={theme.colors.primary + '10'} /> : <Circle size={24} color={theme.colors.outlineVariant} />}
-                  </TouchableOpacity>
-                )}
+                <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSinglePocketId(p.id); }} style={{ padding: 8 }}>
+                  {isSingleSelected ? <CheckCircle2 size={28} color={theme.colors.primary} /> : <Circle size={28} color={theme.colors.outlineVariant} />}
+                </TouchableOpacity>
               </View>
             );
           })}
         </View>
+
+        {unclosedCycle && (
+          <View style={{ marginTop: 32, backgroundColor: theme.colors.surfaceContainerLow, borderRadius: 24, padding: 20, borderWidth: 1, borderColor: theme.colors.divider }}>
+            <Text style={{ fontSize: 18, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 8, letterSpacing: -0.5 }}>Cierre del Mes Pasado</Text>
+            <Text style={{ fontSize: 14, color: theme.colors.onSurfaceVariant, marginBottom: 16 }}>Tienes saldo del mes anterior ({unclosedCycle.name}). ¿Qué quieres hacer con el dinero sobrante?</Text>
+            
+            <View style={{ flexDirection: 'column', gap: 12 }}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={[
+                  { padding: 16, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface },
+                  cycleMode === 'to_free' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primaryContainer, borderWidth: 1.5 }
+                ]}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCycleMode('to_free'); }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: cycleMode === 'to_free' ? theme.colors.primary : theme.colors.onSurface }}>Mover todo a Libre</Text>
+                  {cycleMode === 'to_free' ? <CheckCircle2 size={24} color={theme.colors.primary} /> : <Circle size={24} color={theme.colors.outlineVariant} />}
+                </View>
+                <Text style={{ fontSize: 13, color: cycleMode === 'to_free' ? theme.colors.primary : theme.colors.onSurfaceVariant, marginTop: 4 }}>Tus bolsillos empezarán de cero.</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={[
+                  { padding: 16, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface },
+                  cycleMode === 'to_pockets' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primaryContainer, borderWidth: 1.5 }
+                ]}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCycleMode('to_pockets'); }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: 15, fontWeight: '800', color: cycleMode === 'to_pockets' ? theme.colors.primary : theme.colors.onSurface }}>Dejar saldo en bolsillos</Text>
+                  {cycleMode === 'to_pockets' ? <CheckCircle2 size={24} color={theme.colors.primary} /> : <Circle size={24} color={theme.colors.outlineVariant} />}
+                </View>
+                <Text style={{ fontSize: 13, color: cycleMode === 'to_pockets' ? theme.colors.primary : theme.colors.onSurfaceVariant, marginTop: 4 }}>Mantener el dinero en su respectiva categoría.</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </ScrollView>
 
       <View style={[styles.footer, { flexDirection: 'row', gap: 12 }]}>
-        <TouchableOpacity
-          activeOpacity={0.8}
-          style={{
-            flex: 1,
-            height: 68,
-            borderRadius: 28,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: theme.colors.surface,
-            borderWidth: 1.5,
-            borderColor: theme.colors.outlineVariant,
-          }}
-          onPress={onCancel}
-        >
-          <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>Cancelar</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          activeOpacity={0.9}
-          style={[styles.saveBtn, { flex: 2 }, (!amount || selectedPockets.length === 0 || isManualMismatch) && styles.saveBtnDisabled]} 
-          onPress={handleSave} 
-          disabled={isSaving || !amount || selectedPockets.length === 0 || isManualMismatch}
-        >
-          <LinearGradient colors={theme.colors.brandGradient as any} style={[StyleSheet.absoluteFill, { borderRadius: 28 }]} start={{x:0, y:0}} end={{x:1, y:0}} />
-          {isSaving ? <ActivityIndicator color="#FFF" /> : (
-            <>
-              <Text style={styles.saveBtnTxt}>Guardar</Text>
-              <ArrowRight size={22} color="#FFF" style={{ marginLeft: 12 }} />
-            </>
-          )}
+        <TouchableOpacity activeOpacity={0.9} style={[styles.premiumConfirmBtn, { flex: 1 }, (!val || Object.keys(preview).length === 0) && styles.saveBtnDisabled]} onPress={handleSave} disabled={isSaving || !val || Object.keys(preview).length === 0}>
+          <View style={styles.btnInner}>
+            {isSaving ? <ActivityIndicator color="#FFF" /> : (
+              <>
+                <Text style={styles.premiumConfirmBtnText}>{isEditing ? 'Guardar Cambios' : 'Guardar'}</Text>
+                <ArrowRight size={22} color="#FFF" />
+              </>
+            )}
+          </View>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>

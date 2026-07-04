@@ -12,7 +12,8 @@ import { useTheme } from '../theme/ThemeContext';
 import { calculateFinancialProfile } from '../utils/profileUtils';
 import { supabase } from '../lib/supabase';
 import { logEvent, EVENTS } from '../lib/events';
-import { useMonthlyState } from '../lib/useMonthlyState';
+import { BottomSheet } from './BottomSheet';
+import { useCycleState } from '../lib/useCycleState';
 import { formatMoney } from '../lib/format';
 import { notify } from '../lib/notify';
 
@@ -26,6 +27,9 @@ interface TopBarProps {
   showChat?: boolean;
   onShowChatChange?: (show: boolean) => void;
   initialMessage?: string;
+  clearHistoryOnOpen?: boolean;
+  onHistoryCleared?: () => void;
+  onAvatarPress?: () => void;
 }
 
 const QUICK_QUESTIONS = [
@@ -39,12 +43,36 @@ type Message = {
   content: string;
 };
 
+let hasShownGreeting = false;
+
 export const TopBar = ({ 
   title, userAvatar, userName, userId, transactions = [], pockets = [],
-  showChat: propsShowChat, onShowChatChange, initialMessage
+  showChat: propsShowChat, onShowChatChange, initialMessage,
+  clearHistoryOnOpen, onHistoryCleared, onAvatarPress
 }: TopBarProps) => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+
+  const [greetingTitle, setGreetingTitle] = useState('');
+
+  useEffect(() => {
+    if (!hasShownGreeting && userName) {
+      hasShownGreeting = true;
+      const hours = new Date().getHours();
+      let g = 'Hola';
+      if (hours < 12) g = 'Buenos días';
+      else if (hours < 18) g = 'Buenas tardes';
+      else g = 'Buenas noches';
+      
+      const shortName = userName.split(' ')[0];
+      setGreetingTitle(`${g}, ${shortName}`);
+      
+      setTimeout(() => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setGreetingTitle('');
+      }, 3500);
+    }
+  }, [userName]);
 
   const [internalShowChat, setInternalShowChat] = useState(false);
   const showChat = propsShowChat !== undefined ? propsShowChat : internalShowChat;
@@ -59,6 +87,7 @@ export const TopBar = ({
   const [hasNewInsights, setHasNewInsights] = useState(false);
   const [isScoreMinimized, setIsScoreMinimized] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
   // session_id estable mientras el chat está abierto. Antes el cliente no
@@ -69,15 +98,15 @@ export const TopBar = ({
     `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
   );
 
-  // Sync with source of truth (get_monthly_state)
-  const { state: monthState } = useMonthlyState();
+  // Sync with source of truth
+  const { state: monthState } = useCycleState();
 
   // Auto-send initial message when chat is opened from outside
   useEffect(() => {
-    if (showChat && initialMessage && messages.length <= 1) {
+    if (showChat && initialMessage && !isHistoryLoading && messages.length <= 1) {
       sendMessage(initialMessage);
     }
-  }, [showChat, initialMessage]);
+  }, [showChat, initialMessage, isHistoryLoading]);
 
   const renderMessageContent = (msg: Message, style: any) => {
     // Extraer botones
@@ -221,6 +250,18 @@ export const TopBar = ({
       setIsHistoryLoading(true);
 
       try {
+        if (clearHistoryOnOpen) {
+          if (userId) {
+            await supabase.from('chat_messages').delete().eq('user_id', userId);
+          }
+          sessionIdRef.current = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+          if (!cancelled) {
+            setMessages([{ role: 'assistant', content: getProactiveGreeting() }]);
+            if (onHistoryCleared) onHistoryCleared();
+          }
+          return; // omit loading
+        }
+
         if (userId) {
           const { data, error } = await supabase
             .from('chat_messages')
@@ -472,7 +513,7 @@ export const TopBar = ({
     <>
       <BlurView intensity={Platform.OS === 'ios' ? 80 : 100} tint="light" style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) + 12 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <TouchableOpacity activeOpacity={0.8} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)} style={styles.avatarContainer}>
+          <TouchableOpacity activeOpacity={0.8} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); if (onAvatarPress) onAvatarPress(); }} style={styles.avatarContainer}>
             {userAvatar ? (
               <Image source={{ uri: userAvatar }} style={styles.avatarImage} />
             ) : (
@@ -481,15 +522,10 @@ export const TopBar = ({
               </View>
             )}
           </TouchableOpacity>
-          {!!userName && (
-            <Text style={{ ...theme.typography.label, fontSize: 9, color: theme.colors.primary }}>
-              {userName.split(' ')[0]}
-            </Text>
-          )}
         </View>
 
         <View style={{ position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: -1 }}>
-          <Text style={styles.topBarTitle}>{title}</Text>
+          <Text style={styles.topBarTitle}>{greetingTitle || title}</Text>
         </View>
 
         <TouchableOpacity style={styles.iconButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowChat(true); setHasNewInsights(false); }} activeOpacity={0.7}>
@@ -517,6 +553,9 @@ export const TopBar = ({
                   </View>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <TouchableOpacity style={styles.closeBtn} onPress={() => { Keyboard.dismiss(); setShowClearConfirm(true); }}>
+                    <Trash2 size={16} color={theme.colors.error} strokeWidth={2.5} />
+                  </TouchableOpacity>
                   <TouchableOpacity style={styles.closeBtn} onPress={() => { setShowChat(false); }}>
                     <X size={18} color={theme.colors.onSurface} strokeWidth={2.5} />
                   </TouchableOpacity>
@@ -595,6 +634,43 @@ export const TopBar = ({
             </View>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
+
+        <BottomSheet visible={showClearConfirm} onClose={() => setShowClearConfirm(false)} title="Nueva Conversación">
+          <View style={{ alignItems: 'center', marginBottom: 24 }}>
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.primaryContainer, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+              <Sparkles size={32} color={theme.colors.primary} />
+            </View>
+            <Text style={{ fontSize: 15, color: theme.colors.onSurfaceVariant, textAlign: 'center', lineHeight: 22, paddingHorizontal: 16 }}>
+              Save olvidará el contexto de la conversación actual para empezar desde cero con un análisis fresco.
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+            <TouchableOpacity 
+              style={{ width: '48%', paddingVertical: 14, borderRadius: 16, backgroundColor: theme.colors.surfaceContainerHighest, alignItems: 'center' }}
+              onPress={() => setShowClearConfirm(false)}
+            >
+              <Text style={{ color: theme.colors.onSurface, fontWeight: '700', fontSize: 15 }}>Cancelar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={{ width: '48%', paddingVertical: 14, borderRadius: 16, backgroundColor: theme.colors.primary, alignItems: 'center' }}
+              onPress={async () => {
+                setShowClearConfirm(false);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                if (userId) {
+                  try {
+                    await supabase.from('chat_messages').delete().eq('user_id', userId);
+                  } catch (e) {
+                    console.warn('[chat] error clearing history', e);
+                  }
+                }
+                sessionIdRef.current = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+                setMessages([{ role: 'assistant', content: getProactiveGreeting() }]);
+              }}
+            >
+              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 15 }}>Empezar</Text>
+            </TouchableOpacity>
+          </View>
+        </BottomSheet>
       </Modal>
     </>
   );

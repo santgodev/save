@@ -77,7 +77,7 @@ export const BottomSheet = ({ visible, onClose, title, scrollable = false, child
           style={StyleSheet.absoluteFill}
         />
       </Pressable>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }}>
         <View style={styles.container}>
           {title !== undefined && (
             <View style={styles.header}>

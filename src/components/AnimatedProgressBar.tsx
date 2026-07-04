@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { View, Animated, Easing, StyleSheet } from 'react-native';
 
-export const AnimatedProgressBar = ({ percent, color, bgColor }: { percent: number; color: string; bgColor: string }) => {
+export const AnimatedProgressBar = ({ percent, color, bgColor, height = 12 }: { percent: number; color: string; bgColor: string; height?: number }) => {
   const animatedWidth = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -14,7 +14,7 @@ export const AnimatedProgressBar = ({ percent, color, bgColor }: { percent: numb
   }, [percent]);
 
   return (
-    <View style={[styles.progressBarBg, { backgroundColor: bgColor }]}>
+    <View style={[styles.progressBarBg, { backgroundColor: bgColor, height, borderRadius: height / 2 }]}>
       <Animated.View style={[
         styles.progressBarFill,
         {
@@ -22,7 +22,8 @@ export const AnimatedProgressBar = ({ percent, color, bgColor }: { percent: numb
           width: animatedWidth.interpolate({
             inputRange: [0, 100],
             outputRange: ['0%', '100%']
-          })
+          }),
+          borderRadius: height / 2
         }
       ]} />
     </View>
@@ -30,6 +31,6 @@ export const AnimatedProgressBar = ({ percent, color, bgColor }: { percent: numb
 };
 
 const styles = StyleSheet.create({
-  progressBarBg: { height: 12, borderRadius: 6, overflow: 'hidden', width: '100%' },
-  progressBarFill: { height: '100%', borderRadius: 6 },
+  progressBarBg: { overflow: 'hidden', width: '100%' },
+  progressBarFill: { height: '100%' },
 });

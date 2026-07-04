@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
 
-export const Profile = ({ session, transactions, pockets, onRefresh }: { session: Session, transactions: any[], pockets: any[], onRefresh: () => void }) => {
+export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: { session: Session, transactions: any[], pockets: any[], onRefresh: () => void, onBack?: () => void }) => {
   const insets = useSafeAreaInsets();
   const { theme, mode, setThemeMode } = useTheme();
 
@@ -243,19 +243,26 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
   };
 
   const scoreColor = (score: number) => {
-    if (score > 80) return theme.colors.success;
-    if (score > 50) return theme.colors.primary;
+    if (score > 80) return theme.colors.primary;
+    if (score > 40) return theme.colors.onSurfaceVariant;
     return theme.colors.error;
   };
 
   const capitalize = (text: string) => text?.toLowerCase().split(' ').map(s => s.charAt(0).toUpperCase() + s.substring(1)).join(' ');
 
   return (
-    <ScrollView 
-      style={styles.container} 
-      showsVerticalScrollIndicator={false} 
-      contentContainerStyle={styles.scrollContent}
-    >
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        
+        {onBack && (
+          <TouchableOpacity onPress={onBack} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 24, paddingVertical: 8 }}>
+            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.colors.surfaceContainerLow, alignItems: 'center', justifyContent: 'center' }}>
+              <ChevronRight size={20} color={theme.colors.onSurface} style={{ transform: [{ rotate: '180deg' }] }} />
+            </View>
+            <Text style={{ fontSize: 16, fontWeight: '700', color: theme.colors.onSurface }}>Cerrar Perfil</Text>
+          </TouchableOpacity>
+        )}
+
       <View style={styles.aiBriefSection}>
          <View style={styles.aiBadge}>
             <Sparkles size={16} color={theme.colors.primary} fill={theme.colors.primary} />
@@ -282,17 +289,8 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
                </View>
                <View style={styles.scoreInfoBox}>
                   <Text style={styles.scoreExplanation}>
-                    Tu disciplina de registro y control de gastos hormiga define esta métrica.
+                    Tu constancia en el registro de gastos define esta métrica.
                   </Text>
-                  <View style={styles.metricItem}>
-                     <View style={styles.metricLabelRow}>
-                        <Text style={styles.miniLabel}>DISCIPLINA</Text>
-                        <Text style={styles.miniVal}>{profileData?.score}%</Text>
-                     </View>
-                     <View style={styles.metricBarContainer}>
-                        <View style={[styles.metricBar, { backgroundColor: scoreColor(profileData?.score || 0), width: `${profileData?.score ?? 0}%` }]} />
-                     </View>
-                  </View>
                </View>
             </View>
          </View>
@@ -403,5 +401,6 @@ export const Profile = ({ session, transactions, pockets, onRefresh }: { session
          <Text style={styles.versionLabel}>SAVE FINTECH v1.2.0 • PREMIUM EDITION</Text>
       </View>
     </ScrollView>
+    </View>
   );
 };

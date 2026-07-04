@@ -169,13 +169,19 @@ const baseCategoryColors: Record<string, string> = {
 export const getCategoryColorPair = (categoryName: string, isDark: boolean = false) => {
   const base = baseCategoryColors[categoryName] || '#7D907E';
   
-  // Simple deterministic approach: we use the base as the primary identifier.
-  // In a robust implementation, you could use an HSL library to shift lightness.
-  // For now, we return fixed pairings assuming base is mid-tone.
   if (isDark) {
     return [base, '#FFFFFF']; // [background, text]
   }
   return [base + '33', base]; // [20% opacity background, pure text]
+};
+
+export const getDeterministicColor = (seedString: string, colorsArray: string[]) => {
+  let hash = 0;
+  for (let i = 0; i < seedString.length; i++) {
+    hash = seedString.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % colorsArray.length;
+  return colorsArray[index];
 };
 
 // Retro-compatibility explicit mapping needed by chart components
@@ -217,6 +223,9 @@ export const getTheme = (mode: ThemeMode = 'sage') => {
         salmon: '#F0927B',
         lavender: '#D2A9D1',
       },
+      pocketFlatColors: [
+        '#8AD6CE', '#F0927B', '#D2A9D1', '#B9E2A2', '#8BD6DE', '#F7C59F', '#C5B4E3'
+      ],
       chartColors: ['#8AD6CE', '#B9E2A2', '#D2A9D1', '#F0927B', '#A5D6A7'],
       categoryColors: generatedCategoryColors, // Retained for compatibility
     },
@@ -261,8 +270,8 @@ export const getTheme = (mode: ThemeMode = 'sage') => {
       body: { fontSize: normalize(14), fontWeight: '400' as const, lineHeight: normalize(20) }, // Default text
       bodyMedium: { fontSize: normalize(14), fontWeight: '500' as const, lineHeight: normalize(20) },
       bodySmall: { fontSize: normalize(12), fontWeight: '400' as const, lineHeight: normalize(16) },
-      caption: { fontSize: normalize(11), fontWeight: '600' as const, lineHeight: normalize(14), letterSpacing: 0.5, textTransform: 'uppercase' as const },
-      label: { fontSize: normalize(10), fontWeight: '800' as const, lineHeight: normalize(12), letterSpacing: 1.2, textTransform: 'uppercase' as const },
+      caption: { fontSize: normalize(11), fontWeight: '600' as const, lineHeight: normalize(16), letterSpacing: 1, textTransform: 'uppercase' as const },
+      label: { fontSize: normalize(10), fontWeight: '700' as const, lineHeight: normalize(14), letterSpacing: 1.5, textTransform: 'uppercase' as const },
     },
 
     // ✨ Shadow Hierarchy

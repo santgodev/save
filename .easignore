@@ -1,0 +1,9 @@
+# Ignore AI Agent folders that contain symlinks
+.agents/
+.claude/
+.gemini/
+scratch/
+
+# Standard EAS ignores (EAS automatically ignores node_modules and .git)
+supabase/
+docs/

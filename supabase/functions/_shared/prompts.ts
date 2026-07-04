@@ -1,10 +1,8 @@
 // Versioned system prompts. Bump the version whenever we change behaviour
 // so chat_messages.prompt_version remains meaningful for offline analysis.
 
-export const ADVISOR_PROMPT_VERSION = "advisor.v6";
+export const ADVISOR_PROMPT_VERSION = "advisor.v7";
 
-// Tipos del estado mensual que viene de get_monthly_state(). Mantener en
-// sync con la migración 20260428000003_unified_monthly_state.sql.
 export type MonthlyState = {
   year: number;
   month: number;
@@ -50,17 +48,13 @@ function fmtCop(n: number): string {
   return Math.round(n).toLocaleString("es-CO", { maximumFractionDigits: 0 });
 }
 
-function pct(num: number, den: number): string {
-  if (!den || den <= 0) return "—";
-  return `${Math.round((num / den) * 100)}%`;
-}
-
 function deltaLabel(curr: number, prev: number): string {
-  if (prev === 0) return curr === 0 ? "igual al mes pasado" : "no había datos del mes pasado";
+  if (prev === 0) return "no hay datos del mes pasado para comparar";
   const diff = curr - prev;
   const pctDiff = Math.round((diff / Math.abs(prev)) * 100);
-  if (pctDiff === 0) return "igual al mes pasado";
-  return `${pctDiff > 0 ? "+" : ""}${pctDiff}% vs mes pasado`;
+  if (Math.abs(pctDiff) < 5) return "parecido al mes pasado";
+  if (pctDiff > 0) return `$${fmtCop(Math.abs(diff))} más que el mes pasado`;
+  return `$${fmtCop(Math.abs(diff))} menos que el mes pasado`;
 }
 
 export function buildAdvisorSystemPrompt(input: {
@@ -69,108 +63,177 @@ export function buildAdvisorSystemPrompt(input: {
   memorySnapshot: Array<{ key: string; summary: string; confidence: number }>;
   spendingRules: Array<{ merchant: string; type: string }>;
   todayISO: string;
+  todayTransactions: Array<{ merchant: string; amount: number; category: string }>;
+  otherTransactions: Array<{ merchant: string; amount: number; category: string }>;
 }): string {
   const { state } = input;
   const monthLabel = `${MONTH_NAMES_ES[state.month - 1]} ${state.year}`;
+  const isFirstMonth = state.previous_month.income === 0 && state.previous_month.spent === 0;
 
-  // Headline financiero del mes.
-  const headline = [
-    `Mes en curso: ${monthLabel}.`,
-    `Ingreso: $${fmtCop(state.income_month)} (${deltaLabel(state.income_month, state.previous_month.income)}).`,
-    `Gasto: $${fmtCop(state.spent_month)} (${deltaLabel(state.spent_month, state.previous_month.spent)}).`,
-    `Neto del mes: $${fmtCop(state.net_month)}.`,
-    `Disponible total en bolsillos hoy: $${fmtCop(state.available_total)} (de un plan de $${fmtCop(state.allocated_total)}).`,
-  ].join(" ");
+  // Resumen del mes en lenguaje cotidiano
+  const incomeLine = state.income_month === 0
+    ? `No has registrado plata que entró este mes.`
+    : isFirstMonth
+      ? `Este mes entraron $${fmtCop(state.income_month)} (primer mes, aún no hay con qué comparar).`
+      : `Este mes entraron $${fmtCop(state.income_month)} — ${deltaLabel(state.income_month, state.previous_month.income)}.`;
 
-  // Bolsillos: marcamos los que están en alerta.
+  const spentLine = isFirstMonth
+    ? `Has gastado $${fmtCop(state.spent_month)} (primer mes, aún no hay con qué comparar).`
+    : `Has gastado $${fmtCop(state.spent_month)} — ${deltaLabel(state.spent_month, state.previous_month.spent)}.`;
+
+  const netLine = state.income_month === 0 && state.spent_month > 0
+    ? `Llevas $${fmtCop(state.spent_month)} gastados sin haber registrado ningún ingreso este mes.`
+    : state.net_month >= 0
+      ? `Te sobran $${fmtCop(state.net_month)} de lo que entró este mes.`
+      : `Estás $${fmtCop(Math.abs(state.net_month))} en rojo — gastaste más de lo que entró.`;
+
+  const availableLine = `En tus bolsillos tienes disponibles $${fmtCop(state.available_total)} de los $${fmtCop(state.allocated_total)} que planeaste gastar este mes.`;
+
+  const headline = [incomeLine, spentLine, netLine, availableLine].join(" ");
+
+  // Gastos de HOY
+  const DIRTY_MERCHANTS = ["Factura Escaneada", "Gasto Rápido", "gasto rapido", "factura escaneada"];
+  const todayTotal = input.todayTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  const todayClean = input.todayTransactions.filter(t =>
+    !DIRTY_MERCHANTS.some(d => t.merchant.toLowerCase().includes(d.toLowerCase()))
+  );
+  const todayBlock = todayTotal === 0
+    ? "HOY: No hay gastos registrados hoy todavía."
+    : [
+        `HOY (${input.todayISO}): Gastaste $${fmtCop(todayTotal)} en total.`,
+        todayClean.length > 0
+          ? todayClean.map(t => `- ${t.merchant}: $${fmtCop(Math.abs(t.amount))} (${t.category})`).join("\n")
+          : `- Gastos sin nombre de comercio identificado.`
+      ].join("\n");
+
+  // Bolsillos en lenguaje simple
   const pocketLines = state.pockets.length
     ? state.pockets.map(p => {
-        // Orden importa: chequeamos >=100 PRIMERO porque también cumple
-        // >=80; al revés EXCEDIDO nunca se mostraría.
-        const alertFlag =
-          p.pct_used !== null && p.pct_used >= 100 ? "  🔴 EXCEDIDO" :
-          p.pct_used !== null && p.pct_used >= 80  ? "  ⚠ ALERTA"   :
-          "";
-        return `- ${p.name} [${p.category}]: plan $${fmtCop(p.allocated)} · disponible $${fmtCop(p.available)} · gastado del mes $${fmtCop(p.spent_month)} (${pct(p.spent_month, p.allocated)})${alertFlag}`;
+        let status = "";
+        if (p.allocated === 0 && p.spent_month > 0) {
+          status = `gastaste $${fmtCop(p.spent_month)} — sin tope definido`;
+        } else if (p.pct_used !== null && p.pct_used >= 100) {
+          status = `SE TE ACABÓ — gastaste $${fmtCop(p.spent_month)} de $${fmtCop(p.allocated)} 🔴`;
+        } else if (p.pct_used !== null && p.pct_used >= 80) {
+          status = `casi agotado — gastaste $${fmtCop(p.spent_month)} de $${fmtCop(p.allocated)}, te quedan $${fmtCop(p.available)} ⚠`;
+        } else {
+          status = `gastaste $${fmtCop(p.spent_month)} de $${fmtCop(p.allocated)}, te quedan $${fmtCop(p.available)}`;
+        }
+        return `- ${p.name}: ${status}`;
       }).join("\n")
     : "- (sin bolsillos creados todavía)";
 
-  // Top comercios — donde se va la plata realmente.
-  const merchantLines = state.top_merchants.length
-    ? state.top_merchants.map(m =>
-        `- ${m.display} ($${fmtCop(m.total)} en ${m.count} ${m.count === 1 ? "compra" : "compras"})`
+  // Top comercios — filtrados
+  const cleanMerchants = state.top_merchants.filter(m =>
+    !DIRTY_MERCHANTS.some(d => m.display.toLowerCase().includes(d.toLowerCase()))
+  );
+  const merchantLines = cleanMerchants.length
+    ? cleanMerchants.map(m =>
+        `- ${m.display}: $${fmtCop(m.total)} (${m.count} ${m.count === 1 ? "vez" : "veces"})`
       ).join("\n")
-    : "- (todavía no hay comercios destacados este mes)";
+    : "- (no hay comercios con nombre identificado este mes)";
+
+  // Gastos en "Otros"
+  const otherTotal = input.otherTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  const otherBlock = otherTotal === 0
+    ? "- No hay gastos en 'Otros' este mes."
+    : `En la categoría 'Otros' has gastado $${fmtCop(otherTotal)} en total este mes.\n` +
+      `Ese total se compone de:\n` +
+      input.otherTransactions.reduce((acc, t) => {
+        let m = t.merchant;
+        if (DIRTY_MERCHANTS.some(d => m.toLowerCase().includes(d.toLowerCase()))) {
+          m = "Gastos sin nombre de comercio";
+        }
+        const existing = acc.find(x => x.merchant === m);
+        if (existing) {
+          existing.amount += Math.abs(t.amount);
+        } else {
+          acc.push({ merchant: m, amount: Math.abs(t.amount) });
+        }
+        return acc;
+      }, [] as { merchant: string, amount: number }[])
+      .sort((a, b) => b.amount - a.amount)
+      .map(t => `  - ${t.merchant}: $${fmtCop(t.amount)}`)
+      .join("\n");
 
   const memoryLines = input.memorySnapshot.length
-    ? input.memorySnapshot.slice(0, 10).map(m =>
-        `- [${m.confidence.toFixed(2)}] ${m.key}: ${m.summary}`
-      ).join("\n")
-    : "- (sin memoria curada todavía)";
+    ? input.memorySnapshot.slice(0, 8).map(m => `- ${m.summary}`).join("\n")
+    : "- (aún no he aprendido nada de este usuario)";
 
-  const rulesLines = input.spendingRules.length
-    ? input.spendingRules.map(r =>
-        `- ${r.merchant}: Marcado como "${r.type}"`
-      ).join("\n")
-    : "- (sin reglas de gasto personalizadas)";
+  // Situaciones urgentes
+  const urgentAlerts: string[] = [];
+  if (state.income_month === 0 && state.spent_month > 0) {
+    urgentAlerts.push(`🚨 URGENTE: El usuario lleva $${fmtCop(state.spent_month)} gastados pero NO ha registrado ningún ingreso este mes. Si la pregunta es general, empieza por esto.`);
+  }
+  const pocketsNoBudget = state.pockets.filter(p => p.allocated === 0 && p.spent_month > 0);
+  if (pocketsNoBudget.length > 0) {
+    urgentAlerts.push(`⚠ Sin tope en: ${pocketsNoBudget.map(p => `${p.name} ($${fmtCop(p.spent_month)} gastados)`).join(", ")}. Está gastando sin control ahí.`);
+  }
+  const overBudget = state.pockets.filter(p => p.pct_used !== null && p.pct_used >= 100);
+  if (overBudget.length > 0) {
+    urgentAlerts.push(`🔴 Bolsillos agotados este mes: ${overBudget.map(p => p.name).join(", ")}.`);
+  }
+  const urgentBlock = urgentAlerts.length
+    ? `SITUACIONES IMPORTANTES (priorizar si la pregunta es abierta):\n${urgentAlerts.join("\n")}`
+    : "";
 
-  // Detección automática de bolsillos en alerta para que el modelo no tenga
-  // que adivinar — se la damos servida.
-  const alerts = state.pockets
-    .filter(p => p.pct_used !== null && p.pct_used >= 80)
-    .map(p => {
-      const status = p.pct_used! >= 100
-        ? `excedido por $${fmtCop(p.spent_month - p.allocated)}`
-        : `${Math.round(p.pct_used!)}% usado, queda $${fmtCop(p.available)}`;
-      return `- ${p.name}: ${status}`;
-    });
-  const alertBlock = alerts.length
-    ? `ALERTAS DEL MES (mencionar si pega con la pregunta):\n${alerts.join("\n")}`
-    : "ALERTAS DEL MES: ninguna — todos los bolsillos por debajo del 80%.";
-
-  return `Eres el ANALISTA de los datos financieros de ${input.displayName} en la app Save.
+  return `Eres SAGE, el asesor de finanzas personales de ${input.displayName} en la app Save.
 Hoy es ${input.todayISO}.
 
-QUÉ HACES (y qué no)
-- Tu único trabajo es CONVERTIR los números reales del usuario en información útil.
-- Solo informas. NO actúas, NO mueves dinero, NO creas bolsillos, NO registras gastos.
-- Si te piden "muévele a X" o "regístrame Y" responde:
-  "Solo te doy información. Para mover plata o registrar gastos hazlo desde la pantalla correspondiente."
+QUIÉN ES TU USUARIO
+Una persona normal — empleado, freelancer, alguien que quiere saber si le alcanza la plata.
+NO es contador ni economista. Usa palabras que usa él en su día a día, no las tuyas.
 
-ESTILO (importante)
-- Español neutro, claro, directo. Sin jerga colombiana, sin "parce".
-- BREVE: 2 a 4 oraciones. El usuario lee desde el celular.
-- Sin emojis. Sin botones. Sin listas largas. Sin saludos repetidos.
-- No empieces siempre con el mismo resumen si no te lo han pedido. Si te preguntan algo específico (ej: "¿cuánto gasté en Rappi?"), ve directo al grano.
-- Si el usuario te pregunta por algo y no tienes el dato en la MEMORIA APRENDIDA, di algo como: "Aún no he identificado ese patrón. Asegúrate de Sincronizar tu IA en tu Perfil para que pueda aprender de tus movimientos." en lugar de solo decir "No tengo ese dato".
-- Cuando cites una cifra, formátala con separador de miles ($1.250.000).
-- Cuando compares con el mes pasado, di explícitamente "vs mes pasado".
+CÓMO HABLAS (muy importante, no negociable)
+- Como un amigo que entiende de plata — cercano, claro, sin enredar.
+- PROHIBIDO usar: "neto", "flujo de caja", "porcentaje de tu plan", "presupuesto asignado",
+  "considera ajustar", "representa el X%", "mantener un control sobre", "oportunidades de recorte".
+- SÍ usa: "te sobra", "se te fue en", "te alcanza", "ya gastaste", "estás en rojo",
+  "cuida ese bolsillo", "te quedan", "sin tope de gasto", "toca revisar eso", "vas bien".
+- BREVE: máximo 3-4 oraciones. Directo al punto. Sin frases de relleno.
+- Si la situación es buena, díselo claramente. Si es mala, también — pero sin alarmar.
 
-QUÉ INFO PRIORIZAR
-1. Si la pregunta es general ("¿cómo voy?"): da el headline del mes (ingreso, gasto, neto, disponible) y menciona la alerta más fuerte si la hay.
-2. Si es una PREGUNTA DE SEGUIMIENTO (ej: "¿Eso es bueno?", "¿Por qué?"): NO repitas los números del headline. Responde directamente a la duda usando el contexto previo.
-3. Si la pregunta es sobre un bolsillo específico: usa los números de ese bolsillo.
-4. Si pregunta sobre un comercio o categoría: usa la lista de top merchants si aplica.
-5. Si te pregunta "qué te llama la atención" o algo abierto: elige el dato más accionable (mayor alerta, mayor gasto, mayor cambio mes-a-mes) y díselo.
-6. Si te pregunta sobre "aprendizaje" o "patrones": usa la MEMORIA APRENDIDA. Si está vacía, sugiérele sincronizar.
+LO QUE SÍ SABES (úsalo sin dudar)
+- Cuánto entró y cuánto se gastó este mes.
+- Los gastos de CADA BOLSILLO este mes.
+- Los gastos del DÍA DE HOY (ver sección GASTOS DE HOY).
+- Los comercios donde más se gasta este mes.
+- Los gastos "Sin Categoría" o "Otros" y de qué comercios provienen. (Considera "Otros" y "Sin Categoría" como LA MISMA COSA, son gastos sueltos que no tienen un bolsillo específico).
 
-CONTEXTO REAL DEL USUARIO
+LO QUE NO SABES (admítelo y redirige)
+- Gastos de ayer, de una semana específica, o de hace una hora.
+- Saldo bancario real o movimientos de tarjeta.
+- Si preguntan algo que no tienes: di "eso no lo tengo, pero puedes verlo en la pantalla de Movimientos."
+- NUNCA respondas con un dato diferente al que te preguntaron.
+
+COMPARACIONES CON EL MES PASADO
+- Si no hay datos del mes pasado: di "aún no tengo con qué comparar, es tu primer mes".
+- NUNCA digas porcentajes confusos como "697% más". Di: "gastaste bastante más que el mes pasado".
+
+PROACTIVIDAD
+- Si hay algo urgente (sin ingreso registrado, bolsillo agotado) y la pregunta es abierta: díselo PRIMERO.
+- Si todo está bien: díselo — "vas bien este mes".
+
+DATOS DEL MES — ${monthLabel}
 ${headline}
 
-BOLSILLOS DEL MES
+GASTOS DE HOY
+${todayBlock}
+
+CADA BOLSILLO
 ${pocketLines}
 
-TOP COMERCIOS DEL MES (por gasto)
+GASTOS EN "OTROS" O SIN CATEGORÍA
+${otherBlock}
+
+DÓNDE SE VA LA PLATA ESTE MES
 ${merchantLines}
 
-${alertBlock}
+${urgentBlock}
 
-REGLAS DE GASTO PERSONALIZADAS
-${rulesLines}
-
-MEMORIA APRENDIDA DEL USUARIO (tu notebook)
+LO QUE SÉ DE ESTE USUARIO (sus hábitos y patrones)
 ${memoryLines}
 
-Recuerda: solo informas. Si no estás seguro, dilo. Si te preguntan sobre lo que sabes de ellos, consulta la MEMORIA APRENDIDA.
+Recuerda: habla como amigo, no como robot. Corto y claro siempre.
 `;
 }

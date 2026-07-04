@@ -11,17 +11,20 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
 import { normalize } from '../theme/theme';
+import { getDeterministicColor } from '../theme/theme';
 import { CategoryIcon } from '../components/CategoryIcon';
+import { TransactionDetailModal } from '../components/TransactionDetailModal';
 import { supabase } from '../lib/supabase';
 import { formatMoney } from '../lib/format';
 import { notify } from '../lib/notify';
-import { MonthNav } from '../components/MonthNav';
+import { CycleNav } from '../components/CycleNav';
+import { useUserCycles } from '../lib/useCycleState';
 import { BottomSheet } from '../components/BottomSheet';
 import type { Session } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
 
-export const Expenses = ({ transactions, onRefresh, session, pockets }: { transactions: any[], onRefresh?: () => void, session: Session, pockets: any[] }) => {
+export const Expenses = ({ transactions, onRefresh, session, pockets, onEditIncome }: { transactions: any[], onRefresh?: () => void, session: Session, pockets: any[], onEditIncome?: (tx: any) => void }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -30,17 +33,17 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
   const [showFilter, setShowFilter] = useState(false);
   const [deletingTx, setDeletingTx] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [markingTx, setMarkingTx] = useState<any>(null);
-  const [isMarking, setIsMarking] = useState(false);
+  const [selectedTx, setSelectedTx] = useState<any>(null);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
 
-  const MONTHS = [
-    { label: 'Enero', value: 0 }, { label: 'Febrero', value: 1 }, { label: 'Marzo', value: 2 },
-    { label: 'Abril', value: 3 }, { label: 'Mayo', value: 4 }, { label: 'Junio', value: 5 },
-    { label: 'Julio', value: 6 }, { label: 'Agosto', value: 7 }, { label: 'Septiembre', value: 8 },
-    { label: 'Octubre', value: 9 }, { label: 'Noviembre', value: 10 }, { label: 'Diciembre', value: 11 }
-  ];
+  const { cycles, activeCycle } = useUserCycles();
+  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeCycle && !selectedCycleId) {
+      setSelectedCycleId(activeCycle.id);
+    }
+  }, [activeCycle]);
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
@@ -74,7 +77,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
       borderColor: 'rgba(255,255,255,0.7)',
       ...theme.shadows.soft 
     },
-    searchInput: { flex: 1, marginLeft: 12, fontSize: 15, fontWeight: '700', color: theme.colors.onSurface },
+    searchInput: { flex: 1, marginLeft: 12, fontSize: 15, fontWeight: '600', fontFamily: theme.fonts.body, letterSpacing: 0.3, color: theme.colors.onSurface },
     filterBtn: { 
       backgroundColor: theme.colors.glassWhite, 
       width: 52, 
@@ -148,28 +151,28 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
     Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
   }, []);
 
-  const monthTransactions = useMemo(() => {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    return (transactions || []).filter(tx => {
-      const date = new Date((tx.date_string || tx.created_at).split('T')[0] + 'T12:00:00');
-      return date.getMonth() === selectedMonth && date.getFullYear() === currentYear;
-    });
-  }, [transactions, selectedMonth]);
+  const cycleTransactions = useMemo(() => {
+    if (!selectedCycleId) return [];
+    return (transactions || []).filter(tx => tx.cycle_id === selectedCycleId);
+  }, [transactions, selectedCycleId]);
 
   const filteredTransactions = useMemo(() => {
-    return monthTransactions.filter(tx =>
+    return cycleTransactions.filter(tx =>
       (tx.merchant.toLowerCase().includes(searchQuery.toLowerCase()) ||
        tx.category.toLowerCase().includes(searchQuery.toLowerCase())) &&
       (!filterCategory || tx.category === filterCategory)
     ).sort((a, b) => new Date((b.date_string || b.created_at || '0').split('T')[0] + 'T12:00:00').getTime() - new Date((a.date_string || a.created_at || '0').split('T')[0] + 'T12:00:00').getTime());
-  }, [monthTransactions, searchQuery, filterCategory]);
+  }, [cycleTransactions, searchQuery, filterCategory]);
 
   const totalSpent = useMemo(() => {
-    // Alinear con la lógica del backend (get_monthly_state):
-    // Solo sumar cantidades negativas y excluir 'Ingreso' y 'Traslado'.
     return filteredTransactions
-      .filter(tx => tx.category !== 'Ingreso' && tx.category !== 'Traslado' && Number(tx.amount) < 0)
+      .filter(tx => 
+        tx.category !== 'Ingreso' && 
+        tx.category !== 'Traslado' && 
+        Number(tx.amount) < 0 &&
+        tx.metadata?.type !== 'internal_transfer_out' &&
+        tx.metadata?.type !== 'internal_transfer_in'
+      )
       .reduce((acc, tx) => acc + Math.abs(Number(tx.amount)), 0);
   }, [filteredTransactions]);
 
@@ -198,45 +201,6 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
     }
   };
 
-  // Marca un comercio con una regla de gasto. UPSERT por (user_id, canonical_pattern).
-  // El advisor lee esto en cada turno del chat y modula el tono.
-  //   confidence  → no me alertes por gastos en este merchant
-  //   monitor     → muéstrame si cambia mucho
-  //   reduce      → alértame, quiero gastar menos
-  const markMerchant = async (rule: 'confidence' | 'monitor' | 'reduce') => {
-    if (!markingTx || isMarking) return;
-    setIsMarking(true);
-    try {
-      const pattern = markingTx.merchant ?? '';
-      const canonical = markingTx.canonical_merchant
-        ?? pattern.toLowerCase().trim().replace(/\s+/g, ' ');
-      const { error } = await supabase
-        .from('user_spending_rules')
-        .upsert({
-          user_id: session.user.id,
-          pattern,
-          canonical_pattern: canonical,
-          display_name: pattern,
-          type: rule,
-          last_used_at: new Date().toISOString(),
-        }, { onConflict: 'user_id,canonical_pattern' });
-      if (error) throw error;
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setShowSuccess(true);
-      
-      setTimeout(() => {
-        setMarkingTx(null);
-        setShowSuccess(false);
-        if (onRefresh) onRefresh();
-      }, 1500);
-    } catch (e) {
-      console.error('markMerchant', e);
-      notify.error('No pudimos guardar la regla.');
-    } finally {
-      setIsMarking(false);
-    }
-  };
-
   const handleDeleteTrigger = (tx: any) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setDeletingTx(tx);
@@ -247,15 +211,21 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Animated.View style={[styles.headerContainer, { opacity: fadeAnim, paddingTop: Math.max(insets.top, 16) + 104 }]}>
-        {/* Navegación de Mes — componente compartido */}
-        <MonthNav value={selectedMonth} onChange={setSelectedMonth} />
+        {!selectedCycleId ? (
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color={theme.colors.primary} />
+          </View>
+        ) : (
+          <>
+            <Animated.View style={[styles.headerContainer, { opacity: fadeAnim, paddingTop: Math.max(insets.top, 16) + 104 }]}>
+              {/* Navegación de Ciclo — componente compartido */}
+              <CycleNav cycles={cycles} activeCycleId={selectedCycleId} onChange={setSelectedCycleId} />
 
-        <View style={styles.overviewCard}>
-           <View style={styles.overviewHeader}>
-              <View style={[styles.dotIndicator, { backgroundColor: theme.colors.error }]} />
-              <Text style={[styles.overviewTitle, { color: theme.colors.primary }]}>TOTAL GASTADO</Text>
-           </View>
+            <View style={styles.overviewCard}>
+               <View style={styles.overviewHeader}>
+                  <View style={[styles.dotIndicator, { backgroundColor: theme.colors.error }]} />
+                  <Text style={[styles.overviewTitle, { color: theme.colors.primary }]}>TOTAL GASTADO</Text>
+               </View>
            <Text style={[styles.totalAmountText, { color: theme.colors.onSurface }]}>
               {formatMoney(totalSpent)}
            </Text>
@@ -322,32 +292,29 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
             const isTransfer = tx.category === 'Traslado';
             const amt = Math.abs(tx.amount);
             
-            return (
-              <TouchableOpacity
-                key={tx.id || idx}
-                style={styles.txRow}
-                onPress={() => {
-                  // Tap = marcar comercio (no aplica a Ingreso ni Traslado).
-                  if (isIncome || isTransfer) return;
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setMarkingTx(tx);
-                }}
-                onLongPress={() => handleDeleteTrigger(tx)}
-                activeOpacity={0.7}
-              >
-                <View style={[
-                  styles.iconArea, 
-                  { backgroundColor: (theme.colors.categoryColors[tx.category] || theme.colors.categoryColors['Otros'])[0] + '15' }
-                ]}>
-                  <CategoryIcon 
-                    iconName={isIncome ? 'trending-up' : isTransfer ? 'arrow-right-left' : tx.icon} 
-                    size={20} 
-                    color={(theme.colors.categoryColors[tx.category] || theme.colors.categoryColors['Otros'])[0]} 
-                  />
-                </View>
+              const txColor = getDeterministicColor(tx.category, theme.colors.pocketFlatColors as string[]);
+              
+              return (
+                <TouchableOpacity
+                  key={tx.id || idx}
+                  style={styles.txRow}
+                  onPress={() => setSelectedTx(tx)}
+                  onLongPress={() => handleDeleteTrigger(tx)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[
+                    styles.iconArea, 
+                    { backgroundColor: (isIncome ? theme.colors.primary : isTransfer ? theme.colors.secondary : txColor) + '20' }
+                  ]}>
+                    <CategoryIcon 
+                      iconName={isIncome ? 'trending-up' : isTransfer ? 'arrow-right-left' : (pockets?.find(p => p.name === tx.category)?.icon || tx.icon || 'tag')} 
+                      size={20} 
+                      color={isIncome ? theme.colors.primary : isTransfer ? theme.colors.secondary : txColor} 
+                    />
+                  </View>
                 
                 <View style={styles.txInfo}>
-                  <Text style={styles.txMerchant} numberOfLines={1}>{tx.merchant}</Text>
+                  <Text style={styles.txMerchant} numberOfLines={1}>{tx.merchant || tx.category}</Text>
                   <Text style={styles.txCategory}>{tx.category} • {new Date((tx.date_string || tx.created_at).split('T')[0] + 'T12:00:00').toLocaleDateString('es-CO')}</Text>
                 </View>
 
@@ -366,8 +333,9 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
             );
           })
         )}
-        {filteredTransactions.length > 0 && <Text style={styles.longPressHint}>Toca para marcar el comercio · mantén presionado para eliminar</Text>}
       </ScrollView>
+          </>
+        )}
 
       <BottomSheet visible={!!deletingTx} onClose={() => setDeletingTx(null)} title="Eliminar movimiento">
         {deletingTx && (
@@ -395,139 +363,14 @@ export const Expenses = ({ transactions, onRefresh, session, pockets }: { transa
           </>
         )}
       </BottomSheet>
-
-
-      {/* Modal: marcar comercio con una regla de gasto (Premium BottomSheet Style) */}
-      {markingTx && (
-        <View style={[StyleSheet.absoluteFillObject, { zIndex: 5000 }]} pointerEvents="box-none">
-          <Pressable style={styles.modalOverlay} onPress={() => setMarkingTx(null)}>
-            <BlurView intensity={theme.mode === 'honey' ? 40 : 20} tint="dark" style={StyleSheet.absoluteFill} />
-          </Pressable>
-          
-          <View style={[
-            styles.modalContainer, 
-            { 
-              backgroundColor: theme.colors.background,
-              borderTopLeftRadius: 32,
-              borderTopRightRadius: 32,
-              borderBottomLeftRadius: 0,
-              borderBottomRightRadius: 0,
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              width: '100%',
-              paddingBottom: Math.max(insets.bottom, 24) + normalize(90),
-              paddingTop: 12,
-              borderTopWidth: 1,
-              borderColor: theme.colors.divider,
-              zIndex: 5000,
-              ...theme.shadows.premium
-            }
-          ]}>
-            <View style={{ width: 40, height: 4, backgroundColor: theme.colors.outlineVariant, borderRadius: 2, alignSelf: 'center', marginBottom: 20 }} />
-            
-            {showSuccess ? (
-              <Animated.View
-                style={{ padding: 40, alignItems: 'center', justifyContent: 'center' }}
-              >
-                <View style={{ 
-                  width: 80, height: 80, borderRadius: 40, 
-                  backgroundColor: theme.colors.successContainer, 
-                  alignItems: 'center', justifyContent: 'center',
-                  marginBottom: 24,
-                  ...theme.shadows.soft
-                }}>
-                  <CheckCircle2 size={44} color={theme.colors.success} strokeWidth={2.5} />
-                </View>
-                <Text style={{ fontSize: 24, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 8 }}>¡Listo!</Text>
-                <Text style={{ fontSize: 15, color: theme.colors.onSurfaceVariant, textAlign: 'center', fontWeight: '600' }}>
-                  Tu preferencia ha sido guardada.
-                </Text>
-              </Animated.View>
-            ) : (
-              <>
-                <View style={[styles.modalHeader, { paddingHorizontal: 24 }]}>
-                  <Text style={[styles.modalTitle, { fontSize: 20 }]}>Marcar comercio</Text>
-                  <TouchableOpacity onPress={() => setMarkingTx(null)} style={styles.closeBtn}>
-                    <X color={theme.colors.onSurface} size={18} strokeWidth={2.5} />
-                  </TouchableOpacity>
-                </View>
-
-                <View style={{ paddingHorizontal: 24, marginBottom: 24, alignItems: 'center' }}>
-                  <View style={{ 
-                    width: 64, height: 64, borderRadius: 24, 
-                    backgroundColor: theme.colors.primaryContainer, 
-                    alignItems: 'center', justifyContent: 'center',
-                    marginBottom: 16,
-                    borderWidth: 1,
-                    borderColor: theme.colors.primary + '20'
-                  }}>
-                    <Tag size={32} color={theme.colors.primary} />
-                  </View>
-                  <Text style={[styles.modalMerchant, { fontSize: 22, textAlign: 'center' }]}>{markingTx.merchant}</Text>
-                  <Text style={[styles.modalSub, { textAlign: 'center', marginTop: 8, paddingHorizontal: 20 }]}>
-                    Define cómo el asesor debe interpretar tus gastos en este lugar.
-                  </Text>
-                </View>
-
-                <View style={{ paddingHorizontal: 24, gap: 12, marginBottom: 16 }}>
-                  <TouchableOpacity
-                    onPress={() => markMerchant('confidence')}
-                    disabled={isMarking}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 14,
-                      padding: 16, borderRadius: 18,
-                      backgroundColor: theme.colors.successContainer,
-                      borderWidth: 1, borderColor: theme.colors.success + '30',
-                    }}
-                  >
-                    <ShieldCheck size={22} color={theme.colors.success} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 15, fontWeight: '900', color: theme.colors.success }}>Confianza</Text>
-                      <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 2 }}>Gasto necesario, no me alertes.</Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => markMerchant('monitor')}
-                    disabled={isMarking}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 14,
-                      padding: 16, borderRadius: 18,
-                      backgroundColor: theme.colors.primaryContainer,
-                      borderWidth: 1, borderColor: theme.colors.primary + '30',
-                    }}
-                  >
-                    <Eye size={22} color={theme.colors.primary} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 15, fontWeight: '900', color: theme.colors.primary }}>Vigilar</Text>
-                      <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 2 }}>Avísame si cambia mucho.</Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => markMerchant('reduce')}
-                    disabled={isMarking}
-                    style={{
-                      flexDirection: 'row', alignItems: 'center', gap: 14,
-                      padding: 16, borderRadius: 18,
-                      backgroundColor: theme.colors.errorContainer,
-                      borderWidth: 1, borderColor: theme.colors.error + '30',
-                    }}
-                  >
-                    <AlertTriangle size={22} color={theme.colors.error} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 15, fontWeight: '900', color: theme.colors.error }}>Reducir</Text>
-                      <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, marginTop: 2 }}>Quiero gastar menos aquí.</Text>
-                    </View>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-      )}
+      
+      <TransactionDetailModal 
+        visible={!!selectedTx}
+        transaction={selectedTx}
+        pockets={pockets}
+        onClose={() => setSelectedTx(null)}
+        onEdit={onEditIncome}
+      />
       </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
   );

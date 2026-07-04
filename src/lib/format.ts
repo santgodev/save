@@ -17,7 +17,7 @@ export function formatMoney(n: number | null | undefined): string {
   const num = Number(n);
   const isNegative = num < 0;
   const abs = Math.round(Math.abs(num));
-  const formatted = abs.toLocaleString('es-CO', { maximumFractionDigits: 0 });
+  const formatted = String(abs).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return `${isNegative ? '-' : ''}$${formatted}`;
 }
 
@@ -28,7 +28,7 @@ export function formatMoney(n: number | null | undefined): string {
 export function formatMoneyDigits(value: string): string {
   const numericValue = value.replace(/[^0-9]/g, '');
   if (!numericValue) return '';
-  return parseInt(numericValue, 10).toLocaleString('es-CO');
+  return parseInt(numericValue, 10).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }
 
 /**
