@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Animated, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useTheme } from '../theme/ThemeContext';
-import { ArrowRight, ArrowLeft, Wind, Check, Tag, Info, Utensils, Car, Home, Zap, Heart, Gamepad, GraduationCap, Target } from 'lucide-react-native';
+import { ArrowRight, ArrowLeft, Wind, Check, Tag, Info, Utensils, Car, Home, Zap, Heart, Gamepad, GraduationCap, Target, DollarSign, Percent } from 'lucide-react-native';
 import { supabase } from '../lib/supabase';
 import { formatMoneyDigits, formatMoney } from '../lib/format';
 import { notify } from '../lib/notify';
@@ -35,22 +35,32 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
 
   // Paso 2: Primer ingreso
   const [incomeAmount, setIncomeAmount] = useState('');
-  const [distributions, setDistributions] = useState<Record<string, number>>({});
+  const [rules, setRules] = useState<Record<string, { type: 'fixed' | 'percentage', value: number }>>({});
 
   const incomeNum = parseInt(incomeAmount.replace(/\D/g, '')) || 0;
   const totalSteps = 2;
 
-  // Cálculo del remanente (Sobrante -> Libre)
-  const cascade = useMemo(() => {
-    let totalDistributed = 0;
+  // Cálculo del remanente y distribución
+  const { preview, remainingCascade } = useMemo(() => {
+    let remaining = incomeNum;
+    const dist: Record<string, number> = {};
+
     selectedCats.forEach(id => {
-      totalDistributed += (distributions[id] || 0);
+      const rule = rules[id] || { type: 'fixed', value: 0 };
+      let amt = 0;
+      if (rule.type === 'fixed') {
+        amt = Math.min(remaining, rule.value);
+      } else if (rule.type === 'percentage') {
+        amt = Math.round(remaining * (rule.value / 100));
+      }
+      if (amt > 0) {
+        dist[id] = amt;
+        remaining -= amt;
+      }
     });
     
-    // El remanente es el ingreso total menos lo que ya se asignó a otros bolsillos
-    const remaining = incomeNum - totalDistributed;
-    return { remaining, totalDistributed };
-  }, [incomeNum, selectedCats, distributions]);
+    return { preview: dist, remainingCascade: remaining };
+  }, [incomeNum, selectedCats, rules]);
 
   const getCurrentStepMeta = () => {
     if (step === 1) return { title: 'Tus Bolsillos', sub: 'Selecciona las categorías donde sueles gastar tu plata.' };
@@ -60,7 +70,7 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
 
   const isStepValid = (() => {
     if (step === 1) return selectedCats.length > 0;
-    if (step === 2) return incomeNum > 0 && cascade.remaining >= 0;
+    if (step === 2) return incomeNum > 0 && remainingCascade >= 0;
     return false;
   })();
 
@@ -113,7 +123,7 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
         const finalDistribution: Record<string, number> = {};
         
         selectedCats.forEach(id => {
-          const val = distributions[id] || 0;
+          const val = preview[id] || 0;
           if (val > 0) {
             const p = insertedPockets.find(pocket => pocket.category === id);
             if (p) finalDistribution[p.id] = val;
@@ -121,8 +131,8 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
         });
 
         const librePocket = insertedPockets.find(p => p.is_default_free);
-        if (librePocket && cascade.remaining > 0) {
-          finalDistribution[librePocket.id] = cascade.remaining;
+        if (librePocket && remainingCascade > 0) {
+          finalDistribution[librePocket.id] = remainingCascade;
         }
 
         const { error: rpcError } = await supabase.rpc('register_income', {
@@ -130,7 +140,8 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
           p_amount: incomeNum,
           p_distribution: finalDistribution,
           p_mode: 'manual', // Fue manual
-          p_merchant: 'Saldo Inicial'
+          p_merchant: 'Saldo Inicial',
+          p_cycle_mode: 'start_fresh'
         });
 
         if (rpcError) {
@@ -139,12 +150,19 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
         }
 
         // 4. (Opcional) Guardar una regla base en income_sources
-        const rules = Object.entries(finalDistribution).map(([pId, val], idx) => ({
-          pocket_id: pId,
-          type: 'fixed',
-          value: val,
-          priority: idx + 1
-        })).filter(r => r.value > 0);
+        const dbRules = selectedCats.map((id, idx) => {
+          const rule = rules[id] || { type: 'fixed', value: 0 };
+          const p = insertedPockets.find(pocket => pocket.category === id);
+          if (p && rule.value > 0) {
+             return {
+               pocket_id: p.id,
+               type: rule.type,
+               value: rule.value,
+               priority: idx + 1
+             };
+          }
+          return null;
+        }).filter(r => r !== null);
 
         await supabase.from('income_sources').insert({
           user_id: session.user.id,
@@ -152,7 +170,7 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
           amount: incomeNum,
           frequency: 'monthly',
           next_date: new Date().toISOString().split('T')[0],
-          distribution_rules: rules,
+          distribution_rules: dbRules,
           is_active: true,
           metadata: { income_type: 'fixed' }
         });
@@ -213,33 +231,36 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
 
           {step === 2 && (
             <View>
-              <Text style={[styles.label, { color: theme.colors.onSurfaceVariant, ...theme.typography.label }]}>¿Cuánta plata vas a ingresar?</Text>
-              <View style={[styles.inputBox, { borderBottomColor: theme.colors.divider }]}>
-                <Text style={{ ...theme.typography.displaySmall, color: theme.colors.primary }}>$</Text>
-                <TextInput
-                  style={[styles.amountInput, { color: theme.colors.onSurface, ...theme.typography.displaySmall }]}
-                  value={incomeAmount}
-                  onChangeText={(t) => setIncomeAmount(formatMoneyDigits(t))}
-                  placeholder="0"
-                  placeholderTextColor={theme.colors.onSurfaceVariant + '40'}
-                  keyboardType="numeric"
-                  autoFocus
-                />
+              {/* --- AMOUNT HERO --- */}
+              <View style={{ alignItems: 'center', marginTop: 10, marginBottom: 32 }}>
+                <Text style={{ fontSize: 12, color: theme.colors.primary, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' }}>¿Cuánta plata vas a ingresar?</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                  <Text style={{ fontSize: 24, fontWeight: '700', color: theme.colors.onSurface, marginRight: 4 }}>$</Text>
+                  <TextInput
+                    style={{ fontSize: 52, fontWeight: '800', color: theme.colors.onSurface, textAlign: 'center', letterSpacing: -2, minWidth: 120 }}
+                    value={incomeAmount}
+                    onChangeText={(t) => setIncomeAmount(formatMoneyDigits(t))}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    placeholderTextColor={theme.colors.onSurfaceVariant + '40'}
+                    autoFocus
+                  />
+                </View>
               </View>
 
-              <View style={{ marginTop: 24, marginBottom: 16 }}>
-                <View style={[styles.statusBanner, { backgroundColor: cascade.remaining < 0 ? theme.colors.errorContainer : theme.colors.surfaceContainerHighest }]}>
+              <View style={{ marginTop: 16, marginBottom: 16 }}>
+                <View style={[styles.statusBanner, { backgroundColor: remainingCascade < 0 ? theme.colors.errorContainer : theme.colors.surfaceContainerHighest }]}>
                    <View style={styles.statusCol}>
-                      <Text style={[styles.statusLabel, { color: cascade.remaining < 0 ? theme.colors.onErrorContainer : theme.colors.onSurfaceVariant, ...theme.typography.label }]}>
+                      <Text style={[styles.statusLabel, { color: remainingCascade < 0 ? theme.colors.onErrorContainer : theme.colors.onSurfaceVariant, ...theme.typography.label }]}>
                         Restante (Va a Libre)
                       </Text>
-                      <Text style={[styles.statusValue, { color: cascade.remaining < 0 ? theme.colors.error : theme.colors.primary, ...theme.typography.h2 }]}>
-                        {formatMoney(cascade.remaining)}
+                      <Text style={[styles.statusValue, { color: remainingCascade < 0 ? theme.colors.error : theme.colors.primary, ...theme.typography.h2 }]}>
+                        {formatMoney(remainingCascade)}
                       </Text>
                    </View>
                 </View>
 
-                {cascade.remaining < 0 && (
+                {remainingCascade < 0 && (
                   <View style={[styles.errorBanner, { backgroundColor: theme.colors.errorContainer, marginTop: -8, marginBottom: 16 }]}>
                      <Info size={16} color={theme.colors.error} />
                      <Text style={[styles.errorText, { color: theme.colors.onErrorContainer, ...theme.typography.bodySmall }]}>No puedes repartir más plata de la que ingresaste.</Text>
@@ -248,31 +269,51 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
               </View>
 
               {incomeNum > 0 && selectedCats.map((id, index) => {
-                const val = distributions[id] || 0;
+                const rule = rules[id] || { type: 'fixed', value: 0 };
+                const addValue = preview[id] || 0;
                 const [_, color] = getCategoryColorPair(id, theme.isDark);
                 return (
                   <View key={id} style={[styles.ruleCard, { backgroundColor: theme.colors.surface, ...theme.shadows.sm }]}>
                     <View style={styles.ruleHeader}>
                       <View style={[styles.priorityBadge, { backgroundColor: theme.colors.primaryContainer }]}>
-                        <Text style={{ color: theme.colors.onPrimaryContainer, ...theme.typography.label, fontSize: 10 }}>{index + 1}</Text>
+                        <Text style={{ color: theme.colors.onPrimaryContainer, fontSize: 10, fontWeight: '900' }}>{index + 1}</Text>
                       </View>
                       <CategoryIcon id={id} color={color} size={20} />
-                      <Text style={[styles.ruleTitle, { color: theme.colors.onSurface, ...theme.typography.title }]}>{id === 'Ahorros' ? 'Ahorro' : id}</Text>
+                      <Text style={[styles.ruleTitle, { color: theme.colors.onSurface, ...theme.typography.title }]}>{id === 'Ahorros' ? 'Ahorro Seguro' : id}</Text>
+
+                      <View style={{ flexDirection: 'row', borderRadius: 12, padding: 4, backgroundColor: theme.colors.surfaceContainerLow }}>
+                        <TouchableOpacity 
+                          style={[{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }, rule.type === 'fixed' && { backgroundColor: theme.colors.primary }]} 
+                          onPress={() => setRules({...rules, [id]: { ...rule, type: 'fixed' }})}
+                        >
+                          <DollarSign size={14} color={rule.type === 'fixed' ? '#FFF' : theme.colors.onSurfaceVariant} />
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                          style={[{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }, rule.type === 'percentage' && { backgroundColor: theme.colors.primary }]} 
+                          onPress={() => setRules({...rules, [id]: { ...rule, type: 'percentage' }})}
+                        >
+                          <Percent size={14} color={rule.type === 'percentage' ? '#FFF' : theme.colors.onSurfaceVariant} />
+                        </TouchableOpacity>
+                      </View>
                     </View>
 
                     <View style={styles.ruleInputRow}>
-                      <Text style={[styles.rulePrefix, { color: theme.colors.primary, ...theme.typography.h2 }]}>$</Text>
+                      <Text style={[styles.rulePrefix, { color: theme.colors.primary, fontSize: 24, fontWeight: '700' }]}>{rule.type === 'fixed' ? '$' : '%'}</Text>
                       <TextInput
-                        style={[styles.ruleInput, { color: theme.colors.onSurface, ...theme.typography.h2 }]}
-                        value={val > 0 ? formatMoneyDigits(String(val)) : ''}
+                        style={[styles.ruleInput, { color: theme.colors.onSurface, fontSize: 24, fontWeight: '800' }]}
+                        value={rule.value > 0 ? (rule.type === 'fixed' ? formatMoneyDigits(String(rule.value)) : String(rule.value)) : ''}
                         onChangeText={(t) => {
                           const num = parseInt(t.replace(/\D/g, '')) || 0;
-                          setDistributions({...distributions, [id]: num});
+                          setRules({...rules, [id]: { ...rule, value: num }});
                         }}
                         placeholder="0"
                         placeholderTextColor={theme.colors.onSurfaceVariant + '30'}
                         keyboardType="numeric"
                       />
+                      
+                      <View style={{ backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14 }}>
+                        <Text style={{ color: theme.colors.primary, fontSize: 14, fontWeight: '800' }}>+ {formatMoney(addValue)}</Text>
+                      </View>
                     </View>
                   </View>
                 );

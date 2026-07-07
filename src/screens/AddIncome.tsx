@@ -1,13 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { X, CheckCircle2, Circle, ArrowRight, Sparkles, Wallet, DollarSign, Percent } from 'lucide-react-native';
+import { X, CheckCircle2, Circle, ArrowRight, Sparkles, Wallet, DollarSign, Percent, Briefcase, Tag, PlusCircle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { formatMoney, formatMoneyDigits } from '../lib/format';
 import { notify } from '../lib/notify';
-import { useCycleState } from '../lib/useCycleState';
+import { useUserCycles } from '../lib/useCycleState';
 import type { Session } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
@@ -18,19 +18,32 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
   const { theme } = useTheme();
   
   const isEditing = !!editTransaction;
-  const initialDistType = (editTransaction?.metadata?.distribution_type) || 'smart';
+  const initialDistType = (editTransaction?.metadata?.mode === 'manual') ? 'single' : 'smart';
   const initialAmount = editTransaction ? Math.abs(editTransaction.amount).toString() : '';
   
-  const { state: monthState } = useCycleState();
-  const unclosedCycle = monthState?.prev_month_closed === false ? monthState.previous_month : null;
+  // Get active cycle ID from global cache (already fetched by Dashboard/Pockets).
+  // Used to tag new income transactions to the correct cycle via register_income.
+  const { activeCycle } = useUserCycles();
 
   const [distType, setDistType] = useState<'smart' | 'single'>(initialDistType);
   const [amount, setAmount] = useState(initialAmount ? formatCurrency(initialAmount) : '');
   const [source, setSource] = useState(editTransaction?.merchant || 'Me pagaron');
-  const [cycleMode, setCycleMode] = useState<'to_pockets' | 'to_free'>('to_pockets');
+  const [cycleMode, setCycleMode] = useState<'accumulate' | 'start_fresh'>('accumulate');
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [rules, setRules] = useState<any[]>([]);
+  const defaultRules = useMemo(() => {
+    let initialRules: any[] = [];
+    let priority = 0;
+    pockets.forEach(p => {
+      if (!p.is_default_free && p.allocated > 0) {
+        priority += 1;
+        initialRules.push({ pocket_id: p.id, priority, type: 'fixed', value: p.allocated });
+      }
+    });
+    return initialRules;
+  }, [pockets]);
+
+  const [rules, setRules] = useState<any[]>(defaultRules);
 
   const variosPocket = pockets.find(p => p.is_default_free) || pockets.find(p => p.name.toLowerCase() === 'libre') || pockets.find(p => p.name.toLowerCase() === 'varios') || pockets[0];
   const initialSinglePocket = (initialDistType === 'single' && editTransaction?.metadata?.distribution) 
@@ -66,7 +79,10 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
           }
         });
 
-        setRules(dbRules);
+        // Prevent layout shift by only updating if the fetched rules are actually different
+        if (JSON.stringify(dbRules) !== JSON.stringify(rules)) {
+          setRules(dbRules);
+        }
       } catch (e) {
         console.error('Error fetching rules:', e);
       }
@@ -104,7 +120,8 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
     
     dividerCustom: { height: 1.5, backgroundColor: theme.colors.divider, marginVertical: 24 },
     
-    subLabel: { fontSize: 14, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 12, marginTop: 8, letterSpacing: -0.3 },
+    sectionContainer: { marginBottom: 32 },
+    sectionTitle: { fontSize: 15, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 16, letterSpacing: -0.3 },
     
     // --- Chips (Source and Dist Type) ---
     chipRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 8 },
@@ -210,15 +227,6 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
 
     setIsSaving(true);
     try {
-      if (unclosedCycle) {
-        const { error: closureError } = await supabase.rpc('execute_cycle_closure', {
-          p_user_id: session.user.id,
-          p_cycle_id: unclosedCycle.id,
-          p_sweep_mode: cycleMode
-        });
-        if (closureError) throw closureError;
-      }
-
       let rpcName = isEditing ? 'update_income_with_reversal' : 'register_income';
       let rpcPayload = isEditing ? {
         p_tx_id: editTransaction.id,
@@ -306,33 +314,42 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
           </View>
         </View>
 
-        <View style={styles.dividerCustom} />
-
-        <Text style={styles.subLabel}>¿De dónde viene?</Text>
-        <View style={styles.chipRow}>
-           {['Me pagaron', 'Venta', 'Ingreso Extra'].map(opt => (
-              <TouchableOpacity 
-                key={opt}
-                onPress={() => { setSource(opt); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                style={[styles.catChip, source === opt && styles.catChipActive]}
-              >
-                <Text style={[styles.catText, source === opt && styles.catTextActive]}>{opt}</Text>
-              </TouchableOpacity>
-           ))}
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>¿De dónde viene?</Text>
+          <View style={[styles.segmentedControl, { marginBottom: 0 }]}>
+             {[
+               { id: 'Me pagaron', label: 'Sueldo', icon: Briefcase },
+               { id: 'Venta', label: 'Venta', icon: Tag },
+               { id: 'Ingreso Extra', label: 'Extra', icon: PlusCircle }
+             ].map(opt => {
+                const isActive = source === opt.id;
+                const Icon = opt.icon;
+                return (
+                  <TouchableOpacity 
+                    key={opt.id}
+                    activeOpacity={0.8}
+                    onPress={() => { setSource(opt.id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                    style={[styles.segmentBtn, isActive && styles.segmentBtnActive]}
+                  >
+                    <Icon size={16} color={isActive ? theme.colors.primary : theme.colors.onSurfaceVariant} />
+                    <Text style={[styles.segmentText, isActive && styles.segmentTextActive]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                );
+             })}
+          </View>
         </View>
 
          {!isEditing && (
-           <>
-             <View style={styles.dividerCustom} />
-             <Text style={styles.subLabel}>¿Cómo quieres tratar este ingreso?</Text>
-             <View style={styles.segmentedControl}>
+           <View style={styles.sectionContainer}>
+             <Text style={styles.sectionTitle}>¿A qué mes pertenece?</Text>
+             <View style={[styles.segmentedControl, { marginBottom: 0 }]}>
                <TouchableOpacity 
                  activeOpacity={0.8} 
                  style={[styles.segmentBtn, cycleMode === 'accumulate' && styles.segmentBtnActive]} 
                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCycleMode('accumulate'); }}
                >
                  <ArrowRight size={18} color={cycleMode === 'accumulate' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
-                 <Text style={[styles.segmentText, cycleMode === 'accumulate' && styles.segmentTextActive]}>Sumar al actual</Text>
+                 <Text style={[styles.segmentText, cycleMode === 'accumulate' && styles.segmentTextActive]}>Al mes actual</Text>
                </TouchableOpacity>
 
                <TouchableOpacity 
@@ -341,29 +358,23 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCycleMode('start_fresh'); }}
                >
                  <Sparkles size={18} color={cycleMode === 'start_fresh' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
-                 <Text style={[styles.segmentText, cycleMode === 'start_fresh' && styles.segmentTextActive]}>Empezar en blanco</Text>
+                 <Text style={[styles.segmentText, cycleMode === 'start_fresh' && styles.segmentTextActive]}>A un mes nuevo</Text>
                </TouchableOpacity>
              </View>
-             <Text style={{ fontSize: 11, color: theme.colors.onSurfaceVariant, marginTop: 10, paddingHorizontal: 12, textAlign: 'center', opacity: 0.8 }}>
-               {cycleMode === 'accumulate' ? 'Se suma a la quincena/mes que ya llevas.' : 'Cierra las cuentas de hoy y empieza un nuevo periodo limpio desde cero.'}
-             </Text>
-           </>
+           </View>
          )}
 
-         <View style={styles.dividerCustom} />
-
-        <Text style={styles.subLabel}>Modalidad de Asignación</Text>
+        <View style={[styles.sectionContainer, { marginBottom: 0 }]}>
+          <Text style={styles.sectionTitle}>¿Cómo lo repartimos?</Text>
         <View style={styles.segmentedControl}>
-          {rules.length > 0 && (
-            <TouchableOpacity 
-              activeOpacity={0.8} 
-              style={[styles.segmentBtn, distType === 'smart' && styles.segmentBtnActive]} 
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDistType('smart'); }}
-            >
-              <Sparkles size={18} color={distType === 'smart' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
-              <Text style={[styles.segmentText, distType === 'smart' && styles.segmentTextActive]}>Inteligente</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity 
+            activeOpacity={0.8} 
+            style={[styles.segmentBtn, distType === 'smart' && styles.segmentBtnActive]} 
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDistType('smart'); }}
+          >
+            <Sparkles size={18} color={distType === 'smart' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
+            <Text style={[styles.segmentText, distType === 'smart' && styles.segmentTextActive]}>Automático</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity 
             activeOpacity={0.8} 
@@ -371,7 +382,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDistType('single'); }}
           >
             <Wallet size={18} color={distType === 'single' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
-            <Text style={[styles.segmentText, distType === 'single' && styles.segmentTextActive]}>Bolsillo específico</Text>
+            <Text style={[styles.segmentText, distType === 'single' && styles.segmentTextActive]}>Elegir bolsillo</Text>
           </TouchableOpacity>
         </View>
 
@@ -473,45 +484,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
             );
           })}
         </View>
-
-        {unclosedCycle && (
-          <View style={{ marginTop: 32, backgroundColor: theme.colors.surfaceContainerLow, borderRadius: 24, padding: 20, borderWidth: 1, borderColor: theme.colors.divider }}>
-            <Text style={{ fontSize: 18, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 8, letterSpacing: -0.5 }}>Cierre del Mes Pasado</Text>
-            <Text style={{ fontSize: 14, color: theme.colors.onSurfaceVariant, marginBottom: 16 }}>Tienes saldo del mes anterior ({unclosedCycle.name}). ¿Qué quieres hacer con el dinero sobrante?</Text>
-            
-            <View style={{ flexDirection: 'column', gap: 12 }}>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={[
-                  { padding: 16, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface },
-                  cycleMode === 'to_free' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primaryContainer, borderWidth: 1.5 }
-                ]}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCycleMode('to_free'); }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={{ fontSize: 15, fontWeight: '800', color: cycleMode === 'to_free' ? theme.colors.primary : theme.colors.onSurface }}>Mover todo a Libre</Text>
-                  {cycleMode === 'to_free' ? <CheckCircle2 size={24} color={theme.colors.primary} /> : <Circle size={24} color={theme.colors.outlineVariant} />}
-                </View>
-                <Text style={{ fontSize: 13, color: cycleMode === 'to_free' ? theme.colors.primary : theme.colors.onSurfaceVariant, marginTop: 4 }}>Tus bolsillos empezarán de cero.</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={[
-                  { padding: 16, borderRadius: 16, borderWidth: 1, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface },
-                  cycleMode === 'to_pockets' && { borderColor: theme.colors.primary, backgroundColor: theme.colors.primaryContainer, borderWidth: 1.5 }
-                ]}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCycleMode('to_pockets'); }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <Text style={{ fontSize: 15, fontWeight: '800', color: cycleMode === 'to_pockets' ? theme.colors.primary : theme.colors.onSurface }}>Dejar saldo en bolsillos</Text>
-                  {cycleMode === 'to_pockets' ? <CheckCircle2 size={24} color={theme.colors.primary} /> : <Circle size={24} color={theme.colors.outlineVariant} />}
-                </View>
-                <Text style={{ fontSize: 13, color: cycleMode === 'to_pockets' ? theme.colors.primary : theme.colors.onSurfaceVariant, marginTop: 4 }}>Mantener el dinero en su respectiva categoría.</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+        </View>
       </ScrollView>
 
       <View style={[styles.footer, { flexDirection: 'row', gap: 12 }]}>

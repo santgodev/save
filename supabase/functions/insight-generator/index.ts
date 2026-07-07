@@ -28,14 +28,15 @@ const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 export const INSIGHT_GENERATOR_VERSION = "insight-gen.v1";
 
-type MonthlyState = {
-  year: number;
-  month: number;
-  month_end: string;
+type CycleState = {
+  cycle_id: string;
+  cycle_name: string;
+  start_date: string;
+  end_date: string | null;
   spent_month: number;
   net_month: number;
   pockets: Array<{ id: string; name: string; allocated: number; available: number; spent_month: number; pct_used: number | null }>;
-  previous_month: { spent: number };
+  previous_month: { spent: number } | null;
 };
 
 type Insight = {
@@ -52,10 +53,13 @@ function fmtCop(n: number): string {
   return Math.round(n).toLocaleString("es-CO", { maximumFractionDigits: 0 });
 }
 
-// -- Reglas determinísticas: aceptan un MonthlyState y devuelven 0..N insights --
-function buildInsightsFor(userId: string, state: MonthlyState): Insight[] {
+// -- Reglas determinísticas: aceptan un CycleState y devuelven 0..N insights --
+function buildInsightsFor(userId: string, state: CycleState): Insight[] {
   const insights: Insight[] = [];
-  const expires = new Date(state.month_end).toISOString();
+  // Para ciclos activos, expira en 3 días (el cron lo refrescará o emitirá nuevos)
+  const expires = state.end_date 
+    ? new Date(state.end_date).toISOString() 
+    : new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
 
   // A. pocket_burn
   for (const p of state.pockets || []) {
@@ -70,7 +74,7 @@ function buildInsightsFor(userId: string, state: MonthlyState): Insight[] {
         ? `Has superado tu plan de ${p.name} por $${fmtCop(p.spent_month - p.allocated)}.`
         : `Llevas el ${Math.round(p.pct_used)}% de ${p.name} consumido. Te quedan $${fmtCop(p.available)}.`,
       // Buckets de 10% para no re-emitir cada vez que sube un peso.
-      dedupe_key: `pocket_alert_${p.id}_${state.year}_${state.month}_${Math.floor(p.pct_used / 10)}`,
+      dedupe_key: `pocket_alert_${p.id}_${state.cycle_id}_${Math.floor(p.pct_used / 10)}`,
       expires_at: expires,
     });
   }
@@ -84,8 +88,8 @@ function buildInsightsFor(userId: string, state: MonthlyState): Insight[] {
       insight_type: "recurring_spike",
       severity: "notice",
       title: "Tu gasto está subiendo",
-      body: `Este mes llevas un gasto ${pctInc}% superior al mes pasado.`,
-      dedupe_key: `spending_spike_${state.year}_${state.month}`,
+      body: `Este ciclo llevas un gasto ${pctInc}% superior al ciclo pasado.`,
+      dedupe_key: `spending_spike_${state.cycle_id}`,
       expires_at: expires,
     });
   }
@@ -97,8 +101,8 @@ function buildInsightsFor(userId: string, state: MonthlyState): Insight[] {
       insight_type: "negative_flow",
       severity: "warning",
       title: "Flujo de caja negativo",
-      body: `Tus gastos superan tus ingresos por $${fmtCop(Math.abs(state.net_month))} este mes.`,
-      dedupe_key: `negative_flow_${state.year}_${state.month}`,
+      body: `Tus gastos superan tus ingresos por $${fmtCop(Math.abs(state.net_month))} este ciclo.`,
+      dedupe_key: `negative_flow_${state.cycle_id}`,
       expires_at: expires,
     });
   }
@@ -107,11 +111,22 @@ function buildInsightsFor(userId: string, state: MonthlyState): Insight[] {
 }
 
 async function processOneUser(client: SupabaseClient, userId: string): Promise<{ user_id: string; count: number; error?: string }> {
-  const { data: state, error: stateErr } = await client.rpc("get_monthly_state", { p_user_id: userId });
+  const { data: activeCycle, error: cycleErr } = await client
+    .from("user_budget_cycles")
+    .select("id")
+    .eq("user_id", userId)
+    .is("end_date", null)
+    .maybeSingle();
+
+  if (cycleErr || !activeCycle) {
+    return { user_id: userId, count: 0, error: cycleErr?.message ?? "no active cycle" };
+  }
+
+  const { data: state, error: stateErr } = await client.rpc("get_cycle_state", { p_cycle_id: activeCycle.id });
   if (stateErr || !state) {
     return { user_id: userId, count: 0, error: stateErr?.message ?? "no state" };
   }
-  const insights = buildInsightsFor(userId, state as MonthlyState);
+  const insights = buildInsightsFor(userId, state as CycleState);
   if (insights.length === 0) return { user_id: userId, count: 0 };
 
   const { error: insErr } = await client.from("user_insights").upsert(insights, { onConflict: "user_id,dedupe_key" });
@@ -128,7 +143,7 @@ Deno.serve(async (req) => {
   const isCronCall = authHeader === `Bearer ${SERVICE_ROLE_KEY}`;
 
   // Service-role client (bypassa RLS — necesario tanto en cron como en
-  // single-user porque get_monthly_state es SECURITY DEFINER y los
+  // single-user porque get_cycle_state es SECURITY DEFINER y los
   // upserts a user_insights necesitan saltar la policy).
   const serviceClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },

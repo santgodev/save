@@ -4,7 +4,8 @@ import {
   Coffee, Car, ShoppingBasket, Banknote, Utensils, 
   Zap, Theater, PiggyBank, Wallet, Tag, TrendingUp, ArrowRightLeft, 
   Smartphone, Home, ShoppingBag, HeartPulse, GraduationCap, Plane,
-  User, Shield, Briefcase, Minus, Plus, Search, Grid2X2
+  User, Shield, Briefcase, Minus, Plus, Search, Grid2X2,
+  Baby, Dog, CreditCard, BusFront, PartyPopper, Dumbbell, Scissors, Wrench
 } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -45,10 +46,20 @@ export const CategoryIcon = ({ iconName, style, color, size = 24, strokeWidth = 
     Home,
     ShoppingBag,
     'health': HeartPulse,
+    HeartPulse,
     'education': GraduationCap,
+    GraduationCap,
     Plane,
     Shield,
-    Briefcase
+    Briefcase,
+    Baby,
+    Dog,
+    CreditCard,
+    BusFront,
+    PartyPopper,
+    Dumbbell,
+    Scissors,
+    Wrench
   };
   
   const Icon = useMemo(() => {

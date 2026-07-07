@@ -3,12 +3,12 @@
 
 export const ADVISOR_PROMPT_VERSION = "advisor.v7";
 
-export type MonthlyState = {
-  year: number;
-  month: number;
-  month_start: string;
-  month_end: string;
-  currency: string;
+export type CycleState = {
+  cycle_id: string;
+  cycle_name: string;
+  start_date: string;
+  end_date: string | null;
+  is_active: boolean;
   income_month: number;
   spent_month: number;
   net_month: number;
@@ -19,6 +19,7 @@ export type MonthlyState = {
     name: string;
     category: string;
     icon: string | null;
+    is_default_free: boolean;
     allocated: number;
     available: number;
     spent_month: number;
@@ -31,18 +32,12 @@ export type MonthlyState = {
     count: number;
   }>;
   previous_month: {
-    year: number;
-    month: number;
+    name: string;
     income: number;
     spent: number;
     net: number;
-  };
+  } | null;
 };
-
-const MONTH_NAMES_ES = [
-  "enero", "febrero", "marzo", "abril", "mayo", "junio",
-  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-];
 
 function fmtCop(n: number): string {
   return Math.round(n).toLocaleString("es-CO", { maximumFractionDigits: 0 });
@@ -59,7 +54,7 @@ function deltaLabel(curr: number, prev: number): string {
 
 export function buildAdvisorSystemPrompt(input: {
   displayName: string;
-  state: MonthlyState;
+  state: CycleState;
   memorySnapshot: Array<{ key: string; summary: string; confidence: number }>;
   spendingRules: Array<{ merchant: string; type: string }>;
   todayISO: string;
@@ -67,27 +62,27 @@ export function buildAdvisorSystemPrompt(input: {
   otherTransactions: Array<{ merchant: string; amount: number; category: string }>;
 }): string {
   const { state } = input;
-  const monthLabel = `${MONTH_NAMES_ES[state.month - 1]} ${state.year}`;
-  const isFirstMonth = state.previous_month.income === 0 && state.previous_month.spent === 0;
+  const cycleLabel = state.cycle_name;
+  const isFirstCycle = !state.previous_month;
 
-  // Resumen del mes en lenguaje cotidiano
+  // Resumen del ciclo en lenguaje cotidiano
   const incomeLine = state.income_month === 0
-    ? `No has registrado plata que entró este mes.`
-    : isFirstMonth
-      ? `Este mes entraron $${fmtCop(state.income_month)} (primer mes, aún no hay con qué comparar).`
-      : `Este mes entraron $${fmtCop(state.income_month)} — ${deltaLabel(state.income_month, state.previous_month.income)}.`;
+    ? `No has registrado plata que entró este ciclo.`
+    : isFirstCycle
+      ? `Este ciclo entraron $${fmtCop(state.income_month)} (primer ciclo, aún no hay con qué comparar).`
+      : `Este ciclo entraron $${fmtCop(state.income_month)} — ${deltaLabel(state.income_month, state.previous_month!.income)}.`;
 
-  const spentLine = isFirstMonth
-    ? `Has gastado $${fmtCop(state.spent_month)} (primer mes, aún no hay con qué comparar).`
-    : `Has gastado $${fmtCop(state.spent_month)} — ${deltaLabel(state.spent_month, state.previous_month.spent)}.`;
+  const spentLine = isFirstCycle
+    ? `Has gastado $${fmtCop(state.spent_month)} (primer ciclo, aún no hay con qué comparar).`
+    : `Has gastado $${fmtCop(state.spent_month)} — ${deltaLabel(state.spent_month, state.previous_month!.spent)}.`;
 
   const netLine = state.income_month === 0 && state.spent_month > 0
-    ? `Llevas $${fmtCop(state.spent_month)} gastados sin haber registrado ningún ingreso este mes.`
+    ? `Llevas $${fmtCop(state.spent_month)} gastados sin haber registrado ningún ingreso este ciclo.`
     : state.net_month >= 0
-      ? `Te sobran $${fmtCop(state.net_month)} de lo que entró este mes.`
+      ? `Te sobran $${fmtCop(state.net_month)} de lo que entró este ciclo.`
       : `Estás $${fmtCop(Math.abs(state.net_month))} en rojo — gastaste más de lo que entró.`;
 
-  const availableLine = `En tus bolsillos tienes disponibles $${fmtCop(state.available_total)} de los $${fmtCop(state.allocated_total)} que planeaste gastar este mes.`;
+  const availableLine = `En tus bolsillos tienes disponibles $${fmtCop(state.available_total)} de los $${fmtCop(state.allocated_total)} que planeaste gastar este ciclo.`;
 
   const headline = [incomeLine, spentLine, netLine, availableLine].join(" ");
 
@@ -131,13 +126,13 @@ export function buildAdvisorSystemPrompt(input: {
     ? cleanMerchants.map(m =>
         `- ${m.display}: $${fmtCop(m.total)} (${m.count} ${m.count === 1 ? "vez" : "veces"})`
       ).join("\n")
-    : "- (no hay comercios con nombre identificado este mes)";
+    : "- (no hay comercios con nombre identificado este ciclo)";
 
   // Gastos en "Otros"
   const otherTotal = input.otherTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
   const otherBlock = otherTotal === 0
-    ? "- No hay gastos en 'Otros' este mes."
-    : `En la categoría 'Otros' has gastado $${fmtCop(otherTotal)} en total este mes.\n` +
+    ? "- No hay gastos en 'Otros' este ciclo."
+    : `En la categoría 'Otros' has gastado $${fmtCop(otherTotal)} en total este ciclo.\n` +
       `Ese total se compone de:\n` +
       input.otherTransactions.reduce((acc, t) => {
         let m = t.merchant;
@@ -163,7 +158,7 @@ export function buildAdvisorSystemPrompt(input: {
   // Situaciones urgentes
   const urgentAlerts: string[] = [];
   if (state.income_month === 0 && state.spent_month > 0) {
-    urgentAlerts.push(`🚨 URGENTE: El usuario lleva $${fmtCop(state.spent_month)} gastados pero NO ha registrado ningún ingreso este mes. Si la pregunta es general, empieza por esto.`);
+    urgentAlerts.push(`🚨 URGENTE: El usuario lleva $${fmtCop(state.spent_month)} gastados pero NO ha registrado ningún ingreso este ciclo. Si la pregunta es general, empieza por esto.`);
   }
   const pocketsNoBudget = state.pockets.filter(p => p.allocated === 0 && p.spent_month > 0);
   if (pocketsNoBudget.length > 0) {
@@ -171,7 +166,7 @@ export function buildAdvisorSystemPrompt(input: {
   }
   const overBudget = state.pockets.filter(p => p.pct_used !== null && p.pct_used >= 100);
   if (overBudget.length > 0) {
-    urgentAlerts.push(`🔴 Bolsillos agotados este mes: ${overBudget.map(p => p.name).join(", ")}.`);
+    urgentAlerts.push(`🔴 Bolsillos agotados este ciclo: ${overBudget.map(p => p.name).join(", ")}.`);
   }
   const urgentBlock = urgentAlerts.length
     ? `SITUACIONES IMPORTANTES (priorizar si la pregunta es abierta):\n${urgentAlerts.join("\n")}`
@@ -194,10 +189,10 @@ CÓMO HABLAS (muy importante, no negociable)
 - Si la situación es buena, díselo claramente. Si es mala, también — pero sin alarmar.
 
 LO QUE SÍ SABES (úsalo sin dudar)
-- Cuánto entró y cuánto se gastó este mes.
-- Los gastos de CADA BOLSILLO este mes.
+- Cuánto entró y cuánto se gastó este ciclo.
+- Los gastos de CADA BOLSILLO este ciclo.
 - Los gastos del DÍA DE HOY (ver sección GASTOS DE HOY).
-- Los comercios donde más se gasta este mes.
+- Los comercios donde más se gasta este ciclo.
 - Los gastos "Sin Categoría" o "Otros" y de qué comercios provienen. (Considera "Otros" y "Sin Categoría" como LA MISMA COSA, son gastos sueltos que no tienen un bolsillo específico).
 
 LO QUE NO SABES (admítelo y redirige)
@@ -206,15 +201,15 @@ LO QUE NO SABES (admítelo y redirige)
 - Si preguntan algo que no tienes: di "eso no lo tengo, pero puedes verlo en la pantalla de Movimientos."
 - NUNCA respondas con un dato diferente al que te preguntaron.
 
-COMPARACIONES CON EL MES PASADO
-- Si no hay datos del mes pasado: di "aún no tengo con qué comparar, es tu primer mes".
-- NUNCA digas porcentajes confusos como "697% más". Di: "gastaste bastante más que el mes pasado".
+COMPARACIONES CON EL CICLO PASADO
+- Si no hay datos del ciclo pasado: di "aún no tengo con qué comparar, es tu primer ciclo".
+- NUNCA digas porcentajes confusos como "697% más". Di: "gastaste bastante más que el ciclo pasado".
 
 PROACTIVIDAD
 - Si hay algo urgente (sin ingreso registrado, bolsillo agotado) y la pregunta es abierta: díselo PRIMERO.
-- Si todo está bien: díselo — "vas bien este mes".
+- Si todo está bien: díselo — "vas bien este ciclo".
 
-DATOS DEL MES — ${monthLabel}
+DATOS DEL CICLO — ${cycleLabel}
 ${headline}
 
 GASTOS DE HOY
@@ -226,7 +221,7 @@ ${pocketLines}
 GASTOS EN "OTROS" O SIN CATEGORÍA
 ${otherBlock}
 
-DÓNDE SE VA LA PLATA ESTE MES
+DÓNDE SE VA LA PLATA ESTE CICLO
 ${merchantLines}
 
 ${urgentBlock}

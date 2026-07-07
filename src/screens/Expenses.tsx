@@ -90,8 +90,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
       ...theme.shadows.soft 
     },
     
-    // Mes Nav
-    // monthNav/monthTitle migrados a <MonthNav> compartido.
+
     navBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.glassWhite, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.8)', ...theme.shadows.soft },
   
     scrollContent: { paddingHorizontal: normalize(24), paddingBottom: 120 },

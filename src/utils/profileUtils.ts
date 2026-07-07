@@ -8,7 +8,18 @@ export interface ProfileData {
   totalAvg: number;
 }
 
-export const calculateFinancialProfile = (transactions: any[], rules: any[], budgets: any[], monthlyIncome?: number): ProfileData => {
+export interface CycleDates {
+  start: string; // ISO date string
+  end: string | null; // null = still open (use now as end)
+}
+
+export const calculateFinancialProfile = (
+  transactions: any[],
+  rules: any[],
+  budgets: any[],
+  monthlyIncome?: number,
+  cycleDates?: CycleDates
+): ProfileData => {
   if (transactions.length === 0) {
     return {
       score: 60,
@@ -20,20 +31,34 @@ export const calculateFinancialProfile = (transactions: any[], rules: any[], bud
   }
 
   const today = new Date();
-  const currentMonth = today.getMonth();
-  const currentYear = today.getFullYear();
 
-  // CRÍTICO: filtrar al mes en curso. Antes no había filtro y el score
-  // bajaba con el tiempo porque comparaba TODA la historia contra el
-  // presupuesto mensual. Ahora todo viene del mes actual, igual que
-  // get_monthly_state, Dashboard y el chat-advisor.
-  const monthTx = transactions.filter(t => {
-    const d = new Date(t.date_string || t.created_at);
-    return d.getMonth() === currentMonth && d.getFullYear() === currentYear
-      && t.category !== 'Traslado'; // ignoramos traslados internos
-  });
+  // Filter transactions to the active cycle window when provided,
+  // otherwise fall back to current calendar month (legacy behavior).
+  let monthTx: any[];
+  let cycleStart: Date;
+  let cycleEnd: Date;
 
-  // 1. Gasto Hormiga: Definimos como < 15,000 COP
+  if (cycleDates) {
+    cycleStart = new Date(cycleDates.start);
+    cycleEnd = cycleDates.end ? new Date(cycleDates.end) : today;
+    monthTx = transactions.filter(t => {
+      const d = new Date(t.date_string || t.created_at);
+      return d >= cycleStart && d <= cycleEnd && t.category !== 'Traslado';
+    });
+  } else {
+    // Fallback: calendar month (kept for backward compatibility)
+    const currentMonth = today.getMonth();
+    const currentYear = today.getFullYear();
+    cycleStart = new Date(currentYear, currentMonth, 1);
+    cycleEnd = today;
+    monthTx = transactions.filter(t => {
+      const d = new Date(t.date_string || t.created_at);
+      return d.getMonth() === currentMonth && d.getFullYear() === currentYear
+        && t.category !== 'Traslado';
+    });
+  }
+
+  // 1. Gasto Hormiga: < 15,000 COP
   const HORMIGA_THRESHOLD = 15000;
   const expenses = monthTx.filter(t => t.amount < 0);
   const totalSpent = expenses.reduce((acc, t) => acc + Math.abs(t.amount), 0);
@@ -42,20 +67,19 @@ export const calculateFinancialProfile = (transactions: any[], rules: any[], bud
 
   // 2. Budget Overflow
   // Usamos allocated_budget (el plan) para comparar contra el gasto total.
-  // Si usamos b.budget (el saldo disponible), el score baja erróneamente a medida que gastamos.
   const totalBudget = budgets.reduce((acc, b) => acc + (b.allocated_budget ?? b.budget ?? 0), 0);
   const budgetOverflow = totalSpent > totalBudget ? (totalSpent - totalBudget) / (totalBudget || 1) : 0;
 
-  // 3. Consistencia (registros en los últimos 7 días)
-  const last7Days = new Date();
-  last7Days.setDate(today.getDate() - 7);
+  // 3. Consistencia (registros en los últimos 7 días dentro del ciclo)
+  const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const last7Days = new Date(Math.max(cycleStart.getTime(), sevenDaysAgo.getTime()));
   const activeDays = new Set(expenses
     .filter(t => new Date(t.date_string || t.created_at) >= last7Days)
     .map(t => new Date(t.date_string || t.created_at).toDateString())
   ).size;
   const consistency = (activeDays / 7) * 100;
 
-  // 4. Cash Flow Penalty (Gasto vs Ingreso del mes)
+  // 4. Cash Flow Penalty (Gasto vs Ingreso del ciclo)
   const incomes = monthTx.filter(t => t.amount > 0 && t.category === 'Ingreso');
   const totalActualIncome = incomes.reduce((acc, t) => acc + t.amount, 0);
   const effectiveIncome = monthlyIncome || totalActualIncome || 0;
@@ -65,11 +89,10 @@ export const calculateFinancialProfile = (transactions: any[], rules: any[], bud
   if (effectiveIncome > 0 && totalSpent > effectiveIncome) {
     isInDeficit = true;
     const deficitRatio = (totalSpent - effectiveIncome) / effectiveIncome;
-    // Penalización máxima de 50 puntos si gastas mucho más de lo que ganas
     cashFlowPenalty = Math.min(50, deficitRatio * 50); 
   }
 
-  // SCORE FINAL: 100 - Penalizaciones + Bonos
+  // SCORE FINAL
   let score = 100 
     - (hormigaPct * 0.4) 
     - (budgetOverflow * 40) 
@@ -78,8 +101,10 @@ export const calculateFinancialProfile = (transactions: any[], rules: any[], bud
   
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  // Trend (comparar gasto diario promedio vs global)
-  const dailyAvg = totalSpent / (today.getDate() || 1);
+  // Trend: gasto diario promedio dentro del ciclo
+  const effectiveCycleEnd = Math.min(today.getTime(), cycleEnd.getTime());
+  const cycleElapsedDays = Math.max(1, Math.ceil((effectiveCycleEnd - cycleStart.getTime()) / (1000 * 60 * 60 * 24)));
+  const dailyAvg = totalSpent / cycleElapsedDays;
   const trend: 'up' | 'down' | 'neutral' = dailyAvg > 50000 ? 'up' : dailyAvg < 20000 ? 'down' : 'neutral';
 
   // Top Habits (Frecuencia de compra)
@@ -106,6 +131,6 @@ export const calculateFinancialProfile = (transactions: any[], rules: any[], bud
     scoreMessage,
     trend,
     topHabits,
-    totalAvg: today.getDate() > 0 ? totalSpent / today.getDate() : 0, // gasto promedio diario del mes
+    totalAvg: cycleElapsedDays > 0 ? totalSpent / cycleElapsedDays : 0,
   };
 };

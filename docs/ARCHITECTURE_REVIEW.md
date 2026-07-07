@@ -1,6 +1,6 @@
 # Save — Arquitectura (estado actual)
 
-Última revisión: 2026-04-29.
+Última revisión: 2026-07-06 (migración a ciclos de presupuesto completa).
 
 Save es una app colombiana de presupuesto personal: el usuario crea
 **bolsillos** (categorías de gasto), registra gastos manualmente o
@@ -24,18 +24,20 @@ empieza aquí.
 Todo número financiero que el usuario ve viene del mismo RPC SQL:
 
 ```
-public.get_monthly_state(p_user_id uuid, p_year int, p_month int) RETURNS jsonb
+public.get_cycle_state(p_cycle_id uuid) RETURNS jsonb
 ```
 
-Devuelve un JSON con TODO lo necesario para representar un mes:
-ingreso_mensual, gasto_mensual, neto, bolsillos (plan/disponible/gastado/%),
-top_merchants, comparación con mes anterior, currency.
+Devuelve un JSON con TODO lo necesario para representar un ciclo de presupuesto:
+income_month, spent_month, net_month, allocated_total, available_total, pockets
+(allocated/available/spent_month/pct_used), top_merchants, y un resumen del
+ciclo anterior.
 
 **Ningún cliente recalcula nada por su cuenta.** Si una pantalla muestra
 otro número, está mal — debe pedirlo al RPC.
 
 Consumidores actuales:
-- `useMonthlyState()` hook (cliente) → Dashboard, Pockets.
+- `useCycleState(cycleId)` hook (cliente) → Dashboard, Pockets, TopBar.
+- `useUserCycles()` hook (cliente) → obtiene la lista de ciclos del usuario y el ciclo activo.
 - `chat-advisor` Edge Function → cada turno del chat.
 - `insight-generator` Edge Function → cron diario.
 
@@ -43,19 +45,21 @@ Consumidores actuales:
 
 ## DB — public schema actual
 
-Después del cleanup de la 7ª corrida (`drop_dead_structure` +
-`security_perf_hardening`), las tablas vivas son **8**:
+**Tablas vivas actualmente (10):**
 
 | Tabla | Filas (prod) | Rol |
 |---|---|---|
 | `profiles` | 1 | id, full_name, avatar_url, preferred_currency, theme_preference, updated_at. **Mínima.** |
-| `transactions` | 30+ | merchant, amount (negativo = gasto, positivo = ingreso), category, date_string (`YYYY-MM-DD`), canonical_merchant (auto-poblado por trigger), metadata jsonb. |
-| `pockets` | 13 | name, category, allocated_budget (plan), budget (saldo disponible), icon. **`budget` es cache decrementado por `register_expense`/`transfer`.** |
+| `transactions` | 30+ | merchant, amount (negativo = gasto, positivo = ingreso), category, date_string (`YYYY-MM-DD`), canonical_merchant (auto-poblado por trigger), cycle_id (FK → user_budget_cycles), metadata jsonb. |
+| `pockets` | 13 | name, category, allocated_budget (plan), icon. `is_default_free` marca el bolsillo libre. |
+| `user_budget_cycles` | N | Ciclos de presupuesto del usuario: name, start_date, end_date (NULL = activo), user_closed (bool). |
+| `income_sources` | N | Fuentes de ingreso con reglas de distribución (distribution_rules jsonb). |
+| `pending_income_events` | N | Ingresos esperados futuros. status: pending/confirmed/dismissed. |
 | `user_events` | 138+ | Append-only behavioural log. event_type + jsonb. Alimenta análisis offline. |
-| `chat_messages` | n | role + content + tool_calls + session_id. NOT NULL session_id (default `gen_random_uuid()`). |
-| `user_memory` | 0 hoy | Hechos durables del usuario sintetizados por LLM. UNIQUE (user_id, key). Productor: `synthesize-memory`. |
-| `user_insights` | 0 hoy | Alertas proactivas. severity + dedupe_key + status + expires_at. Productor: `insight-generator`. |
-| `user_spending_rules` | 1 | Patrón de comercio + tipo (confidence/monitor/reduce). Editado desde Profile y Expenses. |
+| `chat_messages` | n | role + content + tool_calls + session_id. |
+| `user_memory` | 0 hoy | Hechos durables del usuario sintetizados por LLM. UNIQUE (user_id, key). |
+| `user_insights` | 0 hoy | Alertas proactivas. severity + dedupe_key + status + expires_at. |
+| `user_spending_rules` | 1 | Patrón de comercio + tipo (confidence/monitor/reduce). |
 
 **Tablas borradas en la 7ª corrida** (referencia histórica):
 `recommendations`, `monthly_snapshots`, `user_behavior_metrics`,
@@ -80,14 +84,18 @@ Si reaparece la necesidad, se recrean.
 ### Funciones / RPCs activos
 
 **Lectura (read-only):**
-- `get_monthly_state(uuid, int, int)` — source of truth (descrito arriba).
+- `get_cycle_state(uuid)` — source of truth, filtra por ciclo (descrito arriba).
+- `get_history_cycles(uuid)` — lista de ciclos con totales para HistoryScreen.
 - `canonicalize_merchant(text)` — IMMUTABLE, usada por el trigger.
 
 **Mutación (con guard `auth.uid() = p_user_id` interno):**
-- `register_expense(uuid, text, numeric, text, text, text, jsonb)` — valida monto positivo, fecha legible (YYYY-MM-DD, rango 2000-01-01..today+1), merchant no vacío, fallback a "Otros" si la categoría no existe.
-- `register_income(uuid, numeric, jsonb, text, text)` — distribuye entre bolsillos del usuario, valida monto positivo y tipo de jsonb.
-- `transfer_between_pockets(uuid, uuid, uuid, numeric)` — valida monto positivo, no self-transfer, ambos bolsillos del usuario, saldo suficiente.
+- `register_expense(uuid, text, numeric, text, text, text, jsonb)` — valida monto positivo, fecha legible, merchant no vacío, asocia el gasto al ciclo activo.
+- `register_income(uuid, numeric, jsonb, text, text, text)` — distribuye entre bolsillos, `p_cycle_mode: 'accumulate'|'start_fresh'`. Crea nuevo ciclo si `start_fresh`.
+- `execute_cycle_closure(uuid, uuid, jsonb)` — cierra un ciclo (`user_closed=true`), barrido opcional de saldos a bolsillo libre (`p_sweeps`).
+- `close_and_start_new_cycle(text?)` — cierra el ciclo activo y crea uno nuevo.
+- `transfer_between_pockets(uuid, uuid, uuid, numeric)` — valida monto positivo, no self-transfer, ambos bolsillos del usuario.
 - `delete_transaction_with_reversal(uuid, uuid)` — borra y reversa el saldo del bolsillo.
+- `update_income_with_reversal(uuid, uuid, numeric, jsonb, text)` — edita un ingreso y recalcula distribución.
 
 **Operacionales (cron):**
 - `cron_expire_user_insights()` — marca insights expirados (status='expired').
@@ -218,7 +226,7 @@ src/
 │
 ├── lib/
 │   ├── supabase.ts          ← client config con AsyncStorage
-│   ├── useMonthlyState.ts   ← hook que envuelve get_monthly_state
+│   ├── useCycleState.ts     ← hooks: useCycleState(cycleId) + useUserCycles()
 │   ├── format.ts            ← formatMoney (única source de verdad)
 │   ├── notify.ts            ← notify.error/success/info/confirm
 │   └── events.ts            ← logEvent helper para user_events
@@ -226,20 +234,22 @@ src/
 ├── components/
 │   ├── BottomNav.tsx        ← tab bar
 │   ├── TopBar.tsx           ← header + chat con advisor
-│   ├── BottomSheet.tsx      ← modal compartido (NUEVO)
-│   ├── MonthNav.tsx         ← selector de mes compartido (NUEVO)
+│   ├── BottomSheet.tsx      ← modal compartido
+│   ├── CycleNav.tsx         ← selector de ciclo de presupuesto ← USA ESTO, no MonthNav
+│   ├── MonthClosureModal.tsx← flujo de cierre de ciclo (barridos de saldo)
 │   ├── CategoryIcon.tsx
 │   └── AnimatedProgressBar.tsx
 │
 ├── screens/
 │   ├── Auth.tsx             ← login + signup + OAuth
 │   ├── Onboarding.tsx       ← setup inicial de bolsillos
-│   ├── Dashboard.tsx        ← home: balance del mes + bolsillos top + tx recientes
+│   ├── Dashboard.tsx        ← home: balance del ciclo + bolsillos top + tx recientes
 │   ├── Expenses.tsx         ← lista de tx con filtros + tap = marcar comercio + long-press = eliminar
 │   ├── Pockets.tsx          ← grid de bolsillos + ajustar plan + transferir
 │   ├── PocketTransfer.tsx   ← UI de mover entre bolsillos
-│   ├── AddIncome.tsx        ← registrar ingreso + distribuir
+│   ├── AddIncome.tsx        ← registrar ingreso + distribuir entre bolsillos
 │   ├── Scanner.tsx          ← cámara/galería + OCR + edición manual
+│   ├── HistoryScreen.tsx    ← historial de ciclos anteriores
 │   └── Profile.tsx          ← perfil + score + reglas + cerrar sesión
 │
 ├── theme/
@@ -249,16 +259,17 @@ src/
 └── utils/
     ├── merchant.ts          ← normalizeMerchant() (cliente — espejo del SQL)
     ├── patterns.ts          ← detectores de patrones de gasto
-    └── profileUtils.ts      ← calculateFinancialProfile (filtra al mes en curso)
+    └── profileUtils.ts      ← calculateFinancialProfile (filtra al ciclo activo)
 ```
 
 ### Convenciones críticas
 
 - **Money formatting**: import `formatMoney` de `lib/format.ts`. NO redefinir.
 - **Notificaciones**: import `notify` de `lib/notify.ts`. NO usar `alert()` ni `Alert.alert` directo.
-- **Estado mensual**: import `useMonthlyState` de `lib/useMonthlyState.ts`. NO recalcular ingreso/gasto/disponible.
-- **Modales centrados**: import `BottomSheet` de `components/BottomSheet.tsx`. Migración progresiva en curso.
-- **Selector de mes**: import `MonthNav` de `components/MonthNav.tsx` con array `MONTHS` exportado.
+- **Estado del ciclo**: import `useCycleState(cycleId)` de `lib/useCycleState.ts`. NO recalcular ingreso/gasto/disponible desde transactions.
+- **Lista de ciclos**: import `useUserCycles()` de `lib/useCycleState.ts`. Da `{ cycles, activeCycle }`. El caché global evita fetches redundantes.
+- **Selector de ciclo**: import `CycleNav` de `components/CycleNav.tsx`. NO usar `MonthNav` (eliminado).
+- **Modales centrados**: import `BottomSheet` de `components/BottomSheet.tsx`.
 - **Tipografía**: usar `theme.typography.display/h1/h2/h3/...` en lugar de `fontSize` literales.
 - **Sesión Supabase**: `session: Session` (de `@supabase/supabase-js`), NO `session: any`.
 
@@ -293,7 +304,7 @@ Usuario abre chat (TopBar) → escribe "¿cómo voy este mes?"
   → TopBar.sendMessage llama supabase.functions.invoke('chat-advisor', { message, session_id })
   → chat-advisor Edge Function:
       1. Auth → user_id
-      2. En paralelo: get_monthly_state + profile + user_memory + user_spending_rules + history (20)
+      2. En paralelo: get_cycle_state + profile + user_memory + user_spending_rules + history (20)
       3. buildAdvisorSystemPrompt() arma el prompt con todo
       4. OpenAI gpt-4o-mini responde
       5. Persiste user turn + assistant turn en chat_messages

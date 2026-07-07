@@ -1,7 +1,7 @@
 # Save — Design Tokens & Componentes Compartidos
 
 _Cuándo usar qué. Cómo no romper la consistencia visual._
-_Última revisión: 2026-04-29._
+_Última revisión: 2026-07-06 (migración a ciclos completa)._
 
 ---
 
@@ -10,7 +10,7 @@ _Última revisión: 2026-04-29._
 1. **Nunca `alert()`**. Nunca `Alert.alert` directo. Siempre `notify.*`.
 2. **Nunca `toLocaleString` para dinero**. Siempre `formatMoney()`.
 3. **Nunca `fontSize: 24`**. Usa `theme.typography.h2` o equivalente.
-4. **Nunca `Date.getMonth()` con MONTHS array local**. Usa `<MonthNav>` y `MONTHS` de `components/MonthNav.tsx`.
+4. **Nunca `Date.getMonth()` con MONTHS array local**. Usa `<CycleNav>` de `components/CycleNav.tsx` y `useUserCycles()` de `lib/useCycleState.ts`.
 5. **Nunca emojis en UI**. La marca es seria/clara, sin "¡Listo! 🎉".
 6. **Nunca `session: any`**. Importa `Session` de `@supabase/supabase-js`.
 
@@ -99,54 +99,60 @@ notify.error('Faltan campos.');
 
 ---
 
-## `lib/useMonthlyState.ts` — el hook del estado mensual
+## `lib/useCycleState.ts` — el hook del estado de ciclo
 
 ```ts
-import { useMonthlyState } from '../lib/useMonthlyState';
+import { useCycleState, useUserCycles } from '../lib/useCycleState';
 
-const { state, loading, error, refresh } = useMonthlyState();
-// O para un mes específico:
-const { state } = useMonthlyState({ year: 2026, month: 3 });
+// Lista de ciclos del usuario + ciclo activo (cacheado globalmente)
+const { cycles, activeCycle } = useUserCycles();
+
+// Estado completo de un ciclo específico
+const { state, loading, error, refresh } = useCycleState(activeCycle?.id);
 ```
 
-`state` es el JSON que devuelve `get_monthly_state`. Estructura:
+`state` es el JSON que devuelve `get_cycle_state`. Estructura:
 
 ```ts
 {
-  year: number;
-  month: number;          // 1..12
-  month_start: string;    // ISO
-  month_end: string;      // ISO
-  currency: string;       // "COP"
+  cycle_id: string;
+  cycle_name: string;
+  start_date: string;    // ISO
+  end_date: string | null; // null = ciclo activo
+  is_active: boolean;
   income_month: number;
   spent_month: number;
   net_month: number;
-  allocated_total: number;   // SUM allocated_budget
-  available_total: number;   // SUM budget (lo que tienes hoy)
+  allocated_total: number;   // SUM allocated_budget de los pockets
+  available_total: number;   // SUM (allocated - spent) de los pockets
   pockets: Array<{
     id: string; name: string; category: string; icon: string | null;
-    allocated: number;       // plan
-    available: number;       // disponible hoy
-    spent_month: number;     // gastado este mes
+    is_default_free: boolean;
+    allocated: number;       // plan del ciclo
+    available: number;       // disponible (allocated - spent)
+    spent_month: number;     // gastado en este ciclo
     pct_used: number | null; // 0..100+
   }>;
   top_merchants: Array<{ merchant: string; display: string; total: number; count: number }>;
-  previous_month: { year, month, income, spent, net };
+  previous_month: { name: string; income: number; spent: number; net: number } | null;
+  // NOTA: previous_month no incluye 'id'. Para el id del ciclo anterior,
+  // consultar user_budget_cycles directamente.
 }
 ```
 
 ### Anti-patrones
 
 ```tsx
-// ❌ NO recalcules el mes desde transactions
+// ❌ NO recalcules el ciclo desde transactions
 const totalIncomeMonth = transactions.filter(tx => tx.category === 'Ingreso')
   .reduce((acc, tx) => acc + tx.amount, 0);
 
-// ❌ NO restes gastos a pocket.budget — ya viene decrementado por register_expense
-const remaining = pocket.budget - getPocketSpending(pocket.category); // DOBLE RESTA
+// ❌ NO uses useCycleState() sin pasar el cycleId — retorna null siempre
+const { state } = useCycleState(); // ← NUNCA hagas esto
 
 // ✅ Hazlo así
-const { state } = useMonthlyState();
+const { activeCycle } = useUserCycles();
+const { state } = useCycleState(activeCycle?.id);
 const totalIncomeMonth = state?.income_month ?? 0;
 const myPocket = state?.pockets.find(p => p.id === pocketId);
 const remaining = myPocket?.available ?? 0;
@@ -195,36 +201,40 @@ deben ser pantallas propias.
 
 ---
 
-## `components/MonthNav.tsx` — selector de mes
+## `components/CycleNav.tsx` — selector de ciclo de presupuesto
 
 ```tsx
-import { MonthNav, MONTHS } from '../components/MonthNav';
+import { CycleNav } from '../components/CycleNav';
+import { useUserCycles } from '../lib/useCycleState';
 
-const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+const { cycles, activeCycle } = useUserCycles();
+const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
 
-<MonthNav value={selectedMonth} onChange={setSelectedMonth} />
-// O con año:
-<MonthNav value={selectedMonth} onChange={setSelectedMonth} showYear year={2026} />
+// Inicializar al ciclo activo
+useEffect(() => {
+  if (activeCycle && !selectedCycleId) setSelectedCycleId(activeCycle.id);
+}, [activeCycle]);
+
+<CycleNav cycles={cycles} activeCycleId={selectedCycleId} onChange={setSelectedCycleId} />
 ```
 
-| Prop | Tipo | Default |
+| Prop | Tipo | Descripción |
 |---|---|---|
-| `value` | number (0..11, igual que Date.getMonth()) | — |
-| `onChange` | `(next: number) => void` | — |
-| `showYear` | boolean | false |
-| `year` | number | undefined (solo se muestra si `showYear=true`) |
+| `cycles` | `any[]` | Lista de ciclos de `useUserCycles()`. |
+| `activeCycleId` | `string \| null` | El ciclo seleccionado actualmente. |
+| `onChange` | `(id: string) => void` | Callback al cambiar. |
 
 ### Comportamiento
 
-- Flecha izquierda/derecha + título centrado.
-- Wrap-around: enero → diciembre y viceversa.
+- Flecha izquierda/derecha + nombre del ciclo centrado.
 - Haptic light al tocar.
+- Si no hay ciclos o `activeCycleId` es null, no renderiza nada.
 
 ### Cuándo usarlo
 
-✅ En cualquier pantalla que muestre datos por mes (Pockets, Expenses).
-Si Dashboard o Stats agregan navegación por mes en el futuro, **usar
-este componente** — NO redefinir el array `MONTHS` ni los botones.
+✅ En cualquier pantalla que muestre datos por ciclo (Dashboard, Pockets, Expenses, HistoryScreen).
+
+❌ **NO usar `MonthNav`** — fue eliminado. Todo selector de período usa `CycleNav`.
 
 ---
 
@@ -330,9 +340,9 @@ Si encuentras alguno de estos, **arréglalo**:
 | `$ {n.toLocaleString('es-CO')}` inline | Duplica la decisión de formato. | `{formatMoney(n)}` |
 | `alert('mensaje')` | En RN se ve barato y no soporta título. | `notify.error('mensaje')` |
 | `Alert.alert(title, body, [actions])` | Duplica el wrapper. | `notify.confirm(...)` o `notify.error(...)` |
-| `pocket.budget - getPocketSpending(category)` | Doble resta — `budget` ya viene decrementado. | `pocket.budget` directo (o `state.pockets[i].available`). |
+| `useCycleState()` sin cycleId | Siempre retorna null, nunca hace fetch. | `useCycleState(activeCycle?.id)` |
 | `{ session: any }` | Pierde type safety. | `{ session: Session }` |
-| `monthNav` / `monthTitle` styles locales | Duplican el componente compartido. | `<MonthNav value={m} onChange={setM} />`. |
+| `<MonthNav>` | Componente eliminado. | `<CycleNav cycles={cycles} activeCycleId={id} onChange={fn} />`. |
 | Emojis en saludos/CTAs | Inconsistente con la marca. | Texto plano. |
 | `fontSize: 24` literal | No usa el design system. | `theme.typography.h2` |
 

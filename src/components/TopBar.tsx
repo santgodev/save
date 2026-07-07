@@ -9,11 +9,11 @@ import { BlurView } from 'expo-blur';
 import { Bell, X, Sparkles, Send, Target, Trash2 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
-import { calculateFinancialProfile } from '../utils/profileUtils';
+import { calculateFinancialProfile, CycleDates } from '../utils/profileUtils';
 import { supabase } from '../lib/supabase';
 import { logEvent, EVENTS } from '../lib/events';
 import { BottomSheet } from './BottomSheet';
-import { useCycleState } from '../lib/useCycleState';
+import { useCycleState, useUserCycles } from '../lib/useCycleState';
 import { formatMoney } from '../lib/format';
 import { notify } from '../lib/notify';
 
@@ -98,8 +98,11 @@ export const TopBar = ({
     `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
   );
 
-  // Sync with source of truth
-  const { state: monthState } = useCycleState();
+  // Obtain the active cycle ID from the global cache (free: already fetched by Dashboard/Pockets)
+  const { activeCycle } = useUserCycles();
+
+  // Sync with source of truth — requires cycleId to actually fetch from Supabase
+  const { state: monthState } = useCycleState(activeCycle?.id);
 
   // Auto-send initial message when chat is opened from outside
   useEffect(() => {
@@ -202,15 +205,7 @@ export const TopBar = ({
     );
   };
 
-  const monthTransactions = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    return (transactions || []).filter(tx => {
-      const date = new Date(tx.created_at);
-      return date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-    });
-  }, [transactions]);
+
 
   const getProactiveGreeting = () => {
     // Usamos el estado real del mes (RPC) para el saludo proactivo.
@@ -235,7 +230,10 @@ export const TopBar = ({
     return `Hola${userName ? ` ${userName.split(' ')[0]}` : ''}. ${insight}\n¿Qué quieres saber de tus números?\n\n[BOTON:¿Cómo voy este mes?][BOTON:¿En qué se me va más?]`;
   };
 
-  const profileData = useMemo(() => calculateFinancialProfile(transactions, [], pockets), [transactions, pockets]);
+  const cycleDates: CycleDates | undefined = monthState
+    ? { start: monthState.start_date, end: monthState.end_date ?? null }
+    : undefined;
+  const profileData = useMemo(() => calculateFinancialProfile(transactions, [], pockets, undefined, cycleDates), [transactions, pockets, cycleDates]);
 
   // ---------------------------------------------------------------------------
   // Persisted history: load from chat_messages on every chat open so that the

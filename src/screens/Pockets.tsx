@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, TouchableOpacity, Animated, StyleSheet, ScrollView, Dimensions, useWindowDimensions, Pressable, TextInput, Modal, ActivityIndicator, Platform, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView
+  View, Text, TouchableOpacity, Animated, StyleSheet, ScrollView, Dimensions, useWindowDimensions, Pressable, TextInput, Modal, ActivityIndicator, Platform, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, LayoutAnimation
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
@@ -23,7 +23,7 @@ import { CycleNav } from '../components/CycleNav';
 import { TransactionDetailModal } from '../components/TransactionDetailModal';
 import type { Session } from '@supabase/supabase-js';
 
-export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferPress }: { pockets: any[], transactions: any[], session: Session, onRefresh: () => void, onTransferPress: (params: { fromId?: string, amount?: number }) => void }) => {
+export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferPress }: { pockets: any[], transactions: any[], session: Session, onRefresh: () => void, onTransferPress: (params: { fromId?: string, toId?: string, amount?: number }) => void }) => {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
@@ -31,8 +31,6 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   const [selectedPocket, setSelectedPocket] = useState<any | null>(null);
   const [showIncomeSummary, setShowIncomeSummary] = useState(false);
 
-  const [isAdjustMode, setIsAdjustMode] = useState(false);
-  const [tempBudgets, setTempBudgets] = useState<Record<string, string>>({});
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -45,11 +43,11 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   // Edit existing pocket
   const [isEditingPocket, setIsEditingPocket] = useState(false);
   const [editName, setEditName] = useState('');
-  const [editIcon, setEditIcon] = useState('');
-  const [showIconPicker, setShowIconPicker] = useState(false);
-  const [showAllTxs, setShowAllTxs] = useState(false);
-  const [isEditingBudget, setIsEditingBudget] = useState(false);
+  const [editIcon, setEditIcon] = useState('tag');
   const [editBudgetValue, setEditBudgetValue] = useState('');
+  const [isSavingPocket, setIsSavingPocket] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [showAllTxs, setShowAllTxs] = useState(false);
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [showCycleInsight, setShowCycleInsight] = useState(false);
 
@@ -66,9 +64,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
   const sheetAnim = useRef(new Animated.Value(height)).current;
 
-  // Fuente ÚNICA de verdad — RPC get_monthly_state. Mismos números que
-  // ven Dashboard y el chat-advisor. selectedMonth es 0..11 (JS Date),
-  // el RPC espera 1..12.
+  // 1. Fuente ÚNICA de verdad — RPC get_cycle_state (vía useCycleState)
+  //    Contiene bolsillos (con .allocated, .spent_month, .available) y totales del ciclo.
   const { cycles, activeCycle } = useUserCycles();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
 
@@ -91,63 +88,9 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     return mp?.spent_month ?? 0;
   };
 
-  const startAdjustMode = () => {
-    const budgets: Record<string, string> = {};
-    pockets.forEach(p => {
-      if (p.is_default_free) return; // Libre pocket is not manually edited
-      // En modo ajuste editamos el PLAN (allocated_budget), no el saldo.
-      const alloc = (p as any).allocated_budget ?? p.budget ?? 0;
-      budgets[p.id] = alloc.toString();
-    });
-    setTempBudgets(budgets);
-    setIsAdjustMode(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  };
 
-  // El total a asignar se compara con el ingreso real del mes (ya viene
-  // sumado de transactions vía el RPC).
+
   const monthIncome = monthState?.income_month ?? 0;
-  // El total a asignar de los demás bolsillos
-  const totalAssigned = Object.values(tempBudgets).reduce(
-    (a, b) => a + (parseInt(b.replace(/\D/g, '')) || 0),
-    0,
-  );
-  // El bolsillo Libre recibe automáticamente el remanente
-  const calculatedFreeBudget = monthIncome - totalAssigned;
-
-  const saveBatchBudget = async () => {
-    setIsSaving(true);
-    try {
-      // En "Ajustar" el usuario re-fija el PLAN del mes para cada bolsillo.
-      // FIX BUG 2: Solo actualizamos `allocated_budget` (el plan).
-      // NO tocamos `budget` (saldo disponible real) — ese campo solo lo
-      // modifican los RPCs: register_income, register_expense,
-      // transfer_between_pockets y delete_transaction_with_reversal.
-      // Antes se aplicaba el delta del plan encima del saldo real,
-      // corrompiendo el disponible con números inventados.
-      const updates = Object.entries(tempBudgets).map(([id, rawBudget]) => {
-        const allocated = parseInt(rawBudget.replace(/\D/g, '')) || 0;
-        return supabase
-          .from('pockets')
-          .update({ allocated_budget: allocated })
-          .eq('id', id);
-      });
-      
-      const freePocket = pockets.find(p => p.is_default_free);
-      if (freePocket) {
-        const newAllocated = monthIncome - totalAssigned;
-        updates.push(
-          supabase.from('pockets').update({ allocated_budget: newAllocated }).eq('id', freePocket.id)
-        );
-      }
-      
-      await Promise.all(updates);
-      setIsAdjustMode(false);
-      onRefresh();
-      refreshMonthly();
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } catch (e) { console.error(e); } finally { setIsSaving(false); }
-  };
 
   const deletePocket = async (id: string) => {
     const pocket = pockets.find(p => p.id === id);
@@ -178,7 +121,11 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
   const syncPocketToCloud = async () => {
     if (!newName.trim()) return;
+    
+    const cleanName = newName.trim();
+    const capitalizedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
     const allocated = parseInt(newBudget.replace(/\D/g, '')) || 0;
+    
     // FIX BUG 8: El nuevo bolsillo parte con budget = 0 (saldo real vacío).
     // El plan (allocated_budget) sí refleja lo que el usuario asignó.
     // El saldo real (budget) crece solo cuando le llegan ingresos vía
@@ -186,8 +133,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     // inflaba el disponible sin que hubiera plata real.
     await supabase.from('pockets').insert({
       user_id: session.user.id,
-      name: newName.trim(),
-      category: newName.trim(),
+      name: capitalizedName,
+      category: capitalizedName,
       budget: 0,
       allocated_budget: allocated,
       icon: newIcon || 'tag'
@@ -201,44 +148,68 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   };
 
   const saveEditPocket = async () => {
-    if (!selectedPocket || !editName.trim()) return;
-    await supabase.from('pockets')
-      .update({ name: editName.trim(), category: editName.trim(), icon: editIcon })
-      .eq('id', selectedPocket.id);
-    setIsEditingPocket(false);
-    setShowIconPicker(false);
-    onRefresh();
-    refreshMonthly();
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  };
-
-  const saveBudgetInline = async () => {
-    if (!selectedPocket) return;
-    const newBudget = parseInt(editBudgetValue.replace(/\D/g, '')) || 0;
-    // FIX BUG 3: Solo actualizar el plan (allocated_budget).
-    // Antes sobreescribía budget (saldo real) con el valor del plan,
-    // borrando completamente el historial de gastos del bolsillo.
-    await supabase.from('pockets')
-      .update({ allocated_budget: newBudget })
-      .eq('id', selectedPocket.id);
-    setIsEditingBudget(false);
-    setEditBudgetValue('');
-    onRefresh();
-    refreshMonthly();
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    if (!editName.trim() || !editIcon) return;
+    try {
+      setIsSavingPocket(true);
+      const cleanName = editName.trim();
+      const capitalizedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+      
+      const updates: any = { name: capitalizedName, category: capitalizedName, icon: editIcon };
+      if (!selectedPocket.is_default_free) {
+        updates.allocated_budget = parseInt(editBudgetValue.replace(/\D/g, '')) || 0;
+      }
+      
+      await supabase.from('pockets').update(updates).eq('id', selectedPocket.id);
+      
+      // Update local state immediately so UI reflects it before refetch
+      setSelectedPocket((prev: any) => prev ? { ...prev, ...updates } : null);
+      
+      onRefresh();
+      refreshMonthly();
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setSaveSuccess(true);
+      
+      setTimeout(() => {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setIsEditingPocket(false);
+        setIsSavingPocket(false);
+        setSaveSuccess(false);
+      }, 700);
+      
+    } catch (e) {
+      console.error(e);
+      setIsSavingPocket(false);
+    }
   };
 
   const startEditPocket = () => {
     if (!selectedPocket) return;
     setEditName(selectedPocket.name);
     setEditIcon(selectedPocket.icon || 'tag');
+    const mp = getMonthlyPocket(selectedPocket.id);
+    const alloc = mp?.allocated ?? selectedPocket.allocated_budget ?? selectedPocket.budget ?? 0;
+    setEditBudgetValue(alloc > 0 ? String(alloc) : '');
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setIsEditingPocket(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
-  const getPocketTransactions = (category: string, limit?: number) => {
+  const getPocketTransactions = (category: string, pocketId: string, limit?: number) => {
     const all = transactions.filter(tx => {
-      return tx.category === category && tx.cycle_id === selectedCycleId;
+      if (tx.cycle_id !== selectedCycleId) return false;
+      if (tx.category === category) return true;
+      if (tx.category === 'Ingreso' && tx.metadata?.distribution?.[pocketId] > 0) return true;
+      if (tx.category === 'Traslado' && (tx.metadata?.from_pocket === pocketId || tx.metadata?.to_pocket === pocketId)) return true;
+      return false;
+    }).map(tx => {
+      if (tx.category === 'Ingreso') {
+        return { ...tx, amount: tx.metadata.distribution[pocketId], merchant: 'Ingreso: ' + (tx.merchant || 'General') };
+      }
+      if (tx.category === 'Traslado') {
+        const isOut = tx.metadata?.from_pocket === pocketId;
+        return { ...tx, amount: isOut ? -Math.abs(tx.amount) : Math.abs(tx.amount) };
+      }
+      return tx;
     }).sort((a, b) => new Date((b.date_string || b.created_at).split('T')[0] + 'T12:00:00').getTime() - new Date((a.date_string || a.created_at).split('T')[0] + 'T12:00:00').getTime());
     return limit ? all.slice(0, limit) : all;
   };
@@ -252,12 +223,9 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   const totalInvoicedIncome = monthIncome;
 
   const freePocketData = monthState?.pockets?.find(p => p.is_default_free);
-  const freeAmountAvailable = isAdjustMode 
-    ? calculatedFreeBudget 
-    : (freePocketData?.available ?? freePocketData?.budget ?? 0);
+  const freeAmountAvailable = freePocketData?.available ?? 0;
 
   const openPocket = (pocket: any) => {
-    if (isAdjustMode) return;
     setSelectedPocket(pocket);
     Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 50, friction: 8 }).start();
   };
@@ -275,7 +243,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     scrollPadding: { paddingHorizontal: 14 },
 
     // Header del mes
-    // monthNav/monthTitle/navBtn migrados a <MonthNav> compartido.
+
 
     // Tarjeta de presupuesto
     budgetCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.glassWhite, paddingHorizontal: 20, paddingVertical: 22, borderRadius: theme.radius.xl, marginBottom: 20, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.8)', ...theme.shadows.md },
@@ -359,21 +327,18 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   }), [theme, width, height]);
 
   // Centralized helper to get the precise allocated budget for this month
-  const getPocketAlloc = (p: Pocket) => {
+  const getPocketAlloc = (p: any) => {
     if (p.is_default_free) {
       // Libre receives whatever is left from the monthIncome after other pockets are funded
       const othersAlloc = pockets.filter(x => !x.is_default_free).reduce((acc, x) => {
          const mp = getMonthlyPocket(x.id);
-         const val = isAdjustMode ? (parseInt((tempBudgets[x.id] || '').replace(/\D/g, '')) || 0) : (mp?.allocated ?? (x as any).allocated_budget ?? x.budget ?? 0);
+         const val = mp?.allocated ?? x.allocated_budget ?? x.budget ?? 0;
          return acc + val;
       }, 0);
       return Math.max(0, monthIncome - othersAlloc);
     }
-    if (isAdjustMode) {
-      return parseInt((tempBudgets[p.id] || '').replace(/\D/g, '')) || 0;
-    }
     const mp = getMonthlyPocket(p.id);
-    return mp?.allocated ?? (p as any).allocated_budget ?? p.budget ?? 0;
+    return mp?.allocated ?? p.allocated_budget ?? p.budget ?? 0;
   };
 
   // Sort: libre siempre último, el resto por % gastado (más lleno primero)
@@ -411,6 +376,14 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     { key: 'Banknote', label: 'Dinero' },
     { key: 'Shield', label: 'Seguro' },
     { key: 'Briefcase', label: 'Trabajo' },
+    { key: 'Baby', label: 'Bebé/Hijos' },
+    { key: 'Dog', label: 'Mascotas' },
+    { key: 'CreditCard', label: 'Tarjetas' },
+    { key: 'BusFront', label: 'Transporte' },
+    { key: 'PartyPopper', label: 'Fiesta/Rumba' },
+    { key: 'Dumbbell', label: 'Deporte' },
+    { key: 'Scissors', label: 'Peluquería' },
+    { key: 'Wrench', label: 'Arreglos' },
   ];
 
   return (
@@ -558,31 +531,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.onSurface }}>Tus Bolsillos</Text>
-              {isAdjustMode && calculatedFreeBudget < 0 && (
-                <View style={[styles.diffBanner, styles.diffErr, { marginBottom: 0, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, flex: 0 }]}>
-                  <AlertCircle size={14} color={theme.colors.error} />
-                  <Text style={[styles.diffTxt, { color: theme.colors.error, fontSize: 11, flex: 0 }]}>Excedido</Text>
-                </View>
-              )}
             </View>
-            {!isAdjustMode ? (
-              <TouchableOpacity style={styles.editBtn} onPress={startAdjustMode}>
-                <Text style={styles.editBtnTxt}>Ajustar</Text>
-              </TouchableOpacity>
-            ) : (
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                <TouchableOpacity style={{ paddingHorizontal: 12, paddingVertical: 8, backgroundColor: theme.colors.surface, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.outlineVariant }} onPress={() => setIsAdjustMode(false)}>
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>Cancelar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[{ paddingHorizontal: 12, paddingVertical: 8, backgroundColor: theme.colors.primary, borderRadius: 12 }, calculatedFreeBudget < 0 && { opacity: 0.5 }]}
-                  onPress={saveBatchBudget}
-                  disabled={isSaving || calculatedFreeBudget < 0}
-                >
-                  {isSaving ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={{ fontSize: 12, fontWeight: '900', color: '#FFF' }}>Confirmar</Text>}
-                </TouchableOpacity>
-              </View>
-            )}
           </View>
           <View style={styles.grid}>
             {sorted.map((p, i) => {
@@ -593,10 +542,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
               const spent = mp?.spent_month ?? 0;
               const available = p.is_default_free ? (allocated - spent) : (mp?.available ?? p.budget ?? 0);
               
-              // En modo ajuste el card muestra el plan que se está editando.
-              const planEditing = isAdjustMode
-                ? (parseInt((tempBudgets[p.id] || '').replace(/\D/g, '')) || 0)
-                : allocated;
+
                 
               const remaining = available;             // ← lo que queda hoy, directo de la DB
               const isOver = remaining < 0 || (allocated > 0 && spent > allocated);
@@ -609,7 +555,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                 <TouchableOpacity
                   key={p.id || i}
                   style={styles.cardWrap}
-                  activeOpacity={isAdjustMode ? 1 : 0.88}
+                  activeOpacity={0.88}
                   onPress={() => openPocket(p)}
                 >
                   <View style={[styles.card, { backgroundColor: isOver ? theme.colors.error : flatColor, padding: 18, paddingTop: 20, paddingBottom: 22, minHeight: 180 }]}>
@@ -621,39 +567,17 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
                     <Text style={{ fontSize: 18, fontWeight: '900', color: '#FFF', marginBottom: 4 }} numberOfLines={1}>{p.name}</Text>
                     
-                    {!isAdjustMode ? (
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 20 }}>
-                        Plan: {allocated > 0 ? formatCOP(allocated) : '$0'}
-                      </Text>
-                    ) : (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
-                        <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)' }}>Plan: </Text>
-                        {!p.is_default_free ? (
-                          <TextInput
-                            style={{ fontSize: 12, fontWeight: '800', color: '#FFF', padding: 0, margin: 0, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.5)', minWidth: 40 }}
-                            keyboardType="numeric"
-                            value={tempBudgets[p.id] ? Number(tempBudgets[p.id]).toLocaleString('es-CO') : ''}
-                            onChangeText={v => setTempBudgets(prev => ({ ...prev, [p.id]: v.replace(/\D/g, '') }))}
-                            placeholder="0"
-                            placeholderTextColor="rgba(255,255,255,0.4)"
-                          />
-                        ) : (
-                          <Text style={{ fontSize: 12, fontWeight: '800', color: '#FFF' }}>
-                            {formatCOP(calculatedFreeBudget)}
-                          </Text>
-                        )}
-                      </View>
-                    )}
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 20 }}>
+                      Plan: {allocated > 0 ? formatCOP(allocated) : '$0'}
+                    </Text>
 
-                    {!isAdjustMode && (
-                      <View style={{ marginTop: 'auto' }}>
-                        <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={8} />
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
-                          <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>{remaining < 0 ? 'EXCESO' : 'TE QUEDA'}</Text>
-                          <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }} numberOfLines={1} adjustsFontSizeToFit>{formatCOP(Math.abs(remaining))}</Text>
-                        </View>
+                    <View style={{ marginTop: 'auto' }}>
+                      <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={8} />
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>{remaining < 0 ? 'EXCESO' : 'TE QUEDA'}</Text>
+                        <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }} numberOfLines={1} adjustsFontSizeToFit>{formatCOP(Math.abs(remaining))}</Text>
                       </View>
-                    )}
+                    </View>
                   </View>
                 </TouchableOpacity>
               );
@@ -678,7 +602,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
             <Pressable style={styles.backdrop} onPress={closePocket}>
               <Animated.View style={[styles.backdropTint, { opacity: sheetAnim.interpolate({ inputRange: [0, height], outputRange: [1, 0] }) }]} />
             </Pressable>
-            <Animated.View style={[styles.sheet, { transform: [{ translateY: sheetAnim }] }]}>
+            <Animated.View style={[styles.sheet, { paddingHorizontal: 0, paddingTop: 0, transform: [{ translateY: sheetAnim }] }]}>
               {/* Colored top strip matching the pocket's card color */}
               {(() => {
                 const i = sorted.findIndex(p => p.id === selectedPocket.id);
@@ -693,208 +617,193 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                 const pocketColor = isOver ? theme.colors.error : flatColor;
 
                 return (
-                  <View style={{ backgroundColor: pocketColor, marginHorizontal: -28, marginTop: -28, padding: 20, paddingTop: 14, paddingBottom: 18, borderTopLeftRadius: 36, borderTopRightRadius: 36 }}>
+                  <>
+                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 200, backgroundColor: pocketColor, borderTopLeftRadius: 36, borderTopRightRadius: 36 }} />
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+                      <ScrollView 
+                        style={{ flex: 1 }} 
+                        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 24) + 100 }}
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode="on-drag"
+                      >
+                        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                          <View style={{ backgroundColor: pocketColor, padding: 20, paddingTop: 14, paddingBottom: 18, borderTopLeftRadius: 36, borderTopRightRadius: 36, paddingHorizontal: 28 }}>
                     {/* Handle */}
                     <View style={{ width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.5)', borderRadius: 2, alignSelf: 'center', marginBottom: 14 }} />
 
                     {/* Header */}
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                      {isEditingPocket ? (
-                        <TouchableOpacity
-                          style={{ width: 48, height: 48, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}
-                          onPress={() => setShowIconPicker(v => !v)}
-                        >
-                          <CategoryIcon iconName={editIcon} size={26} color="#FFF" />
-                        </TouchableOpacity>
-                      ) : (
-                        <View style={{ width: 48, height: 48, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}>
-                          <CategoryIcon iconName={selectedPocket.icon} size={26} color="#FFF" />
-                        </View>
-                      )}
+                      <View style={{ width: 48, height: 48, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}>
+                        <CategoryIcon iconName={isEditingPocket ? editIcon : selectedPocket.icon} size={26} color="#FFF" />
+                      </View>
 
                       <View style={{ flex: 1 }}>
-                        {isEditingPocket ? (
-                          <TextInput
-                            style={{ fontSize: 22, fontWeight: '900', color: '#FFF', borderBottomWidth: 2, borderBottomColor: 'rgba(255,255,255,0.7)', paddingBottom: 4, fontFamily: theme.fonts.headline }}
-                            value={editName}
-                            onChangeText={setEditName}
-                            autoFocus
-                            maxLength={30}
-                            placeholderTextColor="rgba(255,255,255,0.6)"
-                          />
-                        ) : (
-                          <Text style={{ fontSize: 22, fontWeight: '900', color: '#FFF', fontFamily: theme.fonts.headline }}>{selectedPocket.name}</Text>
-                        )}
+                        <Text style={{ fontSize: 22, fontWeight: '900', color: '#FFF', fontFamily: theme.fonts.headline }}>
+                          {isEditingPocket ? 'Editar Bolsillo' : selectedPocket.name}
+                        </Text>
                         <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: '600', marginTop: 2 }}>
                           {selectedPocket.is_default_free ? 'Disponible sin asignar: ' : 'Plan mensual: '}{formatCOP(planAlloc)}
                         </Text>
                       </View>
 
-                      {isEditingPocket ? (
-                        <View style={{ flexDirection: 'row', gap: 8 }}>
-                          <TouchableOpacity
-                            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.9)', alignItems: 'center', justifyContent: 'center' }}
-                            onPress={saveEditPocket}
-                          >
-                            <Check size={18} color={pocketColor} strokeWidth={2.5} />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}
-                            onPress={() => { setIsEditingPocket(false); setShowIconPicker(false); }}
-                          >
-                            <X size={18} color="#FFF" strokeWidth={2.5} />
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <View style={{ flexDirection: 'row', gap: 8 }}>
-                          {!selectedPocket.is_default_free && (
-                            <TouchableOpacity
-                              style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}
-                              onPress={startEditPocket}
-                            >
-                              <Pencil size={16} color="#FFF" strokeWidth={2.5} />
-                            </TouchableOpacity>
-                          )}
-                          <TouchableOpacity
-                            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}
-                            onPress={() => { closePocket(); setShowAllTxs(false); }}
-                          >
-                            <X size={18} color="#FFF" strokeWidth={2.5} />
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                    </View>
-
-                    {/* Icon Picker in edit mode */}
-                    {showIconPicker && (
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
-                        {POCKET_ICONS.map(ic => (
-                          <TouchableOpacity
-                            key={ic.key}
-                            onPress={() => { setEditIcon(ic.key); setShowIconPicker(false); }}
-                            style={{
-                              width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
-                              backgroundColor: editIcon === ic.key ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.2)',
-                              borderWidth: 2, borderColor: editIcon === ic.key ? '#FFF' : 'transparent'
-                            }}
-                          >
-                            <CategoryIcon iconName={ic.key} size={24} color={editIcon === ic.key ? pocketColor : '#FFF'} />
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
-                    )}
-
-                    {/* Stats: dos columnas claras */}
-                    <View style={{ flexDirection: 'row', gap: 12, marginBottom: planAlloc > 0 ? 14 : 8 }}>
-                      {/* Presupuesto — editable inline */}
-                      <TouchableOpacity
-                        style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 14, padding: 14 }}
-                        activeOpacity={isEditingBudget ? 1 : 0.7}
-                        onPress={() => {
-                          if (!isEditingBudget && !selectedPocket.is_default_free) {
-                            setEditBudgetValue(planAlloc > 0 ? String(planAlloc) : '');
-                            setIsEditingBudget(true);
-                          }
-                        }}
-                      >
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                            {selectedPocket.is_default_free ? 'DISPONIBLE' : 'PRESUPUESTO'}
-                          </Text>
-                          {!selectedPocket.is_default_free && !isEditingBudget && (
-                            <Pencil size={12} color="rgba(255,255,255,0.7)" />
-                          )}
-                          {isEditingBudget && (
-                            <View style={{ flexDirection: 'row', gap: 6 }}>
-                              <TouchableOpacity onPress={saveBudgetInline}>
-                                <Check size={14} color="#FFF" strokeWidth={2.5} />
-                              </TouchableOpacity>
-                              <TouchableOpacity onPress={() => { setIsEditingBudget(false); setEditBudgetValue(''); }}>
-                                <X size={14} color="rgba(255,255,255,0.7)" strokeWidth={2.5} />
-                              </TouchableOpacity>
-                            </View>
-                          )}
-                        </View>
-                        {isEditingBudget ? (
-                          <TextInput
-                            style={{ fontSize: 20, fontWeight: '900', color: '#FFF', fontFamily: theme.fonts.headline, padding: 0, borderBottomWidth: 1.5, borderBottomColor: 'rgba(255,255,255,0.7)', paddingBottom: 2 }}
-                            value={editBudgetValue ? editBudgetValue.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''}
-                            onChangeText={v => setEditBudgetValue(v.replace(/\./g, '').replace(/\D/g, ''))}
-                            keyboardType="numeric"
-                            autoFocus
-                            placeholder="0"
-                            placeholderTextColor="rgba(255,255,255,0.4)"
-                          />
-                        ) : (
-                          <Text style={{ fontSize: 20, fontWeight: '900', color: '#FFF', fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
-                            {planAlloc > 0 ? formatCOP(planAlloc) : 'Sin definir'}
-                          </Text>
-                        )}
-                      </TouchableOpacity>
-
-                      <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 14, padding: 14 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>Gastado</Text>
-                        <Text style={{ fontSize: 20, fontWeight: '900', color: '#FFF', fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
-                          {formatCOP(spent)}
-                        </Text>
+                      <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <TouchableOpacity
+                          style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}
+                          onPress={() => { closePocket(); setShowAllTxs(false); setIsEditingPocket(false); }}
+                        >
+                          <X size={18} color="#FFF" strokeWidth={2.5} />
+                        </TouchableOpacity>
                       </View>
                     </View>
 
-                    {/* Barra de progreso — solo si hay presupuesto definido */}
-                    {planAlloc > 0 && (
-                      <>
-                        <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" />
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)' }}>
-                            {isOver ? `Excediste por ${formatCOP(Math.abs(available))}` : `Te queda ${formatCOP(available)}`}
-                          </Text>
-                          <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)' }}>{Math.round(pctUsed)}%</Text>
+                    {isEditingPocket ? (
+                      <View style={{ backgroundColor: 'rgba(255,255,255,0.1)', padding: 16, borderRadius: 20, marginTop: 4 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', marginBottom: 8 }}>Ícono</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ gap: 10 }}>
+                          {POCKET_ICONS.map(ic => (
+                            <TouchableOpacity
+                              key={ic.key}
+                              onPress={() => setEditIcon(ic.key)}
+                              style={{
+                                width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+                                backgroundColor: editIcon === ic.key ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.2)'
+                              }}
+                            >
+                              <CategoryIcon iconName={ic.key} size={22} color={editIcon === ic.key ? pocketColor : '#FFF'} />
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', marginBottom: 8 }}>Nombre</Text>
+                        <TextInput
+                          style={{ backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, fontWeight: '800', color: '#FFF', marginBottom: 16 }}
+                          value={editName}
+                          onChangeText={setEditName}
+                          maxLength={30}
+                          placeholderTextColor="rgba(255,255,255,0.5)"
+                        />
+
+                        {!selectedPocket.is_default_free && (
+                          <>
+                            <Text style={{ fontSize: 11, fontWeight: '800', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', marginBottom: 8 }}>Presupuesto (Plan)</Text>
+                            <TextInput
+                              style={{ backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 20, fontWeight: '900', color: '#FFF', fontFamily: theme.fonts.headline, marginBottom: 8 }}
+                              value={editBudgetValue ? editBudgetValue.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''}
+                              onChangeText={v => setEditBudgetValue(v.replace(/\./g, '').replace(/\D/g, ''))}
+                              keyboardType="numeric"
+                              placeholder="0"
+                              placeholderTextColor="rgba(255,255,255,0.5)"
+                            />
+                          </>
+                        )}
+                        
+                        <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                          <TouchableOpacity 
+                            style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center' }} 
+                            onPress={() => {
+                              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                              setIsEditingPocket(false);
+                            }}
+                            disabled={isSavingPocket}
+                          >
+                            <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFF' }}>Cancelar</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity 
+                            style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: '#FFF', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }} 
+                            onPress={saveEditPocket}
+                            disabled={isSavingPocket}
+                          >
+                            {isSavingPocket && !saveSuccess ? (
+                              <ActivityIndicator size="small" color={pocketColor} />
+                            ) : saveSuccess ? (
+                              <>
+                                <Check size={16} color={pocketColor} strokeWidth={3} />
+                                <Text style={{ fontSize: 14, fontWeight: '900', color: pocketColor }}>¡Guardado!</Text>
+                              </>
+                            ) : (
+                              <Text style={{ fontSize: 14, fontWeight: '900', color: pocketColor }}>Guardar Cambios</Text>
+                            )}
+                          </TouchableOpacity>
                         </View>
+                      </View>
+                    ) : (
+                      <>
+                        <View style={{ flexDirection: 'row', gap: 12, marginBottom: planAlloc > 0 ? 14 : 8 }}>
+                          <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 14, padding: 14 }}>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+                              {selectedPocket.is_default_free ? 'DISPONIBLE' : 'PRESUPUESTO'}
+                            </Text>
+                            <Text style={{ fontSize: 20, fontWeight: '900', color: '#FFF', fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
+                              {planAlloc > 0 ? formatCOP(planAlloc) : 'Sin definir'}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 14, padding: 14 }}>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>Gastado</Text>
+                            <Text style={{ fontSize: 20, fontWeight: '900', color: '#FFF', fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
+                              {formatCOP(spent)}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {planAlloc > 0 && (
+                          <>
+                            <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" />
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)' }}>
+                                {isOver ? `Excediste por ${formatCOP(Math.abs(available))}` : `Te queda ${formatCOP(available)}`}
+                              </Text>
+                              <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)' }}>{Math.round(pctUsed)}%</Text>
+                            </View>
+                          </>
+                        )}
+                        
+                        {isOver && (
+                          <TouchableOpacity
+                            onPress={() => {
+                              closePocket();
+                              const bestSource = [...pockets]
+                                .filter(p => p.id !== selectedPocket.id && (p.budget || 0) > 0)
+                                .sort((a, b) => (b.budget || 0) - (a.budget || 0))[0];
+                              onTransferPress({ fromId: bestSource?.id, toId: selectedPocket.id, amount: Math.abs(available) });
+                            }}
+                            style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 14 }}
+                          >
+                            <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFF' }}>Mover fondos de otro bolsillo</Text>
+                            <ArrowRight size={14} color="#FFF" />
+                          </TouchableOpacity>
+                        )}
+
+                        {!selectedPocket.is_default_free && (
+                      <TouchableOpacity
+                            style={{ marginTop: 16, paddingVertical: 14, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 14, alignItems: 'center' }}
+                            onPress={startEditPocket}
+                          >
+                            <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }}>Editar Bolsillo</Text>
+                          </TouchableOpacity>
+                        )}
                       </>
                     )}
-
-                    {/* Mover fondos CTA */}
-                    {isOver && (
-                      <TouchableOpacity
-                        onPress={() => {
-                          closePocket();
-                          const bestSource = [...pockets]
-                            .filter(p => p.id !== selectedPocket.id && (p.budget || 0) > 0)
-                            .sort((a, b) => (b.budget || 0) - (a.budget || 0))[0];
-                          onTransferPress({ fromId: bestSource?.id, toId: selectedPocket.id, amount: Math.abs(available) });
-                        }}
-                        style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 14 }}
-                      >
-                        <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFF' }}>Mover fondos de otro bolsillo</Text>
-                        <ArrowRight size={14} color="#FFF" />
-                      </TouchableOpacity>
-                    )}
                   </View>
-                );
-              })()}
+                </TouchableWithoutFeedback>
 
-
-              <ScrollView 
-                style={{ flex: 1, marginHorizontal: -28 }} 
-                contentContainerStyle={{ paddingHorizontal: 28, paddingTop: 20, paddingBottom: Math.max(insets.bottom, 24) + 100 }}
-                showsVerticalScrollIndicator={false}
-              >
-                {/* Últimos movimientos */}
-                {(() => {
-                  const allTxs = getPocketTransactions(selectedPocket.category);
-                  const visibleTxs = showAllTxs ? allTxs : allTxs.slice(0, 5);
-                  return (
-                    <>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                        <Text style={styles.sectionLabel}>Movimientos</Text>
-                        {allTxs.length > 5 && (
-                          <TouchableOpacity onPress={() => setShowAllTxs(v => !v)}>
-                            <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.primary }}>
-                              {showAllTxs ? 'Ver menos' : `Ver todos (${allTxs.length})`}
-                            </Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
+                <View style={{ paddingHorizontal: 28, paddingTop: 20 }}>
+                  {/* Últimos movimientos */}
+                  {(() => {
+                    const allTxs = getPocketTransactions(selectedPocket.category, selectedPocket.id);
+                    const visibleTxs = showAllTxs ? allTxs : allTxs.slice(0, 5);
+                    return (
+                      <>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                          <Text style={styles.sectionLabel}>Movimientos</Text>
+                          {allTxs.length > 5 && (
+                            <TouchableOpacity onPress={() => setShowAllTxs(v => !v)}>
+                              <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.primary }}>
+                                {showAllTxs ? 'Ver menos' : `Ver todos (${allTxs.length})`}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       {visibleTxs.length > 0 ? (
                         visibleTxs.map((tx, idx) => {
                           const premiumColors = theme.colors.pocketFlatColors as string[];
@@ -930,7 +839,12 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                     <Text style={{ fontSize: 14, fontWeight: '800', color: theme.colors.error }}>Eliminar bolsillo</Text>
                   </TouchableOpacity>
                 )}
-              </ScrollView>
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+                  </>
+                );
+              })()}
             </Animated.View>
           </View>
         )}

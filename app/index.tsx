@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, ActivityIndicator, Text, StyleSheet, TouchableOpacity, Animated, Dimensions, Platform, Image } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { supabase } from '../src/lib/supabase';
+import { clearCycleCaches } from '../src/lib/useCycleState';
 import { INITIAL_POCKETS, SUPABASE_URL, SUPABASE_ANON_KEY } from '../src/constants';
-// import { preloadMonthlyState } from '../src/lib/useMonthlyState';
 import { getTheme } from '../src/theme/theme';
 import { ThemeProvider, useTheme } from '../src/theme/ThemeContext';
 import { Screen } from '../src/types';
@@ -186,13 +186,16 @@ function MainApp() {
   useEffect(() => {
     const handleInitialAction = async () => {
       try {
-        if (typeof QuickActions.initial === 'function') {
-          const initialAction = await QuickActions.initial();
-          if (initialAction?.id === 'open_scanner') {
-            setCurrentScreen('scanner');
-          } else if (initialAction?.id === 'quick_expense') {
-            setCurrentScreen('quick_expense');
-          }
+        const initialAction = QuickActions.initial;
+        // initialAction might be a function in some versions or just a property.
+        // The type definition says it's an object/property, but some docs say it's a function.
+        // If it's a getter, accessing it gets the value.
+        // To be safe against crashes:
+        const action = typeof QuickActions.initial === 'function' ? await (QuickActions.initial as any)() : QuickActions.initial;
+        if (action?.id === 'open_scanner') {
+          setCurrentScreen('scanner');
+        } else if (action?.id === 'quick_expense') {
+          setCurrentScreen('quick_expense');
         }
       } catch (e) {
         console.warn('QuickActions error:', e);
@@ -271,6 +274,7 @@ function MainApp() {
   const loadUserData = async (userId: string) => {
     if (!userId) return;
     setIsFetchingData(true);
+    clearCycleCaches();
     try {
       const activeAccessToken = session?.access_token || '';
       const strictClient = activeAccessToken ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {

@@ -29,6 +29,8 @@ export type CycleState = {
     total: number;
     count: number;
   }>;
+  // previous_month: summary of the prior cycle (note: no 'id' field returned by RPC)
+  // Use user_budget_cycles table directly if you need the id for closure operations.
   previous_month: {
     name: string;
     income: number;
@@ -37,7 +39,11 @@ export type CycleState = {
   } | null;
 };
 
-const globalCycleStateCache: Record<string, CycleState> = {};
+let globalCycleStateCache: Record<string, CycleState> = {};
+export function clearCycleCaches() {
+  globalCycleStateCache = {};
+  globalCyclesCache = null;
+}
 
 export function useCycleState(cycleId?: string, autoLoad: boolean = true) {
   const cacheKey = cycleId || 'none';
@@ -46,12 +52,18 @@ export function useCycleState(cycleId?: string, autoLoad: boolean = true) {
   const [loading, setLoading] = useState<boolean>(!globalCycleStateCache[cacheKey] && autoLoad);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (force: boolean = false) => {
     if (!cycleId) {
       setLoading(false);
       return;
     }
     
+    if (!force && globalCycleStateCache[cacheKey]) {
+      setState(globalCycleStateCache[cacheKey]);
+      setLoading(false);
+      return;
+    }
+
     if (!globalCycleStateCache[cacheKey]) {
       setLoading(true);
     }
@@ -88,11 +100,18 @@ let globalCyclesCache: any[] | null = null;
 export function useUserCycles() {
   const [cycles, setCycles] = useState<any[]>(globalCyclesCache || []);
   const [activeCycle, setActiveCycle] = useState<any | null>(
-    globalCyclesCache ? globalCyclesCache.find(c => c.is_active) : null
+    globalCyclesCache ? (globalCyclesCache.find(c => c.is_active) || globalCyclesCache[0] || null) : null
   );
   const [loading, setLoading] = useState(!globalCyclesCache);
 
-  const fetchCycles = async () => {
+  const fetchCycles = async (force: boolean = false) => {
+    if (!force && globalCyclesCache) {
+      setCycles(globalCyclesCache);
+      setActiveCycle(globalCyclesCache.find(c => c.is_active) || globalCyclesCache[0] || null);
+      setLoading(false);
+      return;
+    }
+
     if (!globalCyclesCache) setLoading(true);
     const { data: userData } = await supabase.auth.getUser();
     if (!userData?.user) return;

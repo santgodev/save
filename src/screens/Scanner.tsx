@@ -162,15 +162,13 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
     }
   }, [initialMode]);
   
-  // Extract dynamic categories from pockets (fallback to default if empty)
   const availableCategories = useMemo(() => {
     const defaultCats = ['Comida', 'Transporte', 'Ocio', 'Ahorros', 'Otros'];
     if (!pockets || pockets.length === 0) return defaultCats;
     
     // Get unique categories from pockets
     const pocketCats = pockets.map(p => p.category).filter(Boolean);
-    const uniqueCats = Array.from(new Set([...pocketCats, ...defaultCats]));
-    return uniqueCats;
+    return Array.from(new Set(pocketCats));
   }, [pockets]);
 
   const [selectedCategory, setSelectedCategory] = useState(availableCategories[0]);

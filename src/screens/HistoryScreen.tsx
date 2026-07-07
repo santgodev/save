@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, LayoutAnimation, Platform, UIManager } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../theme/ThemeContext';
 import { formatMoney } from '../lib/format';
-import { History, TrendingUp, TrendingDown, Target, HelpCircle, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { History, TrendingUp, TrendingDown, HelpCircle, ChevronDown, ChevronUp } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { LinearGradient } from 'expo-linear-gradient';
 import { getDeterministicColor } from '../theme/theme';
 
-const HistoryCard = ({ cycle, theme, pockets }: { cycle: any, theme: any, pockets: any[] }) => {
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const HistoryCard = ({ cycle, theme }: { cycle: any, theme: any }) => {
   const isCurrent = cycle.is_active;
   const net = cycle.income - cycle.spent;
   const isPositive = net >= 0;
@@ -20,6 +23,8 @@ const HistoryCard = ({ cycle, theme, pockets }: { cycle: any, theme: any, pocket
 
   const toggleExpand = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    
     if (expanded) {
       setExpanded(false);
     } else {
@@ -27,31 +32,19 @@ const HistoryCard = ({ cycle, theme, pockets }: { cycle: any, theme: any, pocket
       if (details.length === 0) {
         setLoadingDetails(true);
         try {
-          const { data, error } = await supabase
-            .from('transactions')
-            .select('category, amount, metadata')
-            .eq('cycle_id', cycle.id)
-            .lt('amount', 0);
+          const { data, error } = await supabase.rpc('get_cycle_state', {
+            p_cycle_id: cycle.id
+          });
             
-          if (!error && data) {
-            const grouped = data.reduce((acc: any, tx: any) => {
-              if (tx.category === 'Ingreso' || tx.category === 'Traslado') return acc;
-              if (tx.metadata?.type === 'internal_transfer_out' || tx.metadata?.type === 'internal_transfer_in') return acc;
-              acc[tx.category] = (acc[tx.category] || 0) + Math.abs(tx.amount);
-              return acc;
-            }, {});
-            
-            const detailsArr = pockets
-              .map(p => {
-                const spent = grouped[p.category] || 0; // Fixed: use category instead of name
-                return { 
-                  category: p.name, 
-                  spent, 
-                  allocated: p.allocated_budget || 0,
-                  color: getDeterministicColor(p.name, theme.colors.pocketFlatColors as string[])
-                };
-              })
-              .filter(d => d.spent > 0 || d.allocated > 0)
+          if (!error && data && data.pockets) {
+            const detailsArr = (data.pockets as any[])
+              .filter((p: any) => p.spent_month > 0 || p.allocated > 0)
+              .map((p: any) => ({
+                category: p.name,
+                spent: p.spent_month,
+                allocated: p.allocated || 0,
+                color: getDeterministicColor(p.name, theme.colors.pocketFlatColors as string[])
+              }))
               .sort((a: any, b: any) => b.spent - a.spent);
               
             setDetails(detailsArr);
@@ -65,56 +58,66 @@ const HistoryCard = ({ cycle, theme, pockets }: { cycle: any, theme: any, pocket
   return (
     <TouchableOpacity activeOpacity={0.9} onPress={toggleExpand} style={{
       backgroundColor: theme.colors.glassWhite,
-      borderRadius: 28,
+      borderRadius: 32,
       padding: 24,
       marginBottom: 20,
-      borderWidth: 1.5,
-      borderColor: expanded ? theme.colors.primary + '50' : 'rgba(255,255,255,0.7)',
-      ...theme.shadows.premium
+      borderWidth: 1,
+      borderColor: expanded ? theme.colors.primary + '40' : theme.colors.divider,
+      ...theme.shadows.md
     }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-        <Text style={{ fontSize: 20, fontWeight: '900', color: theme.colors.onSurface, flex: 1, letterSpacing: -0.5 }}>{cycle.name}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <Text style={{ ...theme.typography.h2, color: theme.colors.onSurface, letterSpacing: -0.5 }}>{cycle.name}</Text>
         {isCurrent && (
-          <View style={{ paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, backgroundColor: theme.colors.primaryContainer }}>
-            <Text style={{ fontSize: 11, fontWeight: '800', color: theme.colors.primary, textTransform: 'uppercase' }}>Mes Actual</Text>
+          <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, backgroundColor: theme.colors.primaryContainer }}>
+            <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.primary, letterSpacing: 1 }}>CICLO ACTIVO</Text>
           </View>
         )}
       </View>
 
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
-        <Text style={{ fontSize: 15, color: theme.colors.onSurfaceVariant, fontWeight: '600' }}>Total Ingresado</Text>
-        <Text style={{ fontSize: 15, fontWeight: '800', color: theme.colors.primary }}>{formatMoney(cycle.income)}</Text>
-      </View>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
-        <Text style={{ fontSize: 15, color: theme.colors.onSurfaceVariant, fontWeight: '600' }}>Total Gastado</Text>
-        <Text style={{ fontSize: 15, fontWeight: '800', color: theme.colors.onSurface }}>{formatMoney(cycle.spent)}</Text>
-      </View>
-
-      <View style={{ height: 1, backgroundColor: theme.colors.divider, marginVertical: 16 }} />
-
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: expanded ? 16 : 0 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          {isPositive ? <TrendingUp size={20} color={theme.colors.primary} /> : <TrendingDown size={20} color={theme.colors.error} />}
-          <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface }}>
-            {isPositive ? 'Ahorro / Sobrante' : 'Déficit del Mes'}
-          </Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 16, marginBottom: 24 }}>
+        <View style={{ flex: 1, backgroundColor: theme.colors.surfaceContainerLowest, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: theme.colors.divider }}>
+          <Text style={{ ...theme.typography.label, color: theme.colors.onSurfaceVariant, marginBottom: 6, letterSpacing: 1 }}>INGRESOS</Text>
+          <Text style={{ ...theme.typography.h3, color: theme.colors.primary }} numberOfLines={1} adjustsFontSizeToFit>{formatMoney(cycle.income)}</Text>
         </View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={{ fontSize: 20, fontWeight: '900', letterSpacing: -0.5, color: isPositive ? theme.colors.primary : theme.colors.error }}>
-            {isPositive ? '+' : '-'}{formatMoney(Math.abs(net))}
-          </Text>
-          {expanded ? <ChevronUp size={24} color={theme.colors.onSurfaceVariant} /> : <ChevronDown size={24} color={theme.colors.onSurfaceVariant} />}
+        <View style={{ flex: 1, backgroundColor: theme.colors.surfaceContainerLowest, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: theme.colors.divider }}>
+          <Text style={{ ...theme.typography.label, color: theme.colors.onSurfaceVariant, marginBottom: 6, letterSpacing: 1 }}>GASTOS</Text>
+          <Text style={{ ...theme.typography.h3, color: theme.colors.onSurface }} numberOfLines={1} adjustsFontSizeToFit>{formatMoney(cycle.spent)}</Text>
+        </View>
+      </View>
+
+      <View style={{ 
+        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
+        padding: 16, borderRadius: 20, 
+        backgroundColor: isPositive ? theme.colors.primaryContainer + '30' : theme.colors.errorContainer + '30',
+        borderWidth: 1,
+        borderColor: isPositive ? theme.colors.primary + '20' : theme.colors.error + '20'
+      }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ width: 40, height: 40, borderRadius: 14, backgroundColor: isPositive ? theme.colors.primaryContainer : theme.colors.errorContainer, alignItems: 'center', justifyContent: 'center' }}>
+            {isPositive ? <TrendingUp size={20} color={theme.colors.primary} strokeWidth={2.5} /> : <TrendingDown size={20} color={theme.colors.error} strokeWidth={2.5} />}
+          </View>
+          <View>
+            <Text style={{ ...theme.typography.label, color: isPositive ? theme.colors.primary : theme.colors.error, opacity: 0.9, letterSpacing: 1 }}>
+              {isPositive ? 'SOBRANTE' : 'DÉFICIT'}
+            </Text>
+            <Text style={{ ...theme.typography.h3, color: isPositive ? theme.colors.primary : theme.colors.error, marginTop: 2 }} numberOfLines={1} adjustsFontSizeToFit>
+              {isPositive ? '+' : '-'}{formatMoney(Math.abs(net))}
+            </Text>
+          </View>
+        </View>
+        <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: theme.colors.glassWhite, alignItems: 'center', justifyContent: 'center', ...theme.shadows.sm }}>
+          {expanded ? <ChevronUp size={20} color={theme.colors.onSurfaceVariant} /> : <ChevronDown size={20} color={theme.colors.onSurfaceVariant} />}
         </View>
       </View>
 
       {expanded && (
-        <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: theme.colors.divider }}>
-          <Text style={{ fontSize: 14, fontWeight: '800', color: theme.colors.onSurfaceVariant, marginBottom: 20, textTransform: 'uppercase', letterSpacing: 0.5 }}>Desglose por Bolsillo</Text>
+        <View style={{ marginTop: 24, paddingTop: 24, borderTopWidth: 1, borderTopColor: theme.colors.divider }}>
+          <Text style={{ ...theme.typography.label, color: theme.colors.onSurfaceVariant, marginBottom: 20, letterSpacing: 1 }}>DESGLOSE POR BOLSILLO</Text>
           
           {loadingDetails ? (
             <ActivityIndicator size="small" color={theme.colors.primary} style={{ marginVertical: 20 }} />
           ) : details.length === 0 ? (
-            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 14, fontStyle: 'italic' }}>No hay gastos ni presupuestos asignados en este mes.</Text>
+            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 14, fontStyle: 'italic', textAlign: 'center' }}>Sin movimientos en este ciclo.</Text>
           ) : (
             <View style={{ gap: 20 }}>
               {details.map((d: any) => {
@@ -124,29 +127,29 @@ const HistoryCard = ({ cycle, theme, pockets }: { cycle: any, theme: any, pocket
                 return (
                   <View key={d.category}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: d.color }} />
-                        <Text style={{ fontSize: 16, fontWeight: '700', color: theme.colors.onSurface }}>{d.category}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: isOver ? theme.colors.error : d.color }} />
+                        <Text style={{ ...theme.typography.bodyMedium, fontWeight: '800', color: theme.colors.onSurface }}>{d.category}</Text>
                       </View>
-                      <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface }}>
+                      <Text style={{ ...theme.typography.bodyMedium, fontWeight: '900', color: theme.colors.onSurface }}>
                         {formatMoney(d.spent)}
                       </Text>
                     </View>
                     
                     {d.allocated > 0 && (
-                      <View style={{ height: 8, backgroundColor: theme.colors.surfaceContainerHighest, borderRadius: 4, overflow: 'hidden' }}>
+                      <View style={{ height: 10, backgroundColor: theme.colors.surfaceContainerHighest, borderRadius: 5, overflow: 'hidden' }}>
                         <View style={{ 
                           height: '100%', 
                           backgroundColor: isOver ? theme.colors.error : d.color, 
                           width: `${percentage}%`,
-                          borderRadius: 4
+                          borderRadius: 5
                         }} />
                       </View>
                     )}
                     
                     {d.allocated > 0 && (
-                      <Text style={{ fontSize: 13, fontWeight: '600', color: isOver ? theme.colors.error : theme.colors.onSurfaceVariant, marginTop: 6, textAlign: 'right' }}>
-                        de {formatMoney(d.allocated)} asignado
+                      <Text style={{ ...theme.typography.caption, color: isOver ? theme.colors.error : theme.colors.onSurfaceVariant, marginTop: 8, textAlign: 'right', fontWeight: '700' }}>
+                        de {formatMoney(d.allocated)}
                       </Text>
                     )}
                   </View>
@@ -165,26 +168,24 @@ export const HistoryScreen = () => {
   const { theme } = useTheme();
   const [loading, setLoading] = useState(true);
   const [cycles, setCycles] = useState<any[]>([]);
-  const [pockets, setPockets] = useState<any[]>([]);
 
   useEffect(() => {
     loadHistory();
   }, []);
+
+  const totalAhorro = useMemo(() => {
+    return cycles.reduce((acc, cycle) => acc + (cycle.income - cycle.spent), 0);
+  }, [cycles]);
 
   const loadHistory = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const [cyclesRes, pocketsRes] = await Promise.all([
-        supabase.rpc('get_history_cycles', { p_user_id: user.id }),
-        supabase.from('pockets').select('*').eq('user_id', user.id).order('is_default_free', { ascending: false }).order('created_at', { ascending: true })
-      ]);
+      const { data, error } = await supabase.rpc('get_history_cycles', { p_user_id: user.id });
       
-      if (cyclesRes.error) throw cyclesRes.error;
-      
-      setCycles(cyclesRes.data || []);
-      setPockets(pocketsRes.data || []);
+      if (error) throw error;
+      setCycles(data || []);
     } catch (e) {
       console.error('Error loading history:', e);
     } finally {
@@ -194,12 +195,9 @@ export const HistoryScreen = () => {
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
-    scrollContent: { paddingTop: Math.max(insets.top, 16) + 100, paddingBottom: 150, paddingHorizontal: 24 },
-    headerTitle: { fontSize: 32, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 8, letterSpacing: -1 },
-    headerSubtitle: { fontSize: 16, color: theme.colors.onSurfaceVariant, fontWeight: '500', marginBottom: 24 },
-    
+    scrollContent: { paddingTop: Math.max(insets.top, 16) + 104, paddingBottom: 150, paddingHorizontal: 24 },
     emptyState: { padding: 40, alignItems: 'center', justifyContent: 'center' },
-    emptyText: { fontSize: 16, color: theme.colors.onSurfaceVariant, textAlign: 'center', marginTop: 16, fontWeight: '500' },
+    emptyText: { ...theme.typography.bodyMedium, color: theme.colors.onSurfaceVariant, textAlign: 'center', marginTop: 16, fontWeight: '600' },
   }), [theme, insets.top]);
 
   if (loading) {
@@ -214,13 +212,14 @@ export const HistoryScreen = () => {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: theme.colors.primaryContainer, alignItems: 'center', justifyContent: 'center' }}>
-            <History size={24} color={theme.colors.primary} />
+        <View style={{ alignItems: 'center', marginBottom: 32 }}>
+          <View style={{ alignItems: 'center', backgroundColor: theme.colors.glassWhite, paddingHorizontal: 32, paddingVertical: 24, borderRadius: 32, borderWidth: 1, borderColor: theme.colors.primary + '30', ...theme.shadows.md, width: '100%' }}>
+            <Text style={{ ...theme.typography.label, color: theme.colors.onSurfaceVariant, letterSpacing: 1, marginBottom: 8 }}>AHORRO TOTAL ACUMULADO</Text>
+            <Text style={{ ...theme.typography.display, color: totalAhorro >= 0 ? theme.colors.primary : theme.colors.error }} numberOfLines={1} adjustsFontSizeToFit>
+              {formatMoney(totalAhorro)}
+            </Text>
           </View>
-          <Text style={styles.headerTitle}>Historial</Text>
         </View>
-        <Text style={styles.headerSubtitle}>Revisa el balance de tus meses anteriores y analiza tu progreso.</Text>
 
         {cycles.length === 0 ? (
           <View style={styles.emptyState}>
@@ -229,7 +228,7 @@ export const HistoryScreen = () => {
           </View>
         ) : (
           cycles.map((cycle) => (
-            <HistoryCard key={cycle.id} cycle={cycle} theme={theme} pockets={pockets} />
+            <HistoryCard key={cycle.id} cycle={cycle} theme={theme} />
           ))
         )}
 

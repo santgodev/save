@@ -12,7 +12,8 @@ import { useTheme } from '../theme/ThemeContext';
 import { normalize } from '../theme/theme';
 import { supabase } from '../lib/supabase';
 import { notify } from '../lib/notify';
-import { calculateFinancialProfile, ProfileData } from '../utils/profileUtils';
+import { calculateFinancialProfile, ProfileData, CycleDates } from '../utils/profileUtils';
+import { useUserCycles } from '../lib/useCycleState';
 import type { Session } from '@supabase/supabase-js';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -190,11 +191,16 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
   const [notifs, setNotifs] = useState({ alerts_high: true, alerts_hormiga: true, daily_tips: true });
   const [isSyncing, setIsSyncing] = useState(false);
 
+  const { activeCycle } = useUserCycles();
+
   useEffect(() => {
     fetchRules();
-    const data = calculateFinancialProfile(transactions, rules, pockets);
+    const cycleDates: CycleDates | undefined = activeCycle
+      ? { start: activeCycle.start_date, end: activeCycle.end_date ?? null }
+      : undefined;
+    const data = calculateFinancialProfile(transactions, rules, pockets, undefined, cycleDates);
     setProfileData(data);
-  }, [transactions, pockets]);
+  }, [transactions, pockets, activeCycle]);
 
   const fetchRules = async () => {
     try {

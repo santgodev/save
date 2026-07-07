@@ -24,7 +24,7 @@ const sessionId = `s_${Date.now().toString(36)}_${Math.random().toString(36).sli
 
 const appVersion =
   (Constants.expoConfig?.version as string | undefined) ??
-  (Constants.manifest?.version as string | undefined) ??
+  ((Constants.manifest as any)?.version as string | undefined) ??
   'unknown';
 
 export type EventPayload = Record<string, unknown>;

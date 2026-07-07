@@ -5,10 +5,10 @@
 // Body: { message: string, session_id?: string }
 // Auth: Bearer <user JWT>
 //
-// Cambios vs v5:
+// Cambios vs v5/v6:
 //   - Read-only: tools.ts ahora exporta [] (cero mutaciones).
 //   - Contexto único: ya NO arma el contexto a mano desde profiles +
-//     pockets + transactions. Llama a get_monthly_state() — la fuente
+//     pockets + transactions. Llama a get_cycle_state() — la fuente
 //     de verdad — y se la pasa al prompt builder.
 //   - El número que ve el chat es el MISMO que ve Dashboard y Pockets.
 // =====================================================================
@@ -19,7 +19,7 @@ import { chatCompletion, OpenAIMessage } from "../_shared/openai.ts";
 import {
   ADVISOR_PROMPT_VERSION,
   buildAdvisorSystemPrompt,
-  MonthlyState,
+  CycleState,
 } from "../_shared/prompts.ts";
 
 const HISTORY_WINDOW = 20;
@@ -50,11 +50,49 @@ Deno.serve(async (req) => {
   const { user, userClient, serviceClient } = auth;
 
   // ------------------------------------------------------------------
-  // 1. Cargar contexto: estado mensual unificado + memoria + historial.
+  // 1. Cargar contexto: estado del ciclo unificado + memoria + historial.
   // ------------------------------------------------------------------
   const todayISO = new Date().toISOString().slice(0, 10);
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+
+  const { data: activeCycle, error: cycleErr } = await userClient
+    .from("user_budget_cycles")
+    .select("id, start_date")
+    .eq("user_id", user.id)
+    .is("end_date", null)
+    .maybeSingle();
+
+  if (cycleErr || !activeCycle) {
+    // Si no hay ciclo activo (ej. usuario no ha terminado el onboarding),
+    // devolvemos un mensaje amigable en vez de fallar con 500.
+    const fallbackReply = "¡Hola! Veo que todavía no tienes un ciclo de presupuesto activo. Registra tu primer ingreso en el inicio para que podamos empezar a organizar tus números.";
+    
+    await serviceClient.from("chat_messages").insert([
+      {
+        user_id: user.id,
+        session_id: sessionId,
+        role: "user",
+        content: userMessage,
+        prompt_version: ADVISOR_PROMPT_VERSION,
+      },
+      {
+        user_id: user.id,
+        session_id: sessionId,
+        role: "assistant",
+        content: fallbackReply,
+        model: "gpt-4o-mini-fallback",
+        prompt_version: ADVISOR_PROMPT_VERSION,
+      }
+    ]);
+
+    return jsonResponse({
+      reply: fallbackReply,
+      session_id: sessionId,
+      usage: null,
+      prompt_version: ADVISOR_PROMPT_VERSION,
+    });
+  }
+
+  const cycleStart = activeCycle.start_date;
 
   const [
     { data: stateData, error: stateErr },
@@ -65,7 +103,7 @@ Deno.serve(async (req) => {
     { data: todayTxs },
     { data: otherTxs },
   ] = await Promise.all([
-    userClient.rpc("get_monthly_state", { p_user_id: user.id }),
+    userClient.rpc("get_cycle_state", { p_cycle_id: activeCycle.id }),
     userClient
       .from("profiles")
       .select("id,full_name")
@@ -100,18 +138,18 @@ Deno.serve(async (req) => {
       .select("merchant,amount,category")
       .eq("user_id", user.id)
       .in("category", ["Otros", "Sin Categoría", "Uncategorized"])
-      .gte("date_string", monthStart)
+      .gte("date_string", cycleStart)
       .lt("amount", 0)
   ]);
 
   if (stateErr || !stateData) {
     return errorResponse(
-      `No se pudo cargar el estado mensual: ${stateErr?.message ?? "sin datos"}`,
+      `No se pudo cargar el estado del ciclo: ${stateErr?.message ?? "sin datos"}`,
       500,
     );
   }
 
-  const state = stateData as MonthlyState;
+  const state = stateData as CycleState;
 
   // ------------------------------------------------------------------
   // 2. Armar el system prompt y los mensajes.

@@ -21,4 +21,4 @@ export interface Pocket {
   is_default_free?: boolean;
 }
 
-export type Screen = 'dashboard' | 'scanner' | 'expenses' | 'pockets' | 'profile' | 'profile_details' | 'history' | 'onboarding' | 'add_income' | 'pocket_transfer';
+export type Screen = 'dashboard' | 'scanner' | 'expenses' | 'pockets' | 'profile' | 'profile_details' | 'history' | 'onboarding' | 'add_income' | 'pocket_transfer' | 'quick_expense';

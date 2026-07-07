@@ -18,8 +18,9 @@ import { Transaction } from '../types';
 import { supabase } from '../lib/supabase';
 import { useCycleState, useUserCycles } from '../lib/useCycleState';
 import { CycleNav } from '../components/CycleNav';
-import { PocketsEmptyState } from '../components/PocketsEmptyState';
+
 import { TransactionDetailModal } from '../components/TransactionDetailModal';
+import { MonthClosureModal } from '../components/MonthClosureModal';
 import { formatMoney } from '../lib/format';
 import type { Session } from '@supabase/supabase-js';
 
@@ -58,6 +59,7 @@ export const Dashboard = ({
   const [greeting, setGreeting] = useState('Hola');
   const [selectedTx, setSelectedTx] = useState<any>(null);
   const [pendingIncomes, setPendingIncomes] = useState<any[]>([]);
+  const [showClosureModal, setShowClosureModal] = useState(false); // set to true when unclosed cycle found
 
   useEffect(() => {
     const hours = new Date().getHours();
@@ -115,7 +117,29 @@ export const Dashboard = ({
     }
   }, [activeCycle]);
 
-  const { state: monthState, loading: monthLoading } = useCycleState(selectedCycleId || undefined);
+  const { state: monthState, loading: monthLoading, refresh: refreshMonthState } = useCycleState(selectedCycleId || undefined);
+
+  // Detect unclosed previous cycle: query user_budget_cycles for one that has
+  // end_date set (closed) but user_closed is false, meaning the user hasn't
+  // formally gone through the closure flow yet.
+  const [unclosedPrevCycle, setUnclosedPrevCycle] = useState<any>(null);
+
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    supabase
+      .from('user_budget_cycles')
+      .select('id, name')
+      .eq('user_id', session.user.id)
+      .not('end_date', 'is', null)      // cycle has ended
+      .eq('user_closed', false)          // but user hasn't gone through closure flow
+      .order('end_date', { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        const found = data && data.length > 0 ? data[0] : null;
+        setUnclosedPrevCycle(found);
+        if (found) setShowClosureModal(true);
+      });
+  }, [session?.user?.id, selectedCycleId]);
 
   const totalIncomeMonth = monthState?.income_month ?? 0;
   const totalSpentMonth = monthState?.spent_month ?? 0;
@@ -123,6 +147,33 @@ export const Dashboard = ({
 
   const mainDisplayAmount = monthState?.net_month ?? 0;
   const saldoDisponible = monthState?.available_total ?? 0;
+
+  const cycleDays = useMemo(() => {
+    if (!monthState) return { current: 1, total: 30, progress: 0 };
+    const start = new Date(monthState.start_date);
+    start.setHours(0,0,0,0);
+    
+    let totalDays = 30;
+    if (monthState.end_date) {
+      const end = new Date(monthState.end_date);
+      end.setHours(0,0,0,0);
+      totalDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+    }
+    
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    
+    let currentDay = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    
+    if (currentDay < 1) currentDay = 1;
+    if (!monthState.end_date && currentDay > totalDays) {
+       totalDays = currentDay; 
+    } else if (monthState.end_date && currentDay > totalDays) {
+       currentDay = totalDays;
+    }
+    
+    return { current: currentDay, total: totalDays, progress: currentDay / totalDays };
+  }, [monthState]);
 
   const [aiInsight, setAiInsight] = useState<{ title: string; body: string } | null>(null);
 
@@ -230,10 +281,10 @@ export const Dashboard = ({
             <View style={{ marginBottom: 20, marginTop: 12 }}>
               <View style={{ flexDirection: 'column', gap: 6 }}>
                 <Text style={{ ...theme.typography.label, color: theme.colors.onSurfaceVariant, opacity: 0.8, letterSpacing: 1 }}>
-                  SALDO TOTAL DISPONIBLE
+                  DISPONIBLE DEL CICLO
                 </Text>
-                <Text style={{ ...theme.typography.display, color: theme.colors.onSurface, lineHeight: 48 }}>
-                  {formatMoney(saldoDisponible)}
+                <Text style={{ ...theme.typography.display, color: netFlowMonth < 0 ? theme.colors.error : theme.colors.onSurface, lineHeight: 48 }} numberOfLines={1} adjustsFontSizeToFit>
+                  {formatMoney(netFlowMonth)}
                 </Text>
               </View>
             </View>
@@ -254,7 +305,7 @@ export const Dashboard = ({
               {/* THE BAR */}
               <View style={{ height: 14, backgroundColor: theme.colors.surfaceContainerHighest, borderRadius: 7, overflow: 'hidden', position: 'relative', marginBottom: 12 }}>
                 <LinearGradient
-                  colors={[theme.colors.primary, (theme.colors as any).pastel.lavender || theme.colors.primary]}
+                  colors={(theme.colors as any).brandGradient || ['#8AD6CE', '#B9E2A2', '#D2A9D1']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={{ 
@@ -273,9 +324,7 @@ export const Dashboard = ({
                 
                 {/* DAY INDICATOR (The 'Pace' Dot) */}
                 {(() => {
-                  const dayOfMonth = new Date().getDate();
-                  const totalDays = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-                  const monthProgress = (dayOfMonth / totalDays) * 100;
+                  const monthProgress = cycleDays.progress * 100;
                   return (
                     <View style={{ 
                       position: 'absolute', 
@@ -296,13 +345,11 @@ export const Dashboard = ({
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.onSurface, opacity: 0.2 }} />
-                  <Text style={{ ...theme.typography.caption, color: theme.colors.onSurfaceVariant, fontWeight: '700' }}>DÍA {new Date().getDate()} DE {new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()}</Text>
+                  <Text style={{ ...theme.typography.caption, color: theme.colors.onSurfaceVariant, fontWeight: '700' }}>DÍA {cycleDays.current} DE {cycleDays.total}</Text>
                 </View>
 
                 {(() => {
-                  const dayOfMonth = new Date().getDate();
-                  const totalDays = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-                  const monthProgress = dayOfMonth / totalDays;
+                  const monthProgress = cycleDays.progress;
                   // FIX BUG 6: usar income_month como denominador, no allocated_total
                   const spendingProgress = totalIncomeMonth > 0 ? (totalSpentMonth / totalIncomeMonth) : 0;
                   
@@ -508,6 +555,19 @@ export const Dashboard = ({
         transaction={selectedTx}
         pockets={pockets}
         onClose={() => setSelectedTx(null)}
+      />
+
+      <MonthClosureModal
+        visible={showClosureModal}
+        pockets={pockets}
+        cycleId={unclosedPrevCycle?.id ?? ''}
+        cycleName={unclosedPrevCycle?.name ?? 'Mes anterior'}
+        userId={session?.user?.id ?? ''}
+        onClosed={() => {
+          setShowClosureModal(false);
+          // Invalidate cycle cache so next fetch gets fresh data
+          onRefresh?.();
+        }}
       />
     </View>
   );

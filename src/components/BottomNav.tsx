@@ -127,7 +127,7 @@ export const BottomNav = ({ activeScreen, setScreen, onAddPress, onAddLongPress 
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setScreen('history'); }}
           >
              <History size={20} color={activeScreen === 'history' ? activeColor : inactiveColor} strokeWidth={activeScreen === 'history' ? 2.5 : 1.5} />
-             <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.navLabel, { color: activeScreen === 'history' ? activeColor : inactiveColor }]}>HISTORIAL</Text>
+             <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.navLabel, { color: activeScreen === 'history' ? activeColor : inactiveColor }]}>AHORRO</Text>
           </TouchableOpacity>
 
         </View>
