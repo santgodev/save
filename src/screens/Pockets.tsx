@@ -67,7 +67,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   // 1. Fuente ÚNICA de verdad — RPC get_cycle_state (vía useCycleState)
   //    Contiene bolsillos (con .allocated, .spent_month, .available) y totales del ciclo.
   const { cycles, activeCycle } = useUserCycles();
-  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
+  const [selectedCycleId, setSelectedCycleId] = useState<string | null>(activeCycle?.id || null);
 
   useEffect(() => {
     if (activeCycle && !selectedCycleId) {
@@ -76,6 +76,11 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   }, [activeCycle]);
 
   const { state: monthState, refresh: refreshMonthly, loading: isMonthlyLoading } = useCycleState(selectedCycleId || undefined);
+
+  // Reload cycle state (balances) automatically when transactions change
+  useEffect(() => {
+    if (transactions) refreshMonthly(true);
+  }, [transactions, refreshMonthly]);
 
   // Lookup helper: bolsillo del mes con sus números (allocated, available,
   // spent_month, pct_used). Si todavía no cargó, fallback a la prop.
@@ -246,11 +251,11 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
 
     // Tarjeta de presupuesto
-    budgetCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.glassWhite, paddingHorizontal: 20, paddingVertical: 22, borderRadius: theme.radius.xl, marginBottom: 20, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.8)', ...theme.shadows.md },
+    budgetCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.glassWhite, paddingHorizontal: 20, paddingVertical: 22, borderRadius: theme.radius.xl, marginBottom: 20, borderWidth: 1.5, borderColor: theme.colors.divider, ...theme.shadows.md },
     budgetLabel: { fontSize: 10, fontWeight: '900', color: theme.colors.onSurfaceVariant, marginBottom: 6, letterSpacing: 1.2, textTransform: 'uppercase' },
     budgetAmount: { fontSize: 28, fontWeight: '900', letterSpacing: -1, color: theme.colors.onSurface },
     budgetInput: { fontSize: 28, fontWeight: '900', padding: 0, margin: 0, color: theme.colors.primary, minWidth: 100 },
-    editBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, backgroundColor: theme.colors.primaryContainer, borderWidth: 1, borderColor: 'rgba(255,255,255,0.5)' },
+    editBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, backgroundColor: theme.colors.primaryContainer, borderWidth: 1, borderColor: theme.colors.divider },
     editBtnTxt: { fontSize: 13, fontWeight: '900', color: theme.colors.primary },
 
     // Alerta diff
@@ -270,7 +275,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     cardWrap: { width: (width - (14 * 2 + 12)) / 2, borderRadius: theme.radius.xl, overflow: 'hidden', ...theme.shadows.md },
     
     // Tarjeta plana (sin gradiente)
-    card: { flex: 1, padding: 18, borderRadius: theme.radius.xl, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
+    card: { flex: 1, padding: 18, borderRadius: theme.radius.xl, borderWidth: 1, borderColor: theme.colors.divider },
     cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
     iconBox: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.3)' },
     
@@ -550,6 +555,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
               
               const premiumColors = theme.colors.pocketFlatColors as string[];
               const flatColor = p.is_default_free ? theme.colors.primary : premiumColors[i % premiumColors.length];
+              const cardBg = isOver ? theme.colors.error : flatColor + 'E6';
 
               return (
                 <TouchableOpacity
@@ -558,7 +564,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                   activeOpacity={0.88}
                   onPress={() => openPocket(p)}
                 >
-                  <View style={[styles.card, { backgroundColor: isOver ? theme.colors.error : flatColor, padding: 18, paddingTop: 20, paddingBottom: 22, minHeight: 180 }]}>
+                  <View style={[styles.card, { backgroundColor: cardBg, padding: 18, paddingTop: 20, paddingBottom: 22, minHeight: 180 }]}>
                     <View style={{ marginBottom: 20 }}>
                       <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}>
                         <CategoryIcon iconName={p.icon} size={16} color="#FFF" />
@@ -622,7 +628,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
                       <ScrollView 
                         style={{ flex: 1 }} 
-                        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 24) + 100 }}
+                        contentContainerStyle={{ flexGrow: 1, paddingBottom: Math.max(insets.bottom, 24) + 100 }}
                         showsVerticalScrollIndicator={false}
                         keyboardShouldPersistTaps="handled"
                         keyboardDismissMode="on-drag"
@@ -774,20 +780,35 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                           </TouchableOpacity>
                         )}
 
-                        {!selectedPocket.is_default_free && (
-                      <TouchableOpacity
-                            style={{ marginTop: 16, paddingVertical: 14, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 14, alignItems: 'center' }}
-                            onPress={startEditPocket}
+                        <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
+                          <TouchableOpacity
+                            style={{ flex: 1, paddingVertical: 14, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+                            onPress={() => {
+                              closePocket();
+                              // Wait a bit for the modal to close before navigating
+                              setTimeout(() => onTransferPress({ fromId: selectedPocket.id }), 250);
+                            }}
                           >
-                            <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }}>Editar Bolsillo</Text>
+                            <ArrowRight size={16} color="#FFF" />
+                            <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }}>Transferir</Text>
                           </TouchableOpacity>
-                        )}
+
+                          {!selectedPocket.is_default_free && (
+                            <TouchableOpacity
+                              style={{ flex: 1, paddingVertical: 14, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+                              onPress={startEditPocket}
+                            >
+                              <Pencil size={16} color="#FFF" />
+                              <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }}>Editar</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       </>
                     )}
                   </View>
                 </TouchableWithoutFeedback>
 
-                <View style={{ paddingHorizontal: 28, paddingTop: 20 }}>
+                <View style={{ backgroundColor: theme.colors.background, paddingHorizontal: 28, paddingTop: 20, flex: 1 }}>
                   {/* Últimos movimientos */}
                   {(() => {
                     const allTxs = getPocketTransactions(selectedPocket.category, selectedPocket.id);

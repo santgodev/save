@@ -115,7 +115,7 @@ export function Auth({ onLoginSuccess }: AuthProps) {
       borderRadius: 32,
       overflow: 'hidden',
       borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.5)',
+      borderColor: theme.colors.divider,
       elevation: 4,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 10 },
@@ -354,7 +354,7 @@ export function Auth({ onLoginSuccess }: AuthProps) {
           style={styles.headerContainer}
         >
           <Image 
-            source={require('../../assets/images/logo.png')} 
+            source={require('../../assets/images/logo_verde.png')} 
             style={styles.logoImage} 
             resizeMode="contain" 
           />

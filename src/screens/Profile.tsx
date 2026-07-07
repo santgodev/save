@@ -48,7 +48,7 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
       borderRadius: 32, 
       padding: 24, 
       borderWidth: 1.5, 
-      borderColor: 'rgba(255,255,255,0.8)',
+      borderColor: theme.colors.divider,
       ...theme.shadows.premium 
     },
     scoreHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
@@ -87,7 +87,7 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
       paddingVertical: 10, 
       borderRadius: 16,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.5)'
+      borderColor: theme.colors.divider
     },
     pillHabitText: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },
 
@@ -121,7 +121,7 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
       gap: 4, 
       minWidth: 64,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.5)'
+      borderColor: theme.colors.divider
     },
     actionBtnLabelText: { fontSize: 9, fontWeight: '900', color: theme.colors.primary, textTransform: 'uppercase' },
 
@@ -134,7 +134,7 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
       padding: 20, 
       alignItems: 'center', 
       borderWidth: 1.5, 
-      borderColor: 'rgba(255,255,255,0.7)',
+      borderColor: theme.colors.divider,
       ...theme.shadows.soft
     },
     themeCardActive: { 
@@ -161,7 +161,7 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
       paddingVertical: 10, 
       paddingHorizontal: 16, 
       borderWidth: 1.5,
-      borderColor: 'rgba(255,255,255,0.8)',
+      borderColor: theme.colors.divider,
       ...theme.shadows.soft 
     },
     settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16 },
@@ -345,11 +345,11 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
                  }}
                >
                   {isSyncing ? (
-                    <ActivityIndicator size="small" color="#FFF" />
+                    <ActivityIndicator size="small" color={theme.colors.onPrimary} />
                   ) : (
-                    <History size={18} color="#FFF" />
+                    <History size={18} color={theme.colors.onPrimary} />
                   )}
-                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 14 }}>
+                  <Text style={{ color: theme.colors.onPrimary, fontWeight: '800', fontSize: 14 }}>
                     {isSyncing ? 'Sincronizando...' : 'Sincronizar IA'}
                   </Text>
                </TouchableOpacity>
@@ -385,6 +385,34 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
                  <Text style={{ fontSize: 9, fontWeight: '900', color: theme.colors.onSurfaceVariant }}>PRÓXIMAMENTE</Text>
                </View>
             </View>
+         </View>
+      </View>
+
+      <View style={styles.section}>
+         <View style={styles.sectionHeader}>
+            <Palette size={18} color={theme.colors.primary} strokeWidth={2.5} />
+            <Text style={styles.sectionTitle}>Apariencia</Text>
+         </View>
+         <View style={styles.themeSelectorGrid}>
+            <TouchableOpacity 
+               activeOpacity={0.8}
+               style={[styles.themeCard, mode === 'sage' && styles.themeCardActive]}
+               onPress={() => setThemeMode('sage')}
+            >
+               <View style={[styles.colorCircle, { backgroundColor: '#F7F7F2' }]} />
+               <Text style={[styles.themeCardName, { color: theme.colors.onSurface }]}>Claro</Text>
+               <Text style={styles.themeCardDesc}>Sage Classic</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+               activeOpacity={0.8}
+               style={[styles.themeCard, mode === 'sageDark' && styles.themeCardActive]}
+               onPress={() => setThemeMode('sageDark')}
+            >
+               <View style={[styles.colorCircle, { backgroundColor: '#121212', borderColor: '#2C2C2C' }]} />
+               <Text style={[styles.themeCardName, { color: theme.colors.onSurface }]}>Oscuro</Text>
+               <Text style={styles.themeCardDesc}>Night Mode</Text>
+            </TouchableOpacity>
          </View>
       </View>
 

@@ -54,7 +54,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
       overflow: 'hidden', 
       backgroundColor: theme.colors.glassWhite, 
       borderWidth: 1.5, 
-      borderColor: 'rgba(255,255,255,0.8)', 
+      borderColor: theme.colors.divider, 
       ...theme.shadows.md 
     },
     overviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: normalize(12) },
@@ -74,7 +74,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
       paddingVertical: 12, 
       borderRadius: theme.radius.md, 
       borderWidth: 1.5, 
-      borderColor: 'rgba(255,255,255,0.7)',
+      borderColor: theme.colors.divider,
       ...theme.shadows.soft 
     },
     searchInput: { flex: 1, marginLeft: 12, fontSize: 15, fontWeight: '600', fontFamily: theme.fonts.body, letterSpacing: 0.3, color: theme.colors.onSurface },
@@ -86,12 +86,12 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
       justifyContent: 'center', 
       borderRadius: theme.radius.md, 
       borderWidth: 1.5, 
-      borderColor: 'rgba(255,255,255,0.7)',
+      borderColor: theme.colors.divider,
       ...theme.shadows.soft 
     },
     
 
-    navBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.glassWhite, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.8)', ...theme.shadows.soft },
+    navBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.glassWhite, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: theme.colors.divider, ...theme.shadows.soft },
   
     scrollContent: { paddingHorizontal: normalize(24), paddingBottom: 120 },
     txRow: { 
@@ -120,7 +120,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
       backgroundColor: theme.colors.primaryContainer, 
       marginRight: 10,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.5)'
+      borderColor: theme.colors.divider
     },
     chipActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
     chipText: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },

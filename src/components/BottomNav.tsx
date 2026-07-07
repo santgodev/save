@@ -26,7 +26,7 @@ export const BottomNav = ({ activeScreen, setScreen, onAddPress, onAddLongPress 
       overflow: 'hidden',
       backgroundColor: theme.colors.glassWhite, 
       borderWidth: 1.5,
-      borderColor: 'rgba(255,255,255,0.8)',
+      borderColor: theme.colors.divider,
     },
     contentRow: {
       flexDirection: 'row',
@@ -65,7 +65,7 @@ export const BottomNav = ({ activeScreen, setScreen, onAddPress, onAddLongPress 
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1.5,
-      borderColor: 'rgba(255,255,255,0.4)',
+      borderColor: theme.colors.divider,
     }
   }), [theme]);
 
@@ -74,7 +74,7 @@ export const BottomNav = ({ activeScreen, setScreen, onAddPress, onAddLongPress 
 
   return (
     <View style={[styles.outerContainer, { bottom: Math.max(insets.bottom, 16) }]}>
-      <BlurView intensity={Platform.OS === 'ios' ? 80 : 100} tint="light" style={styles.blurContainer}>
+      <BlurView intensity={Platform.OS === 'ios' ? 80 : 100} tint={theme.isDark ? 'dark' : 'light'} style={styles.blurContainer}>
         <View style={styles.contentRow}>
           
           <TouchableOpacity 
@@ -109,7 +109,7 @@ export const BottomNav = ({ activeScreen, setScreen, onAddPress, onAddLongPress 
               activeOpacity={0.8}
             >
               <LinearGradient colors={theme.colors.brandGradient as any} style={styles.fabGradient} start={{x:0, y:0}} end={{x:1, y:1}}>
-                <Plus size={24} color="#FFF" />
+                <Plus size={24} color={theme.colors.onPrimary} />
               </LinearGradient>
             </TouchableOpacity>
           </View>

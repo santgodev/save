@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   View, Text, Image, TouchableOpacity, StyleSheet, Platform,
   Modal, ScrollView, ActivityIndicator, TextInput, KeyboardAvoidingView,
-  Keyboard, TouchableWithoutFeedback, PanResponder, LayoutAnimation
+  Keyboard, TouchableWithoutFeedback, PanResponder, LayoutAnimation, Animated
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -44,6 +44,56 @@ type Message = {
 };
 
 let hasShownGreeting = false;
+
+const MiniAnimatedSaveLogo = () => {
+  const { theme } = useTheme();
+  
+  const logoOpacity = useRef(new Animated.Value(0)).current;
+  const textOpacity = useRef(new Animated.Value(0)).current;
+  const slideTextAnim = useRef(new Animated.Value(-25)).current; 
+  const containerShift = useRef(new Animated.Value(20)).current;
+
+  const playAnimation = () => {
+    logoOpacity.setValue(0);
+    textOpacity.setValue(0);
+    slideTextAnim.setValue(-25);
+    containerShift.setValue(20);
+
+    Animated.sequence([
+      Animated.timing(logoOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.delay(100),
+      Animated.parallel([
+        Animated.spring(containerShift, { toValue: 0, friction: 8, tension: 40, useNativeDriver: true }),
+        Animated.timing(textOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.spring(slideTextAnim, { toValue: 0, friction: 8, tension: 40, useNativeDriver: true }),
+      ])
+    ]).start();
+  };
+
+  useEffect(() => {
+    playAnimation();
+    const interval = setInterval(() => {
+      playAnimation();
+    }, 15000 + Math.random() * 10000); // Random interval between 15s and 25s
+    return () => clearInterval(interval);
+  }, []);
+
+  const fontSize = 22;
+
+  return (
+    <Animated.View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', transform: [{ translateX: containerShift }] }}>
+      <Animated.Text style={{ fontSize, fontWeight: '900', fontFamily: theme.fonts.headline, color: theme.colors.primary, zIndex: 10, opacity: logoOpacity }}>
+        S
+      </Animated.Text>
+      <Animated.View style={{ zIndex: 1, flexDirection: 'row', opacity: textOpacity, transform: [{ translateX: slideTextAnim }] }}>
+        <Text style={{ fontSize, fontWeight: '900', fontFamily: theme.fonts.headline, color: (theme.colors as any).pastel?.salmon || '#F0927B' }}>A</Text>
+        <Text style={{ fontSize, fontWeight: '900', fontFamily: theme.fonts.headline, color: (theme.colors as any).pastel?.teal || '#8AD6CE' }}>V</Text>
+        <Text style={{ fontSize, fontWeight: '900', fontFamily: theme.fonts.headline, color: (theme.colors as any).pastel?.lavender || '#D2A9D1' }}>E</Text>
+      </Animated.View>
+    </Animated.View>
+  );
+};
+
 
 export const TopBar = ({ 
   title, userAvatar, userName, userId, transactions = [], pockets = [],
@@ -391,17 +441,17 @@ export const TopBar = ({
     },
     avatarContainer: {
       width: 40, height: 40, borderRadius: 14, overflow: 'hidden',
-      borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.8)',
+      borderWidth: 1.5, borderColor: theme.colors.divider,
       backgroundColor: theme.colors.primaryContainer,
     },
     avatarImage: { width: '100%', height: '100%' },
     avatarFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary },
     avatarInitials: { color: '#fff', fontSize: 14, fontWeight: '800' },
-    topBarTitle: { ...theme.typography.caption, color: theme.colors.primary, fontSize: 10, letterSpacing: 2, opacity: 0.6 },
+    topBarTitle: { fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, letterSpacing: -0.2 },
     iconButton: {
       width: 40, height: 40, alignItems: 'center', justifyContent: 'center',
       borderRadius: 12, backgroundColor: theme.colors.primaryContainer,
-      borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.7)',
+      borderWidth: 1.5, borderColor: theme.colors.divider,
     },
     indicator: {
       position: 'absolute', top: -2, right: -2, width: 12, height: 12,
@@ -509,7 +559,7 @@ export const TopBar = ({
 
   return (
     <>
-      <BlurView intensity={Platform.OS === 'ios' ? 80 : 100} tint="light" style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) + 12 }]}>
+      <BlurView intensity={Platform.OS === 'ios' ? 80 : 100} tint={theme.isDark ? 'dark' : 'light'} style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) + 12 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <TouchableOpacity activeOpacity={0.8} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); if (onAvatarPress) onAvatarPress(); }} style={styles.avatarContainer}>
             {userAvatar ? (
@@ -522,8 +572,12 @@ export const TopBar = ({
           </TouchableOpacity>
         </View>
 
-        <View style={{ position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: -1 }}>
-          <Text style={styles.topBarTitle}>{greetingTitle || title}</Text>
+        <View style={{ position: 'absolute', left: 0, right: 0, top: Math.max(insets.top, 16) + 12, bottom: 16, alignItems: 'center', justifyContent: 'center', zIndex: 0 }} pointerEvents="none">
+          {greetingTitle ? (
+            <Text style={styles.topBarTitle}>{greetingTitle}</Text>
+          ) : (
+            <MiniAnimatedSaveLogo />
+          )}
         </View>
 
         <TouchableOpacity style={styles.iconButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowChat(true); setHasNewInsights(false); }} activeOpacity={0.7}>

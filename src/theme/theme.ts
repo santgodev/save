@@ -93,55 +93,55 @@ const lightModeColors = {
 };
 
 const darkModeColors = {
-  // Core
-  background: '#121212', 
-  onBackground: '#E0E0E0', 
-  primary: '#8AD6CE', 
-  onPrimary: '#13302D',
-  primaryContainer: '#13302D', 
-  onPrimaryContainer: '#8AD6CE',
+  // Core (Sleek Pitch Black & Pure White)
+  background: '#09090B', 
+  onBackground: '#FFFFFF', 
+  primary: '#B9E2A2', // Vibrant fresh green (acting as the "yellow" from inspiration)
+  onPrimary: '#09090B', // Dark text on primary button for maximum pop
+  primaryContainer: '#1A241C', // Subtle dark green tint for containers
+  onPrimaryContainer: '#B9E2A2', 
   
-  // Surfaces
-  surface: '#1E1E1E',
-  onSurface: '#E0E0E0', 
-  surfaceContainerLow: '#242424', 
-  surfaceContainerHigh: '#2C2C2C', 
-  surfaceContainerHighest: '#333333', 
-  onSurfaceVariant: '#A0AAB2', 
+  // Surfaces (Deep greys, highly contrasted with background)
+  surface: '#121214',
+  onSurface: '#FFFFFF', 
+  surfaceContainerLow: '#18181B', 
+  surfaceContainerHigh: '#27272A', 
+  surfaceContainerHighest: '#3F3F46', 
+  onSurfaceVariant: '#A1A1AA', // Crisp cool-grey for secondary text
   
   // Semantic States
-  success: '#81C784',
-  onSuccess: '#1B5E20',
-  successContainer: '#1B5E20',
-  onSuccessContainer: '#E8F5E9',
+  success: '#4ADE80',
+  onSuccess: '#064E3B',
+  successContainer: '#064E3B',
+  onSuccessContainer: '#D1FAE5',
   
-  error: '#E57373',
-  onError: '#B71C1C',
-  errorContainer: '#B71C1C',
-  onErrorContainer: '#FFEBEE',
+  error: '#F87171',
+  onError: '#450A0A',
+  errorContainer: '#450A0A',
+  onErrorContainer: '#FEE2E2',
   
-  warning: '#FFB74D',
-  onWarning: '#E65100',
-  warningContainer: '#E65100',
-  onWarningContainer: '#FFF3E0',
+  warning: '#FBBF24',
+  onWarning: '#451A03',
+  warningContainer: '#451A03',
+  onWarningContainer: '#FEF3C7',
   
-  info: '#4FC3F7',
-  onInfo: '#01579B',
-  infoContainer: '#01579B',
-  onInfoContainer: '#E1F5FE',
+  info: '#38BDF8',
+  onInfo: '#082F49',
+  infoContainer: '#082F49',
+  onInfoContainer: '#E0F2FE',
 
   // Borders & Dividers
-  outlineVariant: '#3A3A3A', 
-  divider: 'rgba(255, 255, 255, 0.08)', 
+  outlineVariant: '#27272A', // Very subtle border line
+  divider: 'rgba(255, 255, 255, 0.05)', 
 
   // Accents / Glass
   premiumShadow: '#000000',
-  glassWhite: 'rgba(30, 30, 30, 0.75)', 
-  glassDark: 'rgba(0, 0, 0, 0.3)', 
+  glassWhite: 'rgba(18, 18, 20, 0.85)', // Dark glass for bottom nav
+  glassDark: 'rgba(0, 0, 0, 0.5)', 
   
   // Gradients
-  brandGradient: ['#13302D', '#1A2E1C', '#30132F'], 
-  warmGradient: ['#121212', '#1A1A1A'],
+  brandGradient: ['#B9E2A2', '#8AD6CE'], // Fresh green to teal gradient for premium buttons
+  warmGradient: ['#09090B', '#121214'],
 };
 
 // ==========================================
@@ -224,7 +224,7 @@ export const getTheme = (mode: ThemeMode = 'sage') => {
         lavender: '#D2A9D1',
       },
       pocketFlatColors: [
-        '#8AD6CE', '#F0927B', '#D2A9D1', '#B9E2A2', '#8BD6DE', '#F7C59F', '#C5B4E3'
+        '#8AD6CE', '#F0927B', '#D2A9D1', '#8BD6DE', '#F7C59F', '#C5B4E3'
       ],
       chartColors: ['#8AD6CE', '#B9E2A2', '#D2A9D1', '#F0927B', '#A5D6A7'],
       categoryColors: generatedCategoryColors, // Retained for compatibility

@@ -37,14 +37,14 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       alignItems: 'center', 
       justifyContent: 'center',
       borderWidth: 1.5,
-      borderColor: 'rgba(255,255,255,0.15)'
+      borderColor: theme.colors.divider
     },
     scannerBadge: { 
       paddingHorizontal: 14, 
       paddingVertical: 8, 
       borderRadius: 20, 
       borderWidth: 1.5, 
-      borderColor: 'rgba(255,255,255,0.4)',
+      borderColor: theme.colors.divider,
       ...theme.shadows.premium 
     },
     scannerBadgeText: { color: '#FFF', fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5 },
@@ -64,7 +64,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       ...theme.shadows.premium,
       marginBottom: 16
     },
-    mainCameraButtonText: { color: '#FFF', fontSize: 17, fontWeight: '900', letterSpacing: -0.5 },
+    mainCameraButtonText: { color: theme.colors.onPrimary, fontSize: 17, fontWeight: '900', letterSpacing: -0.5 },
     
     scannerProgressContainer: { position: 'absolute', bottom: 0, width: '100%', paddingHorizontal: 16 },
     scannerProgressCard: { 
@@ -73,7 +73,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       overflow: 'hidden', 
       backgroundColor: theme.colors.glassWhite,
       borderWidth: 1.5, 
-      borderColor: 'rgba(255,255,255,0.8)',
+      borderColor: theme.colors.divider,
       ...theme.shadows.premium 
     },
     scannerActionTitle: { fontWeight: '900', color: theme.colors.onSurface, fontSize: 18, marginBottom: 16, letterSpacing: -0.5 },
@@ -106,7 +106,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       flexDirection: 'row', 
       alignItems: 'center', 
       gap: 16, 
-      backgroundColor: 'rgba(255,255,255,0.5)', 
+      backgroundColor: theme.colors.surface, 
       padding: 18, 
       borderRadius: 24, 
       borderWidth: 1, 
@@ -126,22 +126,22 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       borderRadius: 14, 
       backgroundColor: theme.colors.primaryContainer,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.5)'
+      borderColor: theme.colors.divider
     },
     catChipActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
     catText: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },
-    catTextActive: { color: '#FFF' },
+    catTextActive: { color: theme.colors.onPrimary },
     
     premiumConfirmBtn: { borderRadius: 24, overflow: 'hidden', height: 64, ...theme.shadows.soft },
     btnGradient: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    premiumConfirmBtnText: { color: '#FFF', fontWeight: '900', fontSize: 17, letterSpacing: -0.3 }
+    premiumConfirmBtnText: { color: theme.colors.onPrimary, fontWeight: '900', fontSize: 17, letterSpacing: -0.3 }
   }), [theme]);
 
   const [progress, setProgress] = useState(0);
   const [editableAmount, setEditableAmount] = useState<string>('');
   const [image, setImage] = useState<string | null>(null);
   const [visionOutput, setVisionOutput] = useState<string | null>(null);
-  const [isOpeningPicker, setIsOpeningPicker] = useState(false);
+  const [isOpeningPicker, setIsOpeningPicker] = useState(initialMode === 'camera');
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const scaleAnim = React.useRef(new Animated.Value(0.5)).current;
@@ -155,10 +155,10 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
     if (initialMode === 'manual') {
       setTimeout(() => amountInputRef.current?.focus(), 400);
     } else if (initialMode === 'camera') {
-      // Abrir la cámara automáticamente después de la transición de pantalla
+      // Esperar a que pase la animación de navegación y abrir cámara
       setTimeout(() => {
         takePhoto();
-      }, 400);
+      }, 300);
     }
   }, [initialMode]);
   
@@ -183,6 +183,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
     if (status !== 'granted') {
       setIsOpeningPicker(false);
       notify.error('Se necesita permiso para acceder a la cámara.');
+      if (initialMode === 'camera') onGoBack();
       return;
     }
 
@@ -200,6 +201,8 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       setVisionOutput(null);
       setExtractedData(null);
       if (base64Image) performTextDetection(base64Image);
+    } else if (initialMode === 'camera') {
+      onGoBack();
     }
   };
 
@@ -219,6 +222,8 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       setVisionOutput(null);
       setExtractedData(null);
       if (base64Image) performTextDetection(base64Image);
+    } else if (initialMode === 'camera') {
+      onGoBack();
     }
   };
 
@@ -313,17 +318,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       setIsSaving(false);
       setSaved(true);
       
-      // Reproducir sonido "ding"
-      (async () => {
-        try {
-          const { sound } = await Audio.Sound.createAsync(
-            { uri: 'https://cdn.freesound.org/previews/270/270404_5123851-lq.mp3' }
-          );
-          await sound.playAsync();
-        } catch (e) {
-          console.warn('Error playing sound', e);
-        }
-      })();
+      // Reproducir sonido "ding" eliminado a petición del usuario
       
       Animated.sequence([
         Animated.timing(scaleAnim, {
@@ -377,7 +372,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
         <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: Math.max(insets.top, 16) + 80, paddingBottom: Math.max(insets.bottom, 24) + 20 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {(image && progress > 0 && progress < 100) ? (
             <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }]}>
-               <BlurView intensity={20} tint="dark" style={{ padding: 40, borderRadius: 32, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }}>
+               <BlurView intensity={20} tint="dark" style={{ padding: 40, borderRadius: 32, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: theme.colors.divider }}>
                  <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginBottom: 24 }} />
                  <Text style={{ color: '#FFF', fontSize: 20, fontWeight: '900', marginBottom: 12, textAlign: 'center' }}>
                    {progress < 40 ? 'Escaneando...' : 'Analizando con IA...'}
@@ -390,22 +385,15 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
                  </View>
                </BlurView>
             </View>
-          ) : (
+           ) : isOpeningPicker ? (
+            <View style={{ paddingVertical: 100, alignItems: 'center', justifyContent: 'center' }}>
+              <ActivityIndicator size="large" color={theme.colors.primary} />
+              <Text style={{ marginTop: 16, color: theme.colors.primary, fontWeight: '800' }}>Abriendo cámara...</Text>
+            </View>
+           ) : (
             <View style={{ paddingHorizontal: 16 }}>
-               {!image && initialMode !== 'manual' && (
-                 <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
-                    <TouchableOpacity onPress={takePhoto} style={[styles.mainCameraButton, { flex: 1, backgroundColor: theme.colors.surface, borderWidth: 1.5, borderColor: theme.colors.outlineVariant }]} activeOpacity={0.8}>
-                      <CameraIcon size={20} color={theme.colors.primary} />
-                      <Text style={[styles.mainCameraButtonText, { color: theme.colors.primary, fontSize: 13 }]}>Cámara</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={pickImage} style={[styles.mainCameraButton, { flex: 1, backgroundColor: theme.colors.surface, borderWidth: 1.5, borderColor: theme.colors.outlineVariant }]} activeOpacity={0.8}>
-                      <ImagePlusIcon size={20} color={theme.colors.primary} />
-                      <Text style={[styles.mainCameraButtonText, { color: theme.colors.primary, fontSize: 13 }]}>Galería</Text>
-                    </TouchableOpacity>
-                 </View>
-               )}
 
-               <BlurView intensity={Platform.OS === 'ios' ? 95 : 100} tint="light" style={styles.scannerProgressCard}>
+               <BlurView intensity={Platform.OS === 'ios' ? 95 : 100} tint={theme.isDark ? 'dark' : 'light'} style={styles.scannerProgressCard}>
                   {image && progress === 100 && (
                     <View style={styles.aiVerificationShield}>
                       <Sparkles size={14} color={theme.colors.primary} fill={theme.colors.primary} />
@@ -431,7 +419,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
                         keyboardType="numeric"
                         selectionColor={theme.colors.primary}
                         placeholder="0"
-                        placeholderTextColor={theme.colors.outlineVariant}
+                        placeholderTextColor={theme.colors.onSurfaceVariant}
                       />
                       <Text style={styles.copBadge}>COP</Text>
                     </View>
@@ -471,7 +459,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
                     style={[styles.premiumConfirmBtn, { backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' }, (isSaving || parseInt(editableAmount.replace(/[^0-9]/g, '') || '0') <= 0) && { opacity: 0.6 }]}
                   >
                     {isSaving
-                      ? <ActivityIndicator color="#FFF" />
+                      ? <ActivityIndicator color={theme.colors.onPrimary} />
                       : <Text style={styles.premiumConfirmBtnText}>Guardar gasto</Text>}
                   </TouchableOpacity>
                </BlurView>
@@ -496,7 +484,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
               borderRadius: 32,
               backgroundColor: 'rgba(255,255,255,0.03)',
               borderWidth: 1,
-              borderColor: 'rgba(255,255,255,0.1)',
+              borderColor: theme.colors.divider,
               ...theme.shadows.premium
             }}>
               <LinearGradient
@@ -505,7 +493,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
                 style={{
                   width: 72, height: 72, borderRadius: 36,
                   alignItems: 'center', justifyContent: 'center', marginBottom: 24,
-                  borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)',
+                  borderWidth: 1, borderColor: theme.colors.divider,
                   ...theme.shadows.soft
                 }}
               >

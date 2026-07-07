@@ -39,7 +39,7 @@ export const CycleNav = ({ cycles, activeCycleId, onChange }: Props) => {
       width: 40, height: 40, borderRadius: 20,
       backgroundColor: theme.colors.glassWhite,
       alignItems: 'center', justifyContent: 'center',
-      borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.8)',
+      borderWidth: 1.5, borderColor: theme.colors.divider,
       ...theme.shadows.soft,
     },
     btnDisabled: {

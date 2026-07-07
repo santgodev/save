@@ -417,7 +417,7 @@ export const Dashboard = ({
                 <View key={event.id} style={{ backgroundColor: theme.colors.primaryContainer + '20', borderRadius: theme.radius.xl, padding: 20, borderWidth: 1.5, borderColor: theme.colors.primary, marginBottom: 12 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                     <View style={{ backgroundColor: theme.colors.primary, width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}>
-                      <Briefcase size={20} color="#FFF" />
+                      <Briefcase size={20} color={theme.colors.onPrimary} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.onSurface }}>{event.income_sources?.name || 'Salario'}</Text>
@@ -431,7 +431,7 @@ export const Dashboard = ({
                        onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); confirmPending(event.id, event.expected_amount); }}
                        style={{ flex: 1, backgroundColor: theme.colors.primary, paddingVertical: 14, borderRadius: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
                      >
-                        <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 15 }}>Confirmar</Text>
+                        <Text style={{ color: theme.colors.onPrimary, fontWeight: '900', fontSize: 15 }}>Confirmar</Text>
                      </TouchableOpacity>
                      <TouchableOpacity 
                        activeOpacity={0.8}
@@ -453,9 +453,9 @@ export const Dashboard = ({
             style={{ backgroundColor: theme.colors.primary, borderRadius: theme.radius.xl, padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 32, ...theme.shadows.md }}
           >
             <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: theme.radius.full }}>
-              <Plus size={24} color="#FFF" />
+              <Plus size={24} color={theme.colors.onPrimary} />
             </View>
-            <Text style={{ ...theme.typography.h3, color: '#FFF' }}>Registrar Gasto</Text>
+            <Text style={{ ...theme.typography.h3, color: theme.colors.onPrimary }}>Registrar Gasto</Text>
           </TouchableOpacity>
 
           {/* BOLSILLOS (Resumen Simple) */}

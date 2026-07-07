@@ -99,12 +99,12 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
     },
     closeBtn: { 
       width: 48, height: 48, borderRadius: 24, backgroundColor: theme.colors.glassWhite, 
-      alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.7)',
+      alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: theme.colors.divider,
       ...theme.shadows.soft
     },
     scannerBadge: { 
       paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5, 
-      borderColor: 'rgba(255,255,255,0.7)', backgroundColor: theme.colors.glassWhite,
+      borderColor: theme.colors.divider, backgroundColor: theme.colors.glassWhite,
       ...theme.shadows.soft 
     },
     scannerBadgeText: { color: theme.colors.primary, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.5 },
@@ -131,7 +131,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
     },
     catChipActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
     catText: { fontSize: 13, fontWeight: '700', color: theme.colors.primary },
-    catTextActive: { color: '#FFF' },
+    catTextActive: { color: theme.colors.onPrimary },
     
     // --- Premium Segmented Control ---
     segmentedControl: {
@@ -170,7 +170,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
     footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 24, paddingBottom: 40 },
     premiumConfirmBtn: { borderRadius: 20, overflow: 'hidden', height: 60, backgroundColor: theme.colors.primary, ...theme.shadows.premium },
     btnInner: { flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 },
-    premiumConfirmBtnText: { color: '#FFF', fontWeight: '900', fontSize: 16 },
+    premiumConfirmBtnText: { color: theme.colors.onPrimary, fontWeight: '900', fontSize: 16 },
     saveBtnDisabled: { opacity: 0.6 },
   }), [theme]);
 
@@ -413,7 +413,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                           }}
                         >
-                          <DollarSign size={14} color={rule.type === 'fixed' ? '#FFF' : theme.colors.onSurfaceVariant} />
+                          <DollarSign size={14} color={rule.type === 'fixed' ? theme.colors.onPrimary : theme.colors.onSurfaceVariant} />
                         </TouchableOpacity>
                         <TouchableOpacity 
                           style={[styles.typeToggle, rule.type === 'percentage' && { backgroundColor: theme.colors.primary }]} 
@@ -425,7 +425,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                           }}
                         >
-                          <Percent size={14} color={rule.type === 'percentage' ? '#FFF' : theme.colors.onSurfaceVariant} />
+                          <Percent size={14} color={rule.type === 'percentage' ? theme.colors.onPrimary : theme.colors.onSurfaceVariant} />
                         </TouchableOpacity>
                       </View>
                     </View>
@@ -490,10 +490,10 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
       <View style={[styles.footer, { flexDirection: 'row', gap: 12 }]}>
         <TouchableOpacity activeOpacity={0.9} style={[styles.premiumConfirmBtn, { flex: 1 }, (!val || Object.keys(preview).length === 0) && styles.saveBtnDisabled]} onPress={handleSave} disabled={isSaving || !val || Object.keys(preview).length === 0}>
           <View style={styles.btnInner}>
-            {isSaving ? <ActivityIndicator color="#FFF" /> : (
+            {isSaving ? <ActivityIndicator color={theme.colors.onPrimary} /> : (
               <>
                 <Text style={styles.premiumConfirmBtnText}>{isEditing ? 'Guardar Cambios' : 'Guardar'}</Text>
-                <ArrowRight size={22} color="#FFF" />
+                <ArrowRight size={22} color={theme.colors.onPrimary} />
               </>
             )}
           </View>

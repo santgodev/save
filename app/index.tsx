@@ -28,6 +28,22 @@ import { Camera, X, Repeat, TrendingUp, Sparkles, Zap } from 'lucide-react-nativ
 
 const { width, height } = Dimensions.get('window');
 
+const SLOGANS = [
+  "Lo que se organiza, se multiplica.",
+  "Tu bolsillo también sueña.",
+  "Menos impulso, más futuro.",
+  "Cada gasto cuenta.",
+  "Tu dinero merece dirección.",
+  "Ahorrar también es avanzar.",
+  "Pequeños hábitos, grandes logros.",
+  "Hoy ordenas, mañana respiras.",
+  "Finanzas simples, vida ligera.",
+  "Gasta con conciencia.",
+  "SAVE cuida tu futuro.",
+  "“Los planes bien pensados traen prosperidad.” — Proverbios 21:5",
+  "“El sabio guarda sus provisiones.” — Proverbios 21:20"
+];
+
 const SplashScreen = () => {
   const { theme } = useTheme();
   
@@ -39,6 +55,11 @@ const SplashScreen = () => {
   
   // Empuja el bloque a la derecha para que la S se vea centrada mientras AVE está oculto
   const containerShift = useRef(new Animated.Value(50)).current;
+  const sloganOpacity = useRef(new Animated.Value(0)).current;
+  const sloganTranslateY = useRef(new Animated.Value(10)).current;
+
+  // Elegir un slogan al azar una vez por render
+  const randomSlogan = React.useMemo(() => SLOGANS[Math.floor(Math.random() * SLOGANS.length)], []);
 
   useEffect(() => {
     Animated.sequence([
@@ -74,6 +95,13 @@ const SplashScreen = () => {
           tension: 40,
           useNativeDriver: true,
         }),
+        Animated.sequence([
+          Animated.delay(200),
+          Animated.parallel([
+            Animated.timing(sloganOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+            Animated.spring(sloganTranslateY, { toValue: 0, friction: 8, tension: 40, useNativeDriver: true })
+          ])
+        ])
       ])
     ]).start();
   }, []);
@@ -114,6 +142,23 @@ const SplashScreen = () => {
         </Animated.View>
 
       </Animated.View>
+
+      <Animated.Text
+        style={{
+          opacity: sloganOpacity,
+          transform: [{ translateY: sloganTranslateY }],
+          marginTop: 16,
+          fontSize: 12,
+          fontWeight: '700',
+          fontFamily: theme.fonts.medium,
+          color: theme.colors.onSurfaceVariant,
+          letterSpacing: 2,
+          textTransform: 'uppercase',
+          textAlign: 'center',
+        }}
+      >
+        {randomSlogan}
+      </Animated.Text>
     </View>
   );
 };
@@ -139,10 +184,10 @@ function MainApp() {
   const [clearChatOnOpen, setClearChatOnOpen] = useState(false);
 
   useEffect(() => {
-    // Garantizamos que la animación inicial dure lo justo (1.6 segundos) para terminar
+    // Garantizamos que la animación inicial dure lo justo (2.2 segundos) para terminar y leer el eslogan
     const timer = setTimeout(() => {
       setMinSplashTimeElapsed(true);
-    }, 1600);
+    }, 2200);
     return () => clearTimeout(timer);
   }, []);
   
@@ -336,14 +381,16 @@ function MainApp() {
     }
   };
 
+  const [showPocketTransfer, setShowPocketTransfer] = useState(false);
+
   const triggerTransfer = (params: { fromId?: string, toId?: string, amount?: number }) => {
     setTransferParams(params);
-    setCurrentScreen('pocket_transfer');
+    setShowPocketTransfer(true);
   };
 
-  const renderScreen = () => {
+    const renderScreen = () => {
     switch (currentScreen) {
-      case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} />;
+      case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('quick_expense')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} />;
       case 'scanner': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="camera" />;
       case 'quick_expense': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="manual" />;
       case 'expenses':
@@ -362,7 +409,6 @@ function MainApp() {
       case 'profile_details': return <Profile session={session} transactions={transactions} pockets={pockets} onRefresh={() => loadUserData(session!.user.id)} onBack={() => setCurrentScreen('dashboard')} />;
       case 'add_income':
         return <AddIncome pockets={pockets} session={session} onCancel={() => setCurrentScreen('dashboard')} onSaveSuccess={() => { setCurrentScreen('dashboard'); loadUserData(session!.user.id); setEditIncomeTx(null); }} editTransaction={editIncomeTx} />;
-      case 'pocket_transfer': return <PocketTransfer session={session} pockets={pockets} initialParams={transferParams ?? undefined} onCancel={() => { setTransferParams(null); setCurrentScreen('pockets'); }} onSaveSuccess={() => { setTransferParams(null); loadUserData(session!.user.id); setCurrentScreen('pockets'); }} />;
       case 'onboarding': return <Onboarding session={session} onComplete={() => loadUserData(session?.user?.id)} />;
       default: return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} />;
     }
@@ -379,7 +425,7 @@ function MainApp() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'onboarding' && currentScreen !== 'add_income' && currentScreen !== 'pocket_transfer' && (
+      {currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'onboarding' && currentScreen !== 'add_income' && (
         <TopBar 
           title={currentScreen === 'dashboard' ? 'Save' : currentScreen === 'expenses' ? 'Movimientos' : currentScreen === 'pockets' ? 'Bolsillos' : 'Perfil'}
           userName={session.user?.user_metadata?.full_name || session.user?.user_metadata?.name || session.user?.email?.split('@')[0]}
@@ -400,8 +446,8 @@ function MainApp() {
         {renderScreen()}
       </View>
 
-      {session && isDataReady && currentScreen && currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'onboarding' && currentScreen !== 'add_income' && currentScreen !== 'pocket_transfer' && (
-        <BottomNav activeScreen={currentScreen} setScreen={(s: any) => setCurrentScreen(s)} onAddPress={() => toggleActionMenu(true)} onAddLongPress={() => setCurrentScreen('quick_expense')} />
+      {session && isDataReady && currentScreen && currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'onboarding' && currentScreen !== 'add_income' && (
+        <BottomNav activeScreen={currentScreen} setScreen={(s: any) => setCurrentScreen(s)} onAddPress={() => toggleActionMenu(true)} onAddLongPress={() => setCurrentScreen('scanner')} />
       )}
 
       {actionMenuVisible && (
@@ -413,17 +459,17 @@ function MainApp() {
               
               <View style={[styles.menuGrid, { flexWrap: 'wrap', justifyContent: 'center' }]}>
                  <TouchableOpacity activeOpacity={0.8} style={[styles.menuItem, { width: '45%', marginBottom: 16 }]} onPress={() => { toggleActionMenu(false); setCurrentScreen('add_income'); }}>
-                    <View style={[styles.menuIcon, { backgroundColor: theme.colors.primaryContainer }]}><TrendingUp size={28} color={theme.colors.primary} /></View>
+                    <View style={[styles.menuIcon, { backgroundColor: (theme.colors as any).pastel.teal + '25' }]}><TrendingUp size={28} color={(theme.colors as any).pastel.teal} /></View>
                     <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Entró Plata</Text>
                  </TouchableOpacity>
 
                  <TouchableOpacity activeOpacity={0.8} style={[styles.menuItem, { width: '45%', marginBottom: 16 }]} onPress={() => { toggleActionMenu(false); setCurrentScreen('quick_expense'); }}>
-                    <View style={[styles.menuIcon, { backgroundColor: theme.colors.errorContainer }]}><Zap size={28} color={theme.colors.error} /></View>
+                    <View style={[styles.menuIcon, { backgroundColor: (theme.colors as any).pastel.salmon + '25' }]}><Zap size={28} color={(theme.colors as any).pastel.salmon} /></View>
                     <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Gasto Rápido</Text>
                  </TouchableOpacity>
 
                  <TouchableOpacity activeOpacity={0.8} style={[styles.menuItem, { width: '45%' }]} onPress={() => { toggleActionMenu(false); setCurrentScreen('scanner'); }}>
-                    <View style={[styles.menuIcon, { backgroundColor: (theme.colors as any).pastel.lavender + '30' }]}><Camera size={28} color={(theme.colors as any).pastel.lavender} /></View>
+                    <View style={[styles.menuIcon, { backgroundColor: theme.colors.primaryContainer }]}><Camera size={28} color={theme.colors.primary} /></View>
                     <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Escanear Recibo</Text>
                  </TouchableOpacity>
               </View>
@@ -433,6 +479,16 @@ function MainApp() {
               </TouchableOpacity>
             </Animated.View>
          </Animated.View>
+       )}
+
+       {showPocketTransfer && (
+         <PocketTransfer 
+           session={session} 
+           pockets={pockets} 
+           initialParams={transferParams ?? undefined} 
+           onCancel={() => { setTransferParams(null); setShowPocketTransfer(false); }} 
+           onSaveSuccess={() => { setTransferParams(null); setShowPocketTransfer(false); loadUserData(session!.user.id); }} 
+         />
        )}
     </View>
   );

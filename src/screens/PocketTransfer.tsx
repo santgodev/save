@@ -1,10 +1,11 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator, TouchableWithoutFeedback, Keyboard, Animated, Modal } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { X, ArrowRightLeft, ArrowRight, CheckCircle2, ChevronDown, Repeat, ArrowDown } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { Audio } from 'expo-av';
 import { useTheme } from '../theme/ThemeContext';
 import { normalize } from '../theme/theme';
 import { supabase } from '../lib/supabase';
@@ -21,6 +22,8 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
   const [fromPocketId, setFromPocketId] = useState<string | null>(initialParams?.fromId || pockets[0]?.id || null);
   const [toPocketId, setToPocketId] = useState<string | null>(initialParams?.toId || null);
   const [isSaving, setIsSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const scaleAnim = useRef(new Animated.Value(0)).current;
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
@@ -55,7 +58,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
       overflow: 'hidden', 
       backgroundColor: theme.colors.glassWhite,
       borderWidth: 1.5, 
-      borderColor: 'rgba(255,255,255,0.8)',
+      borderColor: theme.colors.divider,
       ...theme.shadows.premium 
     },
     
@@ -87,12 +90,12 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
       borderWidth: 1.5,
       borderColor: theme.colors.outlineVariant
     },
-    catChipActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
-    catText: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },
-    catTextActive: { color: '#FFF' },
+    catChipActive: { backgroundColor: theme.colors.primaryContainer, borderColor: theme.colors.primary },
+    catText: { fontSize: 13, fontWeight: '800', color: theme.colors.onSurfaceVariant },
+    catTextActive: { color: theme.colors.primary },
 
     premiumConfirmBtn: { borderRadius: 24, overflow: 'hidden', height: 64, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', ...theme.shadows.soft },
-    premiumConfirmBtnText: { color: '#FFF', fontWeight: '900', fontSize: 17, letterSpacing: -0.3 }
+    premiumConfirmBtnText: { color: theme.colors.onPrimary, fontWeight: '900', fontSize: 17, letterSpacing: -0.3 }
   }), [theme]);
 
   useEffect(() => {
@@ -122,19 +125,36 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
 
       if (error) throw error;
 
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onSaveSuccess();
-    } catch(e) {
-      console.error(e);
-      notify.error('Error en el traspaso.');
+      setIsSaving(false);
+      setSaved(true);
+
+      Animated.sequence([
+        Animated.timing(scaleAnim, { toValue: 1, duration: 150, useNativeDriver: true }),
+        Animated.delay(600),
+        Animated.timing(scaleAnim, { toValue: 0, duration: 200, useNativeDriver: true })
+      ]).start(() => {
+        onSaveSuccess();
+      });
+
+      setTimeout(() => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }, 150);
+    } catch(e: any) {
+      console.log('Transfer error:', e);
+      if (e?.message) {
+        notify.error(e.message);
+      } else {
+        notify.error('Error en el traspaso.');
+      }
     } finally {
       setIsSaving(false);
     }
   };
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <KeyboardAvoidingView style={[styles.scannerContainer, { backgroundColor: theme.colors.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <Modal visible animationType="slide" transparent>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <KeyboardAvoidingView style={[styles.scannerContainer, { flex: 1, backgroundColor: theme.colors.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         
         <View style={[styles.scannerTopBar, { paddingTop: Math.max(insets.top, 16) + 16 }]}>
           <TouchableOpacity 
@@ -150,7 +170,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
         </View>
 
         <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: Math.max(insets.top, 16) + 80, paddingBottom: Math.max(insets.bottom, 24) + 20, paddingHorizontal: 16 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <BlurView intensity={Platform.OS === 'ios' ? 95 : 100} tint="light" style={styles.scannerProgressCard}>
+            <BlurView intensity={Platform.OS === 'ios' ? 95 : 100} tint={theme.isDark ? 'dark' : 'light'} style={styles.scannerProgressCard}>
               <View style={styles.premiumAmountBox}>
                 <Text style={styles.premiumAmountLabel}>Monto a Mover</Text>
                 <View style={styles.modernAmountInputRow}>
@@ -162,7 +182,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
                     keyboardType="numeric"
                     selectionColor={theme.colors.primary}
                     placeholder="0"
-                    placeholderTextColor={theme.colors.outlineVariant}
+                    placeholderTextColor={theme.colors.onSurfaceVariant}
                     autoFocus
                   />
                   <Text style={styles.copBadge}>COP</Text>
@@ -207,16 +227,47 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
 
               <TouchableOpacity
                 onPress={handleSave}
-                disabled={isSaving || !amount || fromPocketId === toPocketId}
-                style={[styles.premiumConfirmBtn, { marginTop: 32 }, (isSaving || !amount || fromPocketId === toPocketId) && { opacity: 0.6 }]}
+                disabled={isSaving || !amount || fromPocketId === toPocketId || saved}
+                style={[styles.premiumConfirmBtn, { marginTop: 32 }, (isSaving || !amount || fromPocketId === toPocketId || saved) && { opacity: 0.6 }]}
               >
                 {isSaving
-                  ? <ActivityIndicator color="#FFF" />
+                  ? <ActivityIndicator color={theme.colors.onPrimary} />
                   : <Text style={styles.premiumConfirmBtnText}>Confirmar Traspaso</Text>}
               </TouchableOpacity>
             </BlurView>
         </ScrollView>
-      </KeyboardAvoidingView>
-    </TouchableWithoutFeedback>
+
+        {saved && (
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.background, zIndex: 9999, alignItems: 'center', justifyContent: 'center' }]}>
+            <Animated.View style={{
+              transform: [{ scale: scaleAnim }],
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: 40,
+              paddingHorizontal: 32,
+              borderRadius: 32,
+              backgroundColor: 'rgba(255,255,255,0.03)',
+              borderWidth: 1,
+              borderColor: theme.colors.divider,
+              ...theme.shadows.premium
+            }}>
+              <View style={{ width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 24, backgroundColor: theme.colors.primaryContainer, borderWidth: 1, borderColor: theme.colors.primary }}>
+                <CheckCircle2 size={40} color={theme.colors.primary} strokeWidth={2.5} />
+              </View>
+              
+              <Text style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)', marginBottom: 8, letterSpacing: 1, fontWeight: '500' }}>
+                TRASPASO EXITOSO
+              </Text>
+              
+              <Text style={{ fontSize: 40, fontWeight: '900', color: '#FFF', marginBottom: 8, letterSpacing: -1 }}>
+                ${amount}
+              </Text>
+              
+            </Animated.View>
+          </View>
+        )}
+        </KeyboardAvoidingView>
+      </TouchableWithoutFeedback>
+    </Modal>
   );
 };
