@@ -242,8 +242,11 @@ export const Dashboard = ({
       .sort((a, b) => b.ratio - a.ratio);
     const mostCritical = pocketStats[0];
 
-    if (mostCritical && mostCritical.ratio >= 1) {
+    if (mostCritical && mostCritical.ratio > 1) {
       return `¡Ojo! Te pasaste en ${mostCritical.name} por ${formatMoney(mostCritical.spent_month - mostCritical.allocated)}. Toca aquí y revisemos cómo podemos cuadrarlo.`;
+    }
+    if (mostCritical && mostCritical.ratio === 1) {
+      return `¡Alerta! Gastaste exactamente el 100% de ${mostCritical.name}. Ya no tienes saldo disponible ahí.`;
     }
     if (consumptionRatio >= 1) {
       return `¡Cuidado! Ya te gastaste el 100% de tu plan mensual. Toca aquí para que descubramos a dónde se fue la plata.`;
@@ -353,7 +356,11 @@ export const Dashboard = ({
                   // FIX BUG 6: usar income_month como denominador, no allocated_total
                   const spendingProgress = totalIncomeMonth > 0 ? (totalSpentMonth / totalIncomeMonth) : 0;
                   
-                  const isOnTrack = spendingProgress <= monthProgress;
+                  // Inteligencia de sentido común: la mayoría de gastos fijos (arriendo, deudas, servicios) 
+                  // se pagan en los primeros días del mes. Exigir un ritmo lineal es irrealista.
+                  // Agregamos un "colchón" del 50% al inicio del mes, que se reduce gradualmente a 0% al final.
+                  const frontLoadBuffer = 0.50 * (1 - monthProgress);
+                  const isOnTrack = spendingProgress <= (monthProgress + frontLoadBuffer) && spendingProgress <= 1;
 
                   return (
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isOnTrack ? theme.colors.primaryContainer : theme.colors.errorContainer + '30', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>

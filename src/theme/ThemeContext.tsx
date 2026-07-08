@@ -1,30 +1,40 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useColorScheme, Appearance } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getTheme, ThemeMode } from './theme';
 import { supabase } from '../lib/supabase';
 import * as Haptics from 'expo-haptics';
 
+export type ThemePreference = ThemeMode | 'system';
+
 type ThemeContextType = {
   mode: ThemeMode;
   theme: any;
-  setThemeMode: (mode: ThemeMode) => void;
+  preference: ThemePreference;
+  setThemePreference: (pref: ThemePreference) => void;
+  // Mantenemos esto por retrocompatibilidad con componentes antiguos
+  setThemeMode: (mode: ThemeMode) => void; 
 };
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider = ({ children, userId }: { children: React.ReactNode, userId?: string }) => {
-  const [mode, setMode] = useState<ThemeMode>('sage');
+  const systemColorScheme = useColorScheme();
+  const [preference, setPreference] = useState<ThemePreference>('system');
+
+  // Resolved mode based on preference or system
+  const mode: ThemeMode = preference === 'system' 
+    ? (systemColorScheme === 'dark' ? 'sageDark' : 'sage')
+    : preference;
 
   useEffect(() => {
     const initTheme = async () => {
       try {
-        // 1. FAST: Try local cache first for instant UI responsiveness
         const cached = await AsyncStorage.getItem('theme_preference');
         if (cached) {
-          setMode(cached as ThemeMode);
+          setPreference(cached as ThemePreference);
         }
 
-        // 2. AUTH SYNC: Try DB if userId provided to ensure cross-device consistency
         if (userId) {
           const { data, error } = await supabase
             .from('profiles')
@@ -33,7 +43,7 @@ export const ThemeProvider = ({ children, userId }: { children: React.ReactNode,
             .maybeSingle();
           
           if (data?.theme_preference && data.theme_preference !== cached) {
-            setMode(data.theme_preference as ThemeMode);
+            setPreference(data.theme_preference as ThemePreference);
             await AsyncStorage.setItem('theme_preference', data.theme_preference);
           }
         }
@@ -44,21 +54,16 @@ export const ThemeProvider = ({ children, userId }: { children: React.ReactNode,
     initTheme();
   }, [userId]);
 
-  const setThemeMode = async (newMode: ThemeMode) => {
+  const setThemePreference = async (newPref: ThemePreference) => {
     try {
-      // Haptic feedback for the premium feel
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+      setPreference(newPref);
+      await AsyncStorage.setItem('theme_preference', newPref);
       
-      setMode(newMode);
-      
-      // Update local storage immediately for next app launch
-      await AsyncStorage.setItem('theme_preference', newMode);
-      
-      // Update DB in background if user is logged in
       if (userId) {
         await supabase
           .from('profiles')
-          .update({ theme_preference: newMode })
+          .update({ theme_preference: newPref })
           .eq('id', userId);
       }
     } catch (e) {
@@ -66,10 +71,13 @@ export const ThemeProvider = ({ children, userId }: { children: React.ReactNode,
     }
   };
 
+  // Wrapper para componentes que usaban setThemeMode directamente
+  const setThemeMode = (newMode: ThemeMode) => setThemePreference(newMode);
+
   const theme = getTheme(mode);
 
   return (
-    <ThemeContext.Provider value={{ mode, theme, setThemeMode }}>
+    <ThemeContext.Provider value={{ mode, theme, preference, setThemePreference, setThemeMode }}>
       {children}
     </ThemeContext.Provider>
   );

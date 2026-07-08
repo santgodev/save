@@ -17,16 +17,46 @@ import {
 import { supabase } from '../lib/supabase';
 import { notify } from '../lib/notify';
 import { useTheme } from '../theme/ThemeContext';
-import { Mail, Lock, LogIn, UserPlus, Apple, Chrome, Eye, EyeOff, User } from 'lucide-react-native';
+import { Mail, Lock, LogIn, UserPlus, Eye, EyeOff, User } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown, FadeInUp, Layout } from 'react-native-reanimated';
-import * as WebBrowser from 'expo-web-browser';
+import Svg, { Path } from 'react-native-svg';
 import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 
 WebBrowser.maybeCompleteAuthSession();
 
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+let GoogleSignin: any = null;
+
+if (!isExpoGo) {
+  GoogleSignin = require('@react-native-google-signin/google-signin').GoogleSignin;
+  GoogleSignin.configure({
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || 'TU_WEB_CLIENT_ID.apps.googleusercontent.com',
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || 'TU_IOS_CLIENT_ID.apps.googleusercontent.com',
+  });
+}
+
 const { width, height } = Dimensions.get('window');
+
+const GoogleIcon = ({ size = 24 }) => (
+  <Svg width={size} height={size} viewBox="0 0 48 48">
+    <Path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.73 17.74 9.5 24 9.5z"/>
+    <Path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+    <Path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+    <Path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+  </Svg>
+);
+
+const AppleIcon = ({ size = 24, color = "#000" }) => (
+  <Svg width={size} height={size} viewBox="0 0 384 512">
+    <Path fill={color} d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"/>
+  </Svg>
+);
 
 interface AuthProps {
   onLoginSuccess: () => void;
@@ -51,85 +81,40 @@ export function Auth({ onLoginSuccess }: AuthProps) {
     },
     scrollContent: {
       flexGrow: 1,
+      justifyContent: 'center',
       paddingHorizontal: 24,
-      paddingTop: height * 0.1,
-      paddingBottom: 40,
-    },
-    bgCircle1: {
-      position: 'absolute',
-      top: -50,
-      right: -50,
-      width: 250,
-      height: 250,
-      borderRadius: 125,
-      backgroundColor: theme.colors.primaryContainer,
-      opacity: 0.1,
-    },
-    bgCircle2: {
-      position: 'absolute',
-      bottom: 50,
-      left: -50,
-      width: 300,
-      height: 300,
-      borderRadius: 150,
-      backgroundColor: theme.colors.secondaryContainer,
-      opacity: 0.05,
+      paddingVertical: 40,
     },
     headerContainer: {
       alignItems: 'center',
-      marginBottom: 40,
+      marginBottom: 56,
     },
     appNameContainer: {
+      flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 10,
+      marginBottom: 12,
     },
-    logoImage: {
-      width: 120,
-      height: 120,
-      marginBottom: 20,
-    },
-    appName: {
-      fontSize: 48,
+    appNameChar: {
+      fontSize: 64,
       fontWeight: '900',
-      color: theme.colors.primary,
       fontFamily: theme.fonts.headline,
-      letterSpacing: 10,
-      textTransform: 'uppercase',
-    },
-    appNameUnderline: {
-      width: 44,
-      height: 6,
-      backgroundColor: (theme.colors as any).pastel.yellow,
-      borderRadius: 10,
-      marginTop: 2,
+      letterSpacing: -2,
     },
     tagline: {
       fontSize: 16,
       color: theme.colors.onSurfaceVariant,
       textAlign: 'center',
-      marginTop: 8,
-      lineHeight: 22,
-      maxWidth: '80%',
+      marginTop: 4,
+      fontWeight: '500',
     },
     formCard: {
-      borderRadius: 32,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: theme.colors.divider,
-      elevation: 4,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 10 },
-      shadowOpacity: 0.05,
-      shadowRadius: 30,
-    },
-    blurContainer: {
-      padding: 32,
+      width: '100%',
     },
     formTitle: {
-      fontSize: 24,
-      fontWeight: '700',
+      fontSize: 22,
+      fontWeight: '800',
       color: theme.colors.onBackground,
-      marginBottom: 32,
+      marginBottom: 28,
       textAlign: 'center',
     },
     inputGroup: {
@@ -138,20 +123,22 @@ export function Auth({ onLoginSuccess }: AuthProps) {
     inputWrapper: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: '#fff',
-      borderRadius: 16,
-      paddingHorizontal: 16,
+      backgroundColor: theme.colors.surfaceContainerLow,
+      borderRadius: 18,
+      paddingHorizontal: 20,
       height: 60,
       borderWidth: 1,
-      borderColor: theme.colors.outlineVariant,
+      borderColor: theme.colors.outlineVariant + '40',
     },
     inputIcon: {
       marginRight: 12,
+      opacity: 0.7,
     },
     input: {
       flex: 1,
       fontSize: 16,
       color: theme.colors.onSurface,
+      fontWeight: '500',
     },
     forgotBtn: {
       alignSelf: 'flex-end',
@@ -159,27 +146,27 @@ export function Auth({ onLoginSuccess }: AuthProps) {
     },
     forgotText: {
       color: theme.colors.primary,
-      fontSize: 13,
-      fontWeight: '600',
+      fontSize: 14,
+      fontWeight: '700',
     },
     mainBtn: {
       height: 60,
-      borderRadius: 16,
+      borderRadius: 18,
       flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
-      marginTop: 32,
-      gap: 12,
-      elevation: 4,
+      marginTop: 24,
+      gap: 10,
       shadowColor: theme.colors.primary,
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.3,
-      shadowRadius: 15,
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.25,
+      shadowRadius: 12,
+      elevation: 4,
     },
     mainBtnText: {
       color: '#fff',
-      fontSize: 18,
-      fontWeight: '700',
+      fontSize: 17,
+      fontWeight: '800',
     },
     divider: {
       flexDirection: 'row',
@@ -195,7 +182,10 @@ export function Auth({ onLoginSuccess }: AuthProps) {
     dividerText: {
       marginHorizontal: 16,
       color: theme.colors.onSurfaceVariant,
-      fontSize: 13,
+      fontSize: 14,
+      fontWeight: '600',
+      textTransform: 'uppercase',
+      letterSpacing: 1,
     },
     socialGroup: {
       flexDirection: 'row',
@@ -203,14 +193,19 @@ export function Auth({ onLoginSuccess }: AuthProps) {
       gap: 20,
     },
     socialBtn: {
-      width: 64,
-      height: 64,
-      borderRadius: 20,
-      backgroundColor: '#fff',
+      width: 60,
+      height: 60,
+      borderRadius: 18,
+      backgroundColor: theme.colors.surface,
       borderWidth: 1,
       borderColor: theme.colors.outlineVariant,
       justifyContent: 'center',
       alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.05,
+      shadowRadius: 8,
+      elevation: 2,
     },
     toggleBtn: {
       marginTop: 32,
@@ -284,60 +279,112 @@ export function Auth({ onLoginSuccess }: AuthProps) {
     }
   };
 
-  const handleOAuthLogin = async (provider: 'google' | 'apple') => {
+  const signInWithGoogle = async () => {
     setLoading(true);
     try {
-      const redirectTo = Linking.createURL('/auth/callback');
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo,
-          skipBrowserRedirect: true,
-        },
-      });
-
-      if (error) throw error;
-
-      if (data?.url) {
-        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-        if (result.type === 'success') {
-          const { url } = result;
-          
-          const params: any = {};
-          const parts = url.split(/[#?]/);
-          parts.forEach(part => {
-            if (part && part.includes('=')) {
-              part.split('&').forEach(pair => {
-                const [key, value] = pair.split('=');
-                params[key] = value;
-              });
+      if (isExpoGo || !GoogleSignin) {
+        // Fallback al método antiguo web para Expo Go
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: Linking.createURL('/auth/callback'),
+            skipBrowserRedirect: true,
+          },
+        });
+        if (error) throw error;
+        
+        if (data.url) {
+          const res = await WebBrowser.openAuthSessionAsync(data.url, Linking.createURL('/auth/callback'));
+          if (res.type === 'success' && res.url) {
+            const params = res.url.split('#')[1];
+            if (params) {
+              const urlParams = params.split('&').reduce((acc: any, current) => {
+                const [name, value] = current.split('=');
+                acc[name] = value;
+                return acc;
+              }, {});
+              
+              if (urlParams.access_token && urlParams.refresh_token) {
+                await supabase.auth.setSession({
+                  access_token: urlParams.access_token,
+                  refresh_token: urlParams.refresh_token,
+                });
+                onLoginSuccess();
+              }
             }
-          });
-
-          const access_token = params.access_token;
-          const refresh_token = params.refresh_token;
-
-          if (access_token && refresh_token) {
-            const { error: sessionError } = await supabase.auth.setSession({
-              access_token,
-              refresh_token,
-            });
-            if (sessionError) throw sessionError;
-            onLoginSuccess();
-          } else {
-             notify.error('No se pudieron extraer las llaves de acceso.', 'Sesión no encontrada');
           }
         }
+        return;
+      }
+
+      await GoogleSignin.hasPlayServices();
+      const userInfo = await GoogleSignin.signIn();
+      if (userInfo.data?.idToken) {
+        const { error } = await supabase.auth.signInWithIdToken({
+          provider: 'google',
+          token: userInfo.data.idToken,
+        });
+        if (error) throw error;
+        onLoginSuccess();
+      } else {
+        throw new Error('No se recibió el ID token de Google');
       }
     } catch (error: any) {
-      notify.error(error.message, 'No pudimos autenticarte');
+      if (error.code === 'SIGN_IN_CANCELLED') {
+        // Usuario canceló, no hacer nada
+      } else if (error.code === 'IN_PROGRESS') {
+        notify.error('Inicio de sesión en progreso');
+      } else {
+        notify.error(error.message || 'Error desconocido', 'Error de Google Sign-In');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const signInWithApple = () => handleOAuthLogin('apple');
-  const signInWithGoogle = () => handleOAuthLogin('google');
+  const signInWithApple = async () => {
+    if (Platform.OS !== 'ios') {
+      notify.error('Apple Sign-In solo está disponible en dispositivos iOS', 'Plataforma no soportada');
+      return;
+    }
+    setLoading(true);
+    try {
+      const csrf = Math.random().toString(36).substring(2, 15);
+      const nonce = Math.random().toString(36).substring(2, 10);
+      const hashedNonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        nonce
+      );
+      
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+        state: csrf,
+        nonce: hashedNonce,
+      });
+
+      if (credential.identityToken) {
+        const { error } = await supabase.auth.signInWithIdToken({
+          provider: 'apple',
+          token: credential.identityToken,
+          nonce,
+        });
+
+        if (error) throw error;
+        onLoginSuccess();
+      } else {
+        throw new Error('No se recibió el Identity Token de Apple');
+      }
+    } catch (error: any) {
+      if (error.code !== 'ERR_REQUEST_CANCELED') {
+        notify.error(error.message || 'Error desconocido', 'Error de Apple Sign-In');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -346,33 +393,27 @@ export function Auth({ onLoginSuccess }: AuthProps) {
         style={styles.container}
       >
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.bgCircle1} />
-        <View style={styles.bgCircle2} />
 
         <Animated.View 
-          entering={FadeInDown.delay(200).duration(800)}
+          entering={FadeInDown.delay(100).duration(800).springify()}
           style={styles.headerContainer}
         >
-          <Image 
-            source={require('../../assets/images/logo_verde.png')} 
-            style={styles.logoImage} 
-            resizeMode="contain" 
-          />
           <View style={styles.appNameContainer}>
-            <Text style={styles.appName}>SAVE</Text>
-            <View style={styles.appNameUnderline} />
+            <Text style={[styles.appNameChar, { color: theme.colors.primary }]}>S</Text>
+            <Text style={[styles.appNameChar, { color: (theme.colors as any).pastel?.salmon || '#F0927B' }]}>A</Text>
+            <Text style={[styles.appNameChar, { color: (theme.colors as any).pastel?.teal || '#8AD6CE' }]}>V</Text>
+            <Text style={[styles.appNameChar, { color: (theme.colors as any).pastel?.lavender || '#D2A9D1' }]}>E</Text>
           </View>
           <Text style={styles.tagline}>
-            {mode === 'login' ? 'Bienvenido de nuevo a tu paz financiera.' : 'Tu viaje hacia la libertad financiera comienza aquí.'}
+            0 fricción. 100% control.
           </Text>
         </Animated.View>
 
         <Animated.View 
-          entering={FadeInUp.delay(400).duration(800)}
+          entering={FadeInUp.delay(300).duration(800).springify()}
           layout={Layout.springify()}
           style={styles.formCard}
         >
-          <BlurView intensity={80} tint="light" style={styles.blurContainer}>
             <Text style={styles.formTitle}>
               {mode === 'login' ? 'Iniciar Sesión' : 'Crear Cuenta'}
             </Text>
@@ -426,8 +467,8 @@ export function Auth({ onLoginSuccess }: AuthProps) {
                 />
                 <TouchableOpacity onPress={() => setShowPassword(p => !p)} style={{ padding: 6 }}>
                   {showPassword
-                    ? <EyeOff size={18} color={theme.colors.onSurfaceVariant} />
-                    : <Eye size={18} color={theme.colors.onSurfaceVariant} />}
+                    ? <EyeOff size={20} color={theme.colors.onSurfaceVariant} />
+                    : <Eye size={20} color={theme.colors.onSurfaceVariant} />}
                 </TouchableOpacity>
               </View>
             </View>
@@ -463,10 +504,10 @@ export function Auth({ onLoginSuccess }: AuthProps) {
 
             <View style={styles.socialGroup}>
               <TouchableOpacity onPress={signInWithApple} style={styles.socialBtn}>
-                <Apple size={24} color="#000" />
+                <AppleIcon size={24} color={theme.colors.onSurface} />
               </TouchableOpacity>
               <TouchableOpacity onPress={signInWithGoogle} style={styles.socialBtn}>
-                <Chrome size={24} color="#DB4437" />
+                <GoogleIcon size={24} />
               </TouchableOpacity>
             </View>
 
@@ -478,7 +519,6 @@ export function Auth({ onLoginSuccess }: AuthProps) {
                 </Text>
               </Text>
             </TouchableOpacity>
-          </BlurView>
         </Animated.View>
       </ScrollView>
       </KeyboardAvoidingView>

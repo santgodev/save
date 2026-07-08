@@ -357,64 +357,7 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
          </View>
       </View>
 
-      <View style={styles.section}>
-         <View style={styles.sectionHeader}>
-            <Settings size={18} color={theme.colors.primary} strokeWidth={2.5} />
-            <Text style={styles.sectionTitle}>Configuración de Cuenta</Text>
-         </View>
-         <View style={styles.settingsCard}>
-            <View style={styles.settingRow}>
-               <View style={styles.settingTitleCol}>
-                  <Bell size={20} color={theme.colors.onSurfaceVariant} />
-                  <Text style={styles.settingText}>Guardian de Gastos</Text>
-               </View>
-               <Switch 
-                 value={notifs.alerts_high} 
-                 onValueChange={(val) => setNotifs({...notifs, alerts_high: val})} 
-                 trackColor={{ true: theme.colors.primary, false: theme.colors.surfaceContainerHighest }}
-                 thumbColor="#FFF"
-               />
-            </View>
-            <View style={styles.divider} />
-            <View style={styles.settingRow}>
-               <View style={styles.settingTitleCol}>
-                  <Fingerprint size={20} color={theme.colors.onSurfaceVariant} />
-                  <Text style={styles.settingText}>Seguridad Biométrica</Text>
-               </View>
-               <View style={{ backgroundColor: theme.colors.surfaceContainerHigh, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 }}>
-                 <Text style={{ fontSize: 9, fontWeight: '900', color: theme.colors.onSurfaceVariant }}>PRÓXIMAMENTE</Text>
-               </View>
-            </View>
-         </View>
-      </View>
 
-      <View style={styles.section}>
-         <View style={styles.sectionHeader}>
-            <Palette size={18} color={theme.colors.primary} strokeWidth={2.5} />
-            <Text style={styles.sectionTitle}>Apariencia</Text>
-         </View>
-         <View style={styles.themeSelectorGrid}>
-            <TouchableOpacity 
-               activeOpacity={0.8}
-               style={[styles.themeCard, mode === 'sage' && styles.themeCardActive]}
-               onPress={() => setThemeMode('sage')}
-            >
-               <View style={[styles.colorCircle, { backgroundColor: '#F7F7F2' }]} />
-               <Text style={[styles.themeCardName, { color: theme.colors.onSurface }]}>Claro</Text>
-               <Text style={styles.themeCardDesc}>Sage Classic</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-               activeOpacity={0.8}
-               style={[styles.themeCard, mode === 'sageDark' && styles.themeCardActive]}
-               onPress={() => setThemeMode('sageDark')}
-            >
-               <View style={[styles.colorCircle, { backgroundColor: '#121212', borderColor: '#2C2C2C' }]} />
-               <Text style={[styles.themeCardName, { color: theme.colors.onSurface }]}>Oscuro</Text>
-               <Text style={styles.themeCardDesc}>Night Mode</Text>
-            </TouchableOpacity>
-         </View>
-      </View>
 
       <View style={[styles.section, { paddingBottom: 40 }]}>
          <TouchableOpacity 

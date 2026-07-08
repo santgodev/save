@@ -60,7 +60,13 @@ export const calculateFinancialProfile = (
 
   // 1. Gasto Hormiga: < 15,000 COP
   const HORMIGA_THRESHOLD = 15000;
-  const expenses = monthTx.filter(t => t.amount < 0);
+  // Excluimos explícitamente movimientos entre bolsillos o cualquier traslado interno
+  const expenses = monthTx.filter(t => 
+    t.amount < 0 && 
+    t.category !== 'Traslado' && 
+    t.category !== 'Transferencia' &&
+    !t.merchant?.toLowerCase().includes('bolsillo')
+  );
   const totalSpent = expenses.reduce((acc, t) => acc + Math.abs(t.amount), 0);
   const hormigaCount = expenses.filter(t => Math.abs(t.amount) < HORMIGA_THRESHOLD).length;
   const hormigaPct = (hormigaCount / (expenses.length || 1)) * 100;
