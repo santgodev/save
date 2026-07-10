@@ -3,25 +3,25 @@ import {
   View, Text, StyleSheet, ScrollView, Animated, Dimensions, TouchableOpacity, Platform, ActivityIndicator, RefreshControl, SafeAreaView
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { 
-  Plus, ArrowUpRight, ArrowDownLeft, Wallet, 
-  Target, TrendingUp, Sparkles, AlertCircle, ChevronRight,
-  Flame, Clock, History, LayoutGrid, Info, Briefcase
-} from 'lucide-react-native';
+import { ArrowUpRight, TrendingUp, Sparkles, Tag, ShoppingBag, ShieldCheck, Zap, PlusCircle, Activity, Info, AlertTriangle, Coins, Plus, Wallet, Target, Flame, Clock, History, LayoutGrid, Briefcase, ChevronRight } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
 import { normalize, getDeterministicColor } from '../theme/theme';
+import { formatMoney } from '../lib/format';
+import { useCycleState, useUserCycles } from '../lib/useCycleState';
+import { supabase } from '../lib/supabase';
+import { TourStep } from '../components/tour/TourStep';
+import { useTour } from '../components/tour/TourContext';
+import type { TourStepType } from '../components/tour/TourContext';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { Transaction } from '../types';
-import { supabase } from '../lib/supabase';
-import { useCycleState, useUserCycles } from '../lib/useCycleState';
-import { CycleNav } from '../components/CycleNav';
-
 import { TransactionDetailModal } from '../components/TransactionDetailModal';
 import { MonthClosureModal } from '../components/MonthClosureModal';
-import { formatMoney } from '../lib/format';
+import { CycleNav } from '../components/CycleNav';
 import type { Session } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
@@ -32,6 +32,7 @@ interface DashboardProps {
   session: Session;
   isDataReady: boolean;
   onOpenScanner: () => void;
+  onOpenScannerDemo?: () => void;
   onViewAll: () => void;
   onOpenChat?: (initialMessage?: string) => void;
   userProfile?: { full_name: string; streak?: number };
@@ -45,6 +46,7 @@ export const Dashboard = ({
   session,
   isDataReady,
   onOpenScanner,
+  onOpenScannerDemo,
   onViewAll,
   onOpenChat,
   userProfile, 
@@ -60,6 +62,54 @@ export const Dashboard = ({
   const [selectedTx, setSelectedTx] = useState<any>(null);
   const [pendingIncomes, setPendingIncomes] = useState<any[]>([]);
   const [showClosureModal, setShowClosureModal] = useState(false); // set to true when unclosed cycle found
+  const { startTour, stopTour } = useTour();
+
+  const isFocused = useIsFocused();
+
+  const TOUR_STEPS: TourStepType[] = [
+    {
+      name: 'bottom_add',
+      title: 'Anota tus Gastos',
+      description: 'Toca aquí para registrar un movimiento manual, o mantén presionado para escanear un recibo con la cámara.',
+      iconName: 'PlusCircle',
+      order: 1
+    }
+  ];
+
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
+
+    const checkTour = async () => {
+      const done = await AsyncStorage.getItem('tour_dashboard_done');
+      const demoTxs = transactions.filter(t => (t as any).metadata?.is_demo);
+      const hasDemo = demoTxs.length > 0;
+
+      if (!isDataReady || !isFocused) return;
+
+      if (hasDemo) {
+        timeout = setTimeout(() => {
+          startTour([{
+            name: 'bottom_pockets',
+            title: 'Abre tus bolsillos',
+            description: 'Ve a la pestaña de Bolsillos para ver cómo la Inteligencia Artificial organizó tu primer gasto mágico.',
+            iconName: 'Sparkles',
+            order: 1
+          }], undefined, { step: 2, total: 4 });
+        }, 800);
+      } else if (!done) {
+        timeout = setTimeout(() => {
+          startTour(TOUR_STEPS);
+          AsyncStorage.setItem('tour_dashboard_done', 'true');
+        }, 1000);
+      }
+    };
+
+    checkTour();
+
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [isDataReady, transactions, startTour, isFocused]);
 
   useEffect(() => {
     const hours = new Date().getHours();
@@ -456,14 +506,44 @@ export const Dashboard = ({
           {/* QUICK ADD GIGANTE (EL REY) */}
           <TouchableOpacity 
             activeOpacity={0.8} 
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenScanner(); }}
+            onPress={() => { 
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); 
+              if (transactions.length === 0 && onOpenScannerDemo) {
+                onOpenScannerDemo();
+              } else {
+                onOpenScanner(); 
+              }
+            }}
             style={{ backgroundColor: theme.colors.primary, borderRadius: theme.radius.xl, padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 32, ...theme.shadows.md }}
           >
             <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: theme.radius.full }}>
-              <Plus size={24} color={theme.colors.onPrimary} />
+              {transactions.length === 0 ? (
+                <Sparkles size={24} color={theme.colors.onPrimary} />
+              ) : (
+                <Plus size={24} color={theme.colors.onPrimary} />
+              )}
             </View>
-            <Text style={{ ...theme.typography.h3, color: theme.colors.onPrimary }}>Registrar Gasto</Text>
+            <View style={{ alignItems: 'flex-start' }}>
+              <Text style={{ ...theme.typography.h3, color: theme.colors.onPrimary }}>Registrar Gasto</Text>
+              {transactions.length === 0 && (
+                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: '800', marginTop: 2 }}>
+                  ✨ Toca aquí para ver la magia
+                </Text>
+              )}
+            </View>
           </TouchableOpacity>
+
+          {/* BOTON TEMPORAL DE DEMO PARA EL USUARIO */}
+          {onOpenScannerDemo && (
+            <TouchableOpacity 
+              activeOpacity={0.8} 
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenScannerDemo(); }}
+              style={{ backgroundColor: theme.colors.surface, borderRadius: theme.radius.xl, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 32, borderWidth: 1, borderColor: theme.colors.primary + '40', borderStyle: 'dashed' }}
+            >
+              <Sparkles size={18} color={theme.colors.primary} />
+              <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.primary }}>Probar Flujo de Onboarding Mágico</Text>
+            </TouchableOpacity>
+          )}
 
           {/* BOLSILLOS (Resumen Simple) */}
           <View style={{ marginBottom: 32 }}>

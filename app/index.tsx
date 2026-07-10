@@ -6,6 +6,7 @@ import { clearCycleCaches } from '../src/lib/useCycleState';
 import { INITIAL_POCKETS, SUPABASE_URL, SUPABASE_ANON_KEY } from '../src/constants';
 import { getTheme } from '../src/theme/theme';
 import { ThemeProvider, useTheme } from '../src/theme/ThemeContext';
+import { CurrencyProvider } from '../src/lib/CurrencyContext';
 import { Screen } from '../src/types';
 import { RealtimeChannel, createClient } from '@supabase/supabase-js';
 import * as QuickActions from 'expo-quick-actions';
@@ -25,6 +26,8 @@ import { Onboarding } from '../src/screens/Onboarding';
 import { AddIncome } from '../src/screens/AddIncome';
 import { PocketTransfer } from '../src/screens/PocketTransfer';
 import { Camera, X, Repeat, TrendingUp, Sparkles, Zap } from 'lucide-react-native';
+import { TourProvider } from '../src/components/tour/TourContext';
+import { TourOverlay } from '../src/components/tour/TourOverlay';
 
 const { width, height } = Dimensions.get('window');
 
@@ -390,9 +393,10 @@ function MainApp() {
 
     const renderScreen = () => {
     switch (currentScreen) {
-      case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('quick_expense')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} />;
+      case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('quick_expense')} onOpenScannerDemo={() => setCurrentScreen('demo_scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} />;
       case 'scanner': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="camera" />;
       case 'quick_expense': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="manual" />;
+      case 'demo_scanner': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('dashboard'); }} initialMode="demo" />;
       case 'expenses':
         return <Expenses 
           transactions={transactions} 
@@ -425,7 +429,7 @@ function MainApp() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'onboarding' && currentScreen !== 'add_income' && (
+      {currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'demo_scanner' && currentScreen !== 'onboarding' && currentScreen !== 'add_income' && (
         <TopBar 
           title={currentScreen === 'dashboard' ? 'Save' : currentScreen === 'expenses' ? 'Movimientos' : currentScreen === 'pockets' ? 'Bolsillos' : 'Perfil'}
           userName={session.user?.user_metadata?.full_name || session.user?.user_metadata?.name || session.user?.email?.split('@')[0]}
@@ -505,7 +509,12 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider userId={session?.user?.id}>
-        <MainApp />
+        <CurrencyProvider userId={session?.user?.id}>
+          <TourProvider>
+            <MainApp />
+            <TourOverlay />
+          </TourProvider>
+        </CurrencyProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

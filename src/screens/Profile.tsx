@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Animated, Dimensions, Image, Platform, ActivityIndicator
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Animated, Dimensions, Image, Platform, ActivityIndicator, LayoutAnimation, UIManager
 } from 'react-native';
 import { 
   Settings, LogOut, Trash2, Bell, ShieldCheck, 
-  TrendingUp, Target, Sparkles, ChevronRight,
+  TrendingUp, Target, Sparkles, ChevronRight, ChevronDown,
   Shield, Eye, Octagon, Fingerprint, Info,
   Palette, Heart, History
 } from 'lucide-react-native';
@@ -22,7 +22,7 @@ const { width } = Dimensions.get('window');
 
 export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: { session: Session, transactions: any[], pockets: any[], onRefresh: () => void, onBack?: () => void }) => {
   const insets = useSafeAreaInsets();
-  const { theme, mode, setThemeMode } = useTheme();
+  const { theme, mode, setThemePreference } = useTheme();
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
@@ -316,6 +316,29 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
             {(!profileData || profileData.topHabits.length === 0) && (
               <Text style={{ fontStyle: 'italic', color: theme.colors.onSurfaceVariant, fontSize: 13 }}>Escaneando hábitos...</Text>
             )}
+         </View>
+      </View>
+
+      <View style={styles.section}>
+         <View style={styles.sectionHeader}>
+            <Palette size={18} color={theme.colors.primary} strokeWidth={2.5} />
+            <Text style={styles.sectionTitle}>Apariencia</Text>
+         </View>
+         <View style={styles.settingsCard}>
+            <View style={[styles.settingRow, { paddingHorizontal: 4 }]}>
+               <View style={styles.settingTitleCol}>
+                  <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: theme.colors.surfaceContainerHighest, alignItems: 'center', justifyContent: 'center' }}>
+                     <Eye size={18} color={theme.colors.onSurfaceVariant} />
+                  </View>
+                  <Text style={styles.settingText}>Modo Oscuro</Text>
+               </View>
+               <Switch 
+                  value={mode === 'sageDark'}
+                  onValueChange={(val) => setThemePreference(val ? 'sageDark' : 'sage')}
+                  trackColor={{ false: theme.colors.surfaceContainerHighest, true: theme.colors.primary }}
+                  thumbColor={theme.colors.onPrimary}
+               />
+            </View>
          </View>
       </View>
 

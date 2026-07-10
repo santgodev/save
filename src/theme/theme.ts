@@ -87,6 +87,8 @@ const lightModeColors = {
   glassWhite: 'rgba(255, 255, 255, 0.75)', 
   glassDark: 'rgba(19, 48, 45, 0.1)', 
   
+  // Scanner (fondo oscuro premium — intencional, igual en light y dark)
+  scannerBackground: '#0A1A18',
   // Gradients (RULE: Only for Main CTAs or Success states. Never for text or basic list backgrounds)
   brandGradient: ['#8AD6CE', '#B9E2A2', '#D2A9D1'], 
   warmGradient: [coreColors.neutral[50], coreColors.neutral[100]],
@@ -139,6 +141,8 @@ const darkModeColors = {
   glassWhite: 'rgba(18, 18, 20, 0.85)', // Dark glass for bottom nav
   glassDark: 'rgba(0, 0, 0, 0.5)', 
   
+  // Scanner (fondo oscuro premium — intencional, igual en light y dark)
+  scannerBackground: '#0A1A18',
   // Gradients
   brandGradient: ['#B9E2A2', '#8AD6CE'], // Fresh green to teal gradient for premium buttons
   warmGradient: ['#09090B', '#121214'],

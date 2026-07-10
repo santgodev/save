@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View, Text, Image, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, TextInput, Dimensions, Platform, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Animated
 } from 'react-native';
@@ -13,6 +13,11 @@ import { normalize } from '../theme/theme';
 import { AnimatedProgressBar } from '../components/AnimatedProgressBar';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { formatMoneyDigits } from '../lib/format';
+import { useCurrency } from '../lib/CurrencyContext';
+import { useTour } from '../components/tour/TourContext';
+import { TourStep } from '../components/tour/TourStep';
+import type { TourStepType } from '../components/tour/TourContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Audio } from 'expo-av';
 import { supabase } from '../lib/supabase';
 import { normalizeMerchant } from '../utils/merchant';
@@ -22,18 +27,19 @@ import type { Session } from '@supabase/supabase-js';
 
 const { width, height } = Dimensions.get('window');
 
-export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode = 'camera' }: { onGoBack: () => void; onSaveSuccess: () => void; session?: Session; pockets?: any[]; initialMode?: 'camera' | 'manual' }) => {
+export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode = 'camera' }: { onGoBack: () => void; onSaveSuccess: () => void; session?: Session; pockets?: any[]; initialMode?: 'camera' | 'manual' | 'demo' }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
+  const { symbol, currency } = useCurrency();
 
   const styles = useMemo(() => StyleSheet.create({
-    scannerContainer: { flex: 1, backgroundColor: '#0A1A18' }, // Darker Teal-Slate for premium focus
+    scannerContainer: { flex: 1, backgroundColor: (theme.colors as any).scannerBackground },
     scannerTopBar: { position: 'absolute', top: 0, width: '100%', zIndex: 100, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center' },
     closeBtn: { 
       width: 48, 
       height: 48, 
       borderRadius: 24, 
-      backgroundColor: 'rgba(255,255,255,0.1)', 
+      backgroundColor: 'rgba(255,255,255,0.12)', 
       alignItems: 'center', 
       justifyContent: 'center',
       borderWidth: 1.5,
@@ -47,10 +53,10 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       borderColor: theme.colors.divider,
       ...theme.shadows.premium 
     },
-    scannerBadgeText: { color: '#FFF', fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5 },
+    scannerBadgeText: { color: theme.colors.onSurface, fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5 },
     
     scannerInitialView: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
-    scannerInitialText: { color: 'rgba(255,255,255,0.6)', fontSize: 18, fontWeight: '700', marginTop: 24, marginBottom: 40, textAlign: 'center' },
+    scannerInitialText: { color: theme.colors.onSurfaceVariant, fontSize: 18, fontWeight: '700', marginTop: 24, marginBottom: 40, textAlign: 'center' },
     
     mainCameraButton: { 
       flexDirection: 'row', 
@@ -150,6 +156,149 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   const [editableMerchant, setEditableMerchant] = useState('');
   
   const amountInputRef = React.useRef<TextInput>(null);
+  const { startTour } = useTour();
+
+
+  const TOUR_STEPS: TourStepType[] = useMemo(() => [
+    {
+      name: 'scanner_amount',
+      title: 'Monto del Gasto',
+      description: 'Ingresa el valor exacto de tu compra o deja que el escáner lo llene automáticamente.',
+      iconName: 'Zap',
+      order: 1
+    },
+    {
+      name: 'scanner_merchant',
+      title: 'Detalle de la Compra',
+      description: 'Escribe dónde fue el gasto o qué compraste para que sea fácil recordarlo.',
+      iconName: 'Tag',
+      order: 2
+    },
+    {
+      name: 'scanner_pocket',
+      title: 'Asigna el Bolsillo',
+      description: '¡Lo más importante! Selecciona la categoría/bolsillo de donde salió la plata para mantener tu presupuesto al día.',
+      iconName: 'PieChart',
+      order: 3
+    }
+  ], []);
+
+  const DEMO_TOUR_STEPS: TourStepType[] = useMemo(() => [
+    {
+      name: 'scanner_amount',
+      title: 'Magia de la IA',
+      description: 'Save extrajo el total exacto de tu recibo en segundos sin que teclearas nada.',
+      iconName: 'Sparkles',
+      order: 1
+    },
+    {
+      name: 'scanner_merchant',
+      title: 'Comercio Identificado',
+      description: 'Reconoció el lugar de tu compra automáticamente.',
+      iconName: 'Store',
+      order: 2
+    },
+    {
+      name: 'scanner_pocket',
+      title: 'Categoría Inteligente',
+      description: 'También detectó que es una compra de comida y te sugiere descontarlo del bolsillo de Alimentación.',
+      iconName: 'PieChart',
+      order: 3
+    },
+    {
+      name: 'scanner_save',
+      title: '¡Pruébalo tú mismo!',
+      description: 'Dale a "Guardar gasto" para ver cómo se registra en tus finanzas.',
+      iconName: 'Check',
+      order: 4
+    }
+  ], []);
+
+  React.useEffect(() => {
+    if (!isOpeningPicker && initialMode !== 'demo') {
+      AsyncStorage.getItem('tour_scanner_done').then(done => {
+        if (!done) {
+          setTimeout(() => {
+            startTour(TOUR_STEPS);
+            AsyncStorage.setItem('tour_scanner_done', 'true');
+          }, 800);
+        }
+      });
+    }
+  }, [isOpeningPicker]);
+
+  const runDemoMode = () => {
+    setIsManualMode(false);
+    setProgress(0); // Show image without blur overlay first
+    AsyncStorage.removeItem('tour_dashboard_done'); // Reset dashboard tour for demo test
+    
+    try {
+      const localImageUri = Image.resolveAssetSource(require('../../assets/images/factura.png')).uri;
+      setImage(localImageUri);
+    } catch (e) {
+      setImage('https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600');
+    }
+
+    // Wait 1.5 seconds for the user to see the photo before starting the progress
+    setTimeout(() => {
+      setProgress(10);
+      
+      let p = 10;
+      const interval = setInterval(() => {
+        p += 15;
+        if (p >= 90) clearInterval(interval);
+        setProgress(p);
+      }, 350);
+
+      setTimeout(() => {
+        clearInterval(interval);
+        setProgress(100);
+
+        let demoMerchant = 'Rincón del Sabor S.A.S.';
+        let demoAmount = '67540';
+        
+        if (currency === 'USD') {
+          demoMerchant = 'Whole Foods Market';
+          demoAmount = '4550';
+        } else if (currency === 'EUR') {
+          demoMerchant = 'Mercadona';
+          demoAmount = '3280';
+        } else if (currency === 'MXN') {
+          demoMerchant = 'OXXO';
+          demoAmount = '15000';
+        } else if (currency === 'ARS') {
+          demoMerchant = 'Carrefour';
+          demoAmount = '850000';
+        } else if (currency === 'PEN') {
+          demoMerchant = 'Plaza Vea';
+          demoAmount = '12050';
+        }
+
+        // Use 'Alimentación' if it exists, otherwise fallback to 'Comida' or whatever is available
+        const matchingCat = availableCategories.find(c => c.toLowerCase() === 'alimentación' || c.toLowerCase() === 'comida') || availableCategories[0];
+
+        setExtractedData({
+          merchant: demoMerchant,
+          amount: demoAmount,
+          date: new Date().toISOString().split('T')[0],
+          category: matchingCat
+        });
+        setEditableAmount(formatMoneyDigits(demoAmount));
+        setEditableMerchant(demoMerchant);
+        
+        setSelectedCategory(matchingCat);
+        
+        setIsManualMode(false);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+        // Start the specialized DEMO tour after a brief pause to let them see the results
+        setTimeout(() => {
+          startTour(DEMO_TOUR_STEPS, undefined, { step: 1, total: 4 });
+        }, 600);
+
+      }, 2500);
+    }, 1500);
+  };
 
   React.useEffect(() => {
     if (initialMode === 'manual') {
@@ -159,6 +308,10 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       setTimeout(() => {
         takePhoto();
       }, 300);
+    } else if (initialMode === 'demo') {
+      setTimeout(() => {
+        runDemoMode();
+      }, 400);
     }
   }, [initialMode]);
   
@@ -310,7 +463,8 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
         p_amount: Math.abs(amountValue),
         p_category: selectedCategory,
         p_icon: iconMap[selectedCategory] || 'receipt-text',
-        p_date_string: today
+        p_date_string: today,
+        p_metadata: initialMode === 'demo' ? { is_demo: true } : undefined
       });
 
       if (error) throw error;
@@ -357,16 +511,33 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
         )}
 
         <View style={[styles.scannerTopBar, { paddingTop: Math.max(insets.top, 16) + 16 }]}>
-          <TouchableOpacity 
-            style={[styles.closeBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outlineVariant }]} 
-            onPress={() => { if (image) { setImage(null); setExtractedData(null); setProgress(0); } else onGoBack(); Keyboard.dismiss(); }}
-          >
-            <XIcon size={24} color={theme.colors.onSurface} strokeWidth={2.5} />
-          </TouchableOpacity>
+          {initialMode !== 'demo' ? (
+            <TouchableOpacity 
+              style={[styles.closeBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outlineVariant }]} 
+              onPress={() => { 
+                if (image) { 
+                  setImage(null); 
+                  setExtractedData(null); 
+                  setProgress(0); 
+                } else {
+                  onGoBack(); 
+                }
+                Keyboard.dismiss(); 
+              }}
+            >
+              <XIcon size={24} color={theme.colors.onSurface} strokeWidth={2.5} />
+            </TouchableOpacity>
+          ) : <View style={{ width: 44 }} />}
           <View style={{ flex: 1 }} />
-          <View style={[styles.scannerBadge, { backgroundColor: theme.colors.primaryContainer, borderColor: theme.colors.primary + '30' }]}>
-            <Text style={[styles.scannerBadgeText, { color: theme.colors.primary }]}>{initialMode === 'manual' ? 'Gasto Rápido' : 'Ingresar Gasto'}</Text>
-          </View>
+          {initialMode === 'demo' ? (
+            <View style={[styles.scannerBadge, { backgroundColor: theme.colors.tertiaryContainer, borderColor: theme.colors.tertiary + '30' }]}>
+              <Text style={[styles.scannerBadgeText, { color: theme.colors.tertiary, fontWeight: '900' }]}>MODO DE PRUEBA</Text>
+            </View>
+          ) : (
+            <View style={[styles.scannerBadge, { backgroundColor: theme.colors.primaryContainer, borderColor: theme.colors.primary + '30' }]}>
+              <Text style={[styles.scannerBadgeText, { color: theme.colors.primary }]}>{initialMode === 'manual' ? 'Gasto Rápido' : 'Ingresar Gasto'}</Text>
+            </View>
+          )}
         </View>
 
         <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: Math.max(insets.top, 16) + 80, paddingBottom: Math.max(insets.bottom, 24) + 20 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -390,6 +561,8 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
               <ActivityIndicator size="large" color={theme.colors.primary} />
               <Text style={{ marginTop: 16, color: theme.colors.primary, fontWeight: '800' }}>Abriendo cámara...</Text>
             </View>
+           ) : (initialMode === 'demo' && progress === 0) ? (
+            <View />
            ) : (
             <View style={{ paddingHorizontal: 16 }}>
 
@@ -402,15 +575,26 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
                   )}
 
                   {!image && (
-                    <Text style={[styles.aiValidationText, { textAlign: 'center', marginBottom: 16, color: theme.colors.onSurfaceVariant }]}>
-                      AGREGAR MANUALMENTE
-                    </Text>
+                    <View style={{ alignItems: 'center', marginBottom: 16 }}>
+                      <Text style={[styles.aiValidationText, { textAlign: 'center', marginBottom: 12, color: theme.colors.onSurfaceVariant }]}>
+                        AGREGAR MANUALMENTE
+                      </Text>
+                      <TouchableOpacity 
+                        activeOpacity={0.7}
+                        onPress={runDemoMode}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}
+                      >
+                        <Sparkles size={14} color={theme.colors.primary} />
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.primary }}>Ver Demostración IA</Text>
+                      </TouchableOpacity>
+                    </View>
                   )}
 
-                  <View style={styles.premiumAmountBox}>
+                  <TourStep name="scanner_amount">
+                    <View style={styles.premiumAmountBox}>
                     <Text style={styles.premiumAmountLabel}>Monto</Text>
                     <View style={styles.modernAmountInputRow}>
-                      <Text style={styles.modernCurrencySymbol}>$</Text>
+                      <Text style={styles.modernCurrencySymbol}>{symbol}</Text>
                       <TextInput
                         ref={amountInputRef}
                         style={styles.modernAmountInput}
@@ -421,10 +605,12 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
                         placeholder="0"
                         placeholderTextColor={theme.colors.onSurfaceVariant}
                       />
-                      <Text style={styles.copBadge}>COP</Text>
+                      <Text style={styles.copBadge}>{currency}</Text>
                     </View>
                   </View>
+                  </TourStep>
 
+                  <TourStep name="scanner_merchant">
                   <View style={styles.premiumDetailItem}>
                      <View style={[styles.premiumIconBox, { backgroundColor: theme.colors.surfaceContainerHighest }]}><Store size={20} color={theme.colors.onSurface} /></View>
                      <View style={{ flex: 1 }}>
@@ -438,7 +624,9 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
                         />
                      </View>
                   </View>
+                  </TourStep>
 
+                  <TourStep name="scanner_pocket">
                   <View style={styles.categoryPicker}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
                       {availableCategories.map((cat) => (
@@ -452,16 +640,19 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
                       ))}
                     </ScrollView>
                   </View>
+                  </TourStep>
 
-                  <TouchableOpacity
-                    onPress={saveToSupabase}
-                    disabled={isSaving || saved || parseInt(editableAmount.replace(/[^0-9]/g, '') || '0') <= 0}
-                    style={[styles.premiumConfirmBtn, { backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' }, (isSaving || parseInt(editableAmount.replace(/[^0-9]/g, '') || '0') <= 0) && { opacity: 0.6 }]}
-                  >
-                    {isSaving
-                      ? <ActivityIndicator color={theme.colors.onPrimary} />
-                      : <Text style={styles.premiumConfirmBtnText}>Guardar gasto</Text>}
-                  </TouchableOpacity>
+                  <TourStep name="scanner_save">
+                    <TouchableOpacity
+                      onPress={saveToSupabase}
+                      disabled={isSaving || saved || parseInt(editableAmount.replace(/[^0-9]/g, '') || '0') <= 0}
+                      style={[styles.premiumConfirmBtn, { backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' }, (isSaving || parseInt(editableAmount.replace(/[^0-9]/g, '') || '0') <= 0) && { opacity: 0.6 }]}
+                    >
+                      {isSaving
+                        ? <ActivityIndicator color={theme.colors.onPrimary} />
+                        : <Text style={styles.premiumConfirmBtnText}>Guardar gasto</Text>}
+                    </TouchableOpacity>
+                  </TourStep>
                </BlurView>
             </View>
           )}

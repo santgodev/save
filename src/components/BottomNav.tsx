@@ -7,6 +7,7 @@ import { LayoutDashboard, Wallet, Grid2X2, History, Plus } from 'lucide-react-na
 import { useTheme } from '../theme/ThemeContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Screen } from '../types';
+import { TourStep } from './tour/TourStep';
 
 export const BottomNav = ({ activeScreen, setScreen, onAddPress, onAddLongPress }: { activeScreen: Screen | string; setScreen: (s: Screen | string) => void, onAddPress?: () => void, onAddLongPress?: () => void }) => {
   const insets = useSafeAreaInsets();
@@ -94,8 +95,9 @@ export const BottomNav = ({ activeScreen, setScreen, onAddPress, onAddLongPress 
           </TouchableOpacity>
 
           <View style={styles.centerSpace}>
-            <TouchableOpacity 
-              style={styles.fabButton}
+            <TourStep name="bottom_add">
+              <TouchableOpacity 
+                style={styles.fabButton}
               onPress={() => { 
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); 
                 if (onAddPress) onAddPress(); 
@@ -111,16 +113,19 @@ export const BottomNav = ({ activeScreen, setScreen, onAddPress, onAddLongPress 
               <LinearGradient colors={theme.colors.brandGradient as any} style={styles.fabGradient} start={{x:0, y:0}} end={{x:1, y:1}}>
                 <Plus size={24} color={theme.colors.onPrimary} />
               </LinearGradient>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </TourStep>
           </View>
 
-          <TouchableOpacity 
-            style={styles.navItem} 
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setScreen('pockets'); }}
-          >
-            <Grid2X2 size={20} color={activeScreen === 'pockets' ? activeColor : inactiveColor} strokeWidth={activeScreen === 'pockets' ? 2.5 : 1.5} />
-            <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.navLabel, { color: activeScreen === 'pockets' ? activeColor : inactiveColor }]}>BOLSILLOS</Text>
-          </TouchableOpacity>
+          <TourStep name="bottom_pockets">
+            <TouchableOpacity 
+              style={styles.navItem} 
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setScreen('pockets'); }}
+            >
+              <Grid2X2 size={20} color={activeScreen === 'pockets' ? activeColor : inactiveColor} strokeWidth={activeScreen === 'pockets' ? 2.5 : 1.5} />
+              <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.navLabel, { color: activeScreen === 'pockets' ? activeColor : inactiveColor }]}>BOLSILLOS</Text>
+            </TouchableOpacity>
+          </TourStep>
 
           <TouchableOpacity 
             style={styles.navItem} 

@@ -1,10 +1,11 @@
-import React from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, Platform } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, Platform, Animated } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { X } from 'lucide-react-native';
+import { X, Trash2 } from 'lucide-react-native';
 import { useTheme } from '../theme/ThemeContext';
 import { formatMoney } from '../lib/format';
 import { CategoryIcon } from './CategoryIcon';
+import { TourStep } from './tour/TourStep';
 
 interface Transaction {
   id: string;
@@ -14,6 +15,7 @@ interface Transaction {
   created_at?: string;
   merchant?: string;
   icon?: string;
+  metadata?: any;
 }
 
 interface Props {
@@ -22,10 +24,25 @@ interface Props {
   onClose: () => void;
   pockets?: any[];
   onEdit?: (tx: Transaction) => void;
+  onDelete?: (tx: Transaction) => void;
 }
 
-export const TransactionDetailModal = ({ visible, transaction, onClose, pockets, onEdit }: Props) => {
+export const TransactionDetailModal = ({ visible, transaction, onClose, pockets, onEdit, onDelete }: Props) => {
   const { theme } = useTheme();
+  const bounceAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible && transaction?.metadata?.is_demo) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(bounceAnim, { toValue: -8, duration: 400, useNativeDriver: true }),
+          Animated.timing(bounceAnim, { toValue: 0, duration: 400, useNativeDriver: true })
+        ])
+      ).start();
+    } else {
+      bounceAnim.setValue(0);
+    }
+  }, [visible, transaction, bounceAnim]);
 
   if (!transaction) return null;
 
@@ -98,6 +115,27 @@ export const TransactionDetailModal = ({ visible, transaction, onClose, pockets,
               >
                 <Text style={{ color: theme.colors.primary, fontWeight: '800', fontSize: 15 }}>Editar Ingreso</Text>
               </TouchableOpacity>
+            )}
+
+            {onDelete && (
+              <View style={{ marginTop: 24, width: '100%' }}>
+                {transaction.metadata?.is_demo && (
+                  <Animated.View style={{ alignItems: 'center', marginBottom: 12, transform: [{ translateY: bounceAnim }] }}>
+                    <View style={{ backgroundColor: theme.colors.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 16 }}>
+                      <Text style={{ color: theme.colors.onPrimary, fontWeight: '900', fontSize: 13 }}>¡Último paso!</Text>
+                      <Text style={{ color: theme.colors.onPrimary + 'E0', fontSize: 11, marginTop: 4, textAlign: 'center' }}>Presiona Eliminar para terminar la prueba</Text>
+                    </View>
+                    <View style={{ width: 0, height: 0, backgroundColor: 'transparent', borderStyle: 'solid', borderLeftWidth: 8, borderRightWidth: 8, borderTopWidth: 8, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: theme.colors.primary }} />
+                  </Animated.View>
+                )}
+                <TouchableOpacity 
+                  style={{ paddingVertical: 12, paddingHorizontal: 24, backgroundColor: theme.colors.error + '15', borderRadius: 12, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, borderWidth: transaction.metadata?.is_demo ? 2 : 0, borderColor: theme.colors.error + '50' }}
+                  onPress={() => { onClose(); onDelete(transaction); }}
+                >
+                  <Trash2 size={18} color={theme.colors.error} />
+                  <Text style={{ color: theme.colors.error, fontWeight: '800', fontSize: 15 }}>Eliminar Gasto</Text>
+                </TouchableOpacity>
+              </View>
             )}
 
           </View>

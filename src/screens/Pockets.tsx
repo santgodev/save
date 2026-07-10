@@ -7,7 +7,7 @@ import { BlurView } from 'expo-blur';
 import Slider from '@react-native-community/slider';
 import {
   ChevronDown, Edit3,
-  Plus, X, Trash2, AlertCircle, Clock, ArrowRight, Check, Pencil, Info
+  Plus, X, Trash2, AlertCircle, Clock, ArrowRight, Check, Pencil, Info, Sparkles
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../theme/ThemeContext';
@@ -18,15 +18,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { useCycleState, useUserCycles } from '../lib/useCycleState';
 import { formatMoney } from '../lib/format';
+import { useCurrency } from '../lib/CurrencyContext';
 import { notify } from '../lib/notify';
 import { CycleNav } from '../components/CycleNav';
 import { TransactionDetailModal } from '../components/TransactionDetailModal';
+import { TourStep } from '../components/tour/TourStep';
+import { useTour, TourStepType } from '../components/tour/TourContext';
 import type { Session } from '@supabase/supabase-js';
 
 export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferPress }: { pockets: any[], transactions: any[], session: Session, onRefresh: () => void, onTransferPress: (params: { fromId?: string, toId?: string, amount?: number }) => void }) => {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
+  const { formatMoney: formatMoneyCurrency, config: currencyConfig } = useCurrency();
 
   const [selectedPocket, setSelectedPocket] = useState<any | null>(null);
   const [showIncomeSummary, setShowIncomeSummary] = useState(false);
@@ -62,6 +66,18 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     await AsyncStorage.setItem('@save_cycle_insight_dismissed', 'true');
   };
 
+  const { startTour, stopTour } = useTour();
+
+  const TOUR_STEPS: TourStepType[] = [
+    {
+      name: 'pockets_free',
+      title: 'Tu Plata Libre',
+      description: 'Este bolsillo es tu comodín. Todo el dinero que no asignes a los demás sobres, aterrizará aquí automáticamente como tu dinero libre para gastar.',
+      iconName: 'Unlock',
+      order: 1
+    }
+  ];
+
   const sheetAnim = useRef(new Animated.Value(height)).current;
 
   // 1. Fuente ÚNICA de verdad — RPC get_cycle_state (vía useCycleState)
@@ -81,6 +97,104 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   useEffect(() => {
     if (transactions) refreshMonthly(true);
   }, [transactions, refreshMonthly]);
+
+  const demoTourTriggeredRef = useRef<string | null>(null);
+
+  // Check and start tour when pockets load
+  useEffect(() => {
+    if (!isMonthlyLoading && monthState && pockets.length > 0) {
+      const expenses = transactions.filter(t => t.category !== 'Ingreso' && t.category !== 'Traslado');
+      const demoExpenses = transactions.filter(t => (t as any).metadata?.is_demo);
+      const isDemo = demoExpenses.length > 0;
+      const firstExp = isDemo ? demoExpenses[0] : (expenses.length === 1 ? expenses[0] : null);
+
+      if (isDemo && firstExp && demoTourTriggeredRef.current !== firstExp.id) {
+        demoTourTriggeredRef.current = firstExp.id;
+        // ALWAYS trigger the demo tour, ignoring @save_tour_pockets_seen
+        const targetPocket = pockets.find(p => p.category === firstExp.category) || pockets.find(p => p.is_default_free);
+        if (targetPocket) {
+          const customTour: TourStepType[] = [{
+            name: `pocket_${targetPocket.id}`,
+            title: '¡Tu primer gasto está aquí!',
+            description: `Acabas de registrar tu primer gasto. Toca este bolsillo para ver el detalle y cuánto presupuesto te queda.`,
+            iconName: 'Sparkles',
+            order: 1
+          }];
+          setTimeout(() => {
+            startTour(customTour, undefined, { step: 3, total: 4 });
+            AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
+          }, 600);
+          return;
+        }
+      }
+
+
+
+      // Normal tour flow
+      AsyncStorage.getItem('@save_tour_pockets_seen').then(seen => {
+        if (!seen) {
+          if (firstExp) {
+            const targetPocket = pockets.find(p => p.category === firstExp.category) || pockets.find(p => p.is_default_free);
+            if (targetPocket) {
+              const customTour: TourStepType[] = [{
+                name: `pocket_${targetPocket.id}`,
+                title: '¡Tu primer gasto está aquí!',
+                description: `Acabas de registrar tu primer gasto. Toca este bolsillo para ver el detalle y cuánto presupuesto te queda.`,
+                iconName: 'Sparkles',
+                order: 1
+              }];
+              setTimeout(() => {
+                startTour(customTour, undefined, { step: 3, total: 4 });
+                AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
+              }, 600);
+              return;
+            }
+          }
+          
+          setTimeout(() => {
+            startTour(TOUR_STEPS);
+            AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
+          }, 600);
+        }
+      });
+    }
+  }, [isMonthlyLoading, monthState, pockets, transactions, startTour]);
+
+  const pocketTourTriggeredRef = useRef<string | null>(null);
+  const txTourTriggeredRef = useRef<string | null>(null);
+
+  // Tour inside Pocket Modal
+  useEffect(() => {
+    let tm: any;
+    if (selectedPocket && !isMonthlyLoading && monthState) {
+      const demoExpenses = transactions.filter(t => (t as any).metadata?.is_demo);
+      if (demoExpenses.length > 0) {
+        const firstExp = demoExpenses[0];
+        if ((selectedPocket.category === firstExp.category || selectedPocket.is_default_free) && pocketTourTriggeredRef.current !== firstExp.id) {
+          pocketTourTriggeredRef.current = firstExp.id;
+          // Wait 1 second to allow the BottomSheet spring animation to fully settle.
+          // If we measure too early, the TourOverlay will draw the hole in the wrong place.
+          tm = setTimeout(() => {
+            // Check again if selectedPocket is still open!
+            if (!selectedPocket) return;
+            startTour([{
+              name: `demo_tx_${firstExp.id}`,
+              title: 'Elimina tu gasto de prueba',
+              description: 'Toca este movimiento para abrir el detalle y limpiar tu cuenta.',
+              iconName: 'Trash2',
+              order: 1
+            }], undefined, { step: 4, total: 4 });
+          }, 1000);
+        }
+      }
+    }
+    return () => {
+      if (tm) clearTimeout(tm);
+    };
+  }, [selectedPocket, isMonthlyLoading, monthState, transactions, startTour]);
+
+  // We removed the Tour inside Transaction Modal because TourOverlay cannot overlay native Modals properly.
+  // We will handle the demo UI directly inside TransactionDetailModal.
 
   // Lookup helper: bolsillo del mes con sus números (allocated, available,
   // spent_month, pct_used). Si todavía no cargó, fallback a la prop.
@@ -239,9 +353,9 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     Animated.timing(sheetAnim, { toValue: height, duration: 250, useNativeDriver: true }).start(() => setSelectedPocket(null));
   };
 
-  // formatMoney importado de lib/format. Se mantiene alias formatCOP=formatMoney
-  // local para no tocar 12 callsites; señalado para futuro borrado.
-  const formatCOP = formatMoney;
+  // formatMoney del CurrencyContext para que respete la moneda del usuario.
+  // El alias formatCOP se mantiene igual para no tocar 12 callsites; renombrar cuando se haga un refactor mayor.
+  const formatCOP = formatMoneyCurrency;
 
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
@@ -289,7 +403,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     adjustInput: { backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 7, fontSize: 15, fontWeight: '900', color: '#FFF', marginBottom: 10, textAlign: 'center' },
 
     // Tarjeta de agregar
-    addCard: { width: (width - (14 * 2 + 12)) / 2, borderRadius: theme.radius.xl, minHeight: 170, justifyContent: 'center', alignItems: 'center', gap: 8, backgroundColor: theme.colors.glassWhite, borderWidth: 1.5, borderStyle: 'dashed', borderColor: theme.colors.primary + '50', padding: 16, ...theme.shadows.sm },
+    addCard: { width: (width - (14 * 2 + 12)) / 2, borderRadius: theme.radius.xl, minHeight: 150, justifyContent: 'center', alignItems: 'center', gap: 8, backgroundColor: theme.colors.glassWhite, borderWidth: 1.5, borderStyle: 'dashed', borderColor: theme.colors.primary + '50', padding: 16, ...theme.shadows.sm },
     addTxt: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },
 
     // BottomSheet
@@ -427,69 +541,71 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
               )}
 
               {/* Tarjeta de resumen de ingresos — rediseñada */}
-          {totalInvoicedIncome > 0 ? (
-            <View
-              style={{
-                backgroundColor: theme.colors.surface,
-                borderRadius: theme.radius.xl,
-                padding: 20,
-                marginBottom: 20,
-                borderWidth: 1,
-                borderColor: theme.colors.outlineVariant + '60',
-                ...theme.shadows.sm,
-              }}
-            >
-              {/* Header */}
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <Text style={{ fontSize: 12, fontWeight: '900', color: theme.colors.onSurfaceVariant, letterSpacing: 1, textTransform: 'uppercase' }}>
-                  Mis ingresos de {monthState?.cycle_name || 'este ciclo'}
-                </Text>
-              </View>
+            {totalInvoicedIncome > 0 ? (
+              <View
+                style={{
+                  backgroundColor: theme.colors.surface,
+                  borderRadius: theme.radius.xl,
+                  padding: 20,
+                  marginBottom: 20,
+                  borderWidth: 1,
+                  borderColor: theme.colors.outlineVariant + '60',
+                  ...theme.shadows.sm,
+                }}
+              >
+                {/* Header */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '900', color: theme.colors.onSurfaceVariant, letterSpacing: 1, textTransform: 'uppercase' }}>
+                    Mis ingresos de {monthState?.cycle_name || 'este ciclo'}
+                  </Text>
+                </View>
 
-              {/* 3 métricas en fila */}
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <View style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.primary + '12', borderRadius: 14, paddingVertical: 12 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.primary, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4 }}>Ingresé</Text>
-                  <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.primary, fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
-                    {formatCOP(totalInvoicedIncome)}
-                  </Text>
-                </View>
-                <View style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.surfaceContainerLow, borderRadius: 14, paddingVertical: 12 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.onSurfaceVariant, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4 }}>Asignado</Text>
-                  <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.onSurface, fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
-                    {formatCOP(pockets.filter(p => !p.is_default_free).reduce((acc, p) => acc + getPocketAlloc(p), 0))}
-                  </Text>
-                </View>
-                <View style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.primary + '12', borderRadius: 14, paddingVertical: 12 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.primary, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4 }}>Libre</Text>
-                  <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.primary, fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
-                    {formatCOP(pockets.find(p => p.is_default_free) ? getPocketAlloc(pockets.find(p => p.is_default_free)!) : 0)}
-                  </Text>
+                {/* 3 métricas en fila */}
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <View style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.primary + '12', borderRadius: 14, paddingVertical: 12 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.primary, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4 }}>Ingresé</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.primary, fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
+                      {formatCOP(totalInvoicedIncome)}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.surfaceContainerLow, borderRadius: 14, paddingVertical: 12 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.onSurfaceVariant, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4 }}>Asignado</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.onSurface, fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
+                      {formatCOP(pockets.filter(p => !p.is_default_free).reduce((acc, p) => acc + getPocketAlloc(p), 0))}
+                    </Text>
+                  </View>
+                  <TourStep name="pockets_free">
+                    <View style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.primary + '12', borderRadius: 14, paddingVertical: 12 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.primary, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4 }}>Libre</Text>
+                      <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.primary, fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
+                        {formatCOP(pockets.find(p => p.is_default_free) ? getPocketAlloc(pockets.find(p => p.is_default_free)!) : 0)}
+                      </Text>
+                    </View>
+                  </TourStep>
                 </View>
               </View>
-            </View>
-          ) : (
-            <View style={{ backgroundColor: theme.colors.surface, borderRadius: theme.radius.xl, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: theme.colors.outlineVariant + '60', alignItems: 'center', opacity: 0.6 }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.onSurfaceVariant }}>Sin ingresos registrados en {monthState?.cycle_name || 'este ciclo'}</Text>
-            </View>
-          )}
+            ) : (
+              <View style={{ backgroundColor: theme.colors.surface, borderRadius: theme.radius.xl, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: theme.colors.outlineVariant + '60', alignItems: 'center', opacity: 0.6 }}>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.onSurfaceVariant }}>Sin ingresos registrados en {monthState?.cycle_name || 'este ciclo'}</Text>
+              </View>
+            )}
 
           {/* Budget Distribution Bar */}
           {totalInvoicedIncome > 0 && (
-            <View style={{ marginBottom: 24 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
-                <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>Distribución del presupuesto</Text>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
-                  {formatCOP(sorted.filter(p => !p.is_default_free).reduce((acc, p) => acc + getPocketAlloc(p), 0))} asignados
-                </Text>
-              </View>
+              <View style={{ marginBottom: 24 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>Distribución del presupuesto</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
+                    {formatCOP(sorted.filter(p => !p.is_default_free).reduce((acc, p) => acc + getPocketAlloc(p), 0))} asignados
+                  </Text>
+                </View>
               <View style={{ height: 14, backgroundColor: theme.colors.surfaceContainerHighest, borderRadius: 7, flexDirection: 'row', overflow: 'hidden' }}>
                 {sorted.map((p, i) => {
                   const alloc = getPocketAlloc(p);
                   if (alloc <= 0) return null;
                   const pct = Math.min((alloc / totalInvoicedIncome) * 100, 100);
                   
-                  const premiumColors = theme.colors.pocketFlatColors as string[];
+                  const premiumColors = theme.colors.chartColors as string[];
                   const color = p.is_default_free ? theme.colors.primary : premiumColors[i % premiumColors.length];
                   
                   const isSelected = selectedSegmentId === p.id;
@@ -504,7 +620,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                 {sorted.filter(p => getPocketAlloc(p) > 0).map((p) => {
                   const alloc = getPocketAlloc(p);
                   const i = sorted.indexOf(p);
-                  const premiumColors = theme.colors.pocketFlatColors as string[];
+                  const premiumColors = theme.colors.chartColors as string[];
                   const color = p.is_default_free ? theme.colors.primary : premiumColors[i % premiumColors.length];
                   const isSelected = selectedSegmentId === p.id;
                   const opacity = selectedSegmentId ? (isSelected ? 1 : 0.3) : 1;
@@ -537,6 +653,30 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.onSurface }}>Tus Bolsillos</Text>
             </View>
+            <TouchableOpacity 
+              onPress={() => {
+                const steps = [...TOUR_STEPS];
+                const expenses = transactions.filter(t => t.category !== 'Ingreso' && t.category !== 'Traslado');
+                if (expenses.length > 0) {
+                  const firstExp = expenses[0];
+                  const targetPocket = pockets.find(p => p.category === firstExp.category) || pockets.find(p => p.is_default_free);
+                  if (targetPocket) {
+                    steps.push({
+                      name: `pocket_${targetPocket.id}`,
+                      title: '¡Tu primer gasto está aquí!',
+                      description: `Acabas de registrar tu primer gasto. Toca este bolsillo para ver el detalle y cuánto presupuesto te queda.`,
+                      iconName: 'Sparkles',
+                      order: 2
+                    });
+                  }
+                }
+                startTour(steps);
+              }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}
+            >
+              <Sparkles size={14} color={theme.colors.primary} />
+              <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.primary }}>Ver Tour</Text>
+            </TouchableOpacity>
           </View>
           <View style={styles.grid}>
             {sorted.map((p, i) => {
@@ -553,39 +693,40 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
               const isOver = remaining < 0 || (allocated > 0 && spent > allocated);
               const pctUsed = allocated > 0 ? Math.min((spent / allocated) * 100, 100) : 0;
               
-              const premiumColors = theme.colors.pocketFlatColors as string[];
+              const premiumColors = theme.colors.chartColors as string[];
               const flatColor = p.is_default_free ? theme.colors.primary : premiumColors[i % premiumColors.length];
               const cardBg = isOver ? theme.colors.error : flatColor + 'E6';
 
               return (
-                <TouchableOpacity
-                  key={p.id || i}
-                  style={styles.cardWrap}
-                  activeOpacity={0.88}
-                  onPress={() => openPocket(p)}
-                >
-                  <View style={[styles.card, { backgroundColor: cardBg, padding: 18, paddingTop: 20, paddingBottom: 22, minHeight: 180 }]}>
-                    <View style={{ marginBottom: 20 }}>
-                      <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}>
-                        <CategoryIcon iconName={p.icon} size={16} color="#FFF" />
+                <TourStep name={`pocket_${p.id}`} key={p.id || i}>
+                  <TouchableOpacity
+                    style={styles.cardWrap}
+                    activeOpacity={0.88}
+                    onPress={() => openPocket(p)}
+                  >
+                    <View style={[styles.card, { backgroundColor: cardBg, padding: 18, paddingTop: 20, paddingBottom: 22, minHeight: 150 }]}>
+                      <View style={{ marginBottom: 20 }}>
+                        <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}>
+                          <CategoryIcon iconName={p.icon} size={16} color="#FFF" />
+                        </View>
+                      </View>
+
+                      <Text style={{ fontSize: 18, fontWeight: '900', color: '#FFF', marginBottom: 4 }} numberOfLines={1}>{p.name}</Text>
+                      
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 20 }}>
+                        Plan: {allocated > 0 ? formatCOP(allocated) : '$0'}
+                      </Text>
+
+                      <View style={{ marginTop: 'auto' }}>
+                        <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={8} />
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
+                          <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>{remaining < 0 ? 'EXCESO' : 'TE QUEDA'}</Text>
+                          <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }} numberOfLines={1} adjustsFontSizeToFit>{formatCOP(Math.abs(remaining))}</Text>
+                        </View>
                       </View>
                     </View>
-
-                    <Text style={{ fontSize: 18, fontWeight: '900', color: '#FFF', marginBottom: 4 }} numberOfLines={1}>{p.name}</Text>
-                    
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 20 }}>
-                      Plan: {allocated > 0 ? formatCOP(allocated) : '$0'}
-                    </Text>
-
-                    <View style={{ marginTop: 'auto' }}>
-                      <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={8} />
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
-                        <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>{remaining < 0 ? 'EXCESO' : 'TE QUEDA'}</Text>
-                        <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }} numberOfLines={1} adjustsFontSizeToFit>{formatCOP(Math.abs(remaining))}</Text>
-                      </View>
-                    </View>
-                  </View>
-                </TouchableOpacity>
+                  </TouchableOpacity>
+                </TourStep>
               );
             })}
 
@@ -612,7 +753,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
               {/* Colored top strip matching the pocket's card color */}
               {(() => {
                 const i = sorted.findIndex(p => p.id === selectedPocket.id);
-                const premiumColors = theme.colors.pocketFlatColors as string[];
+                const premiumColors = theme.colors.chartColors as string[];
                 const flatColor = selectedPocket.is_default_free ? theme.colors.primary : premiumColors[i % premiumColors.length];
                 const mp = getMonthlyPocket(selectedPocket.id);
                 const planAlloc = getPocketAlloc(selectedPocket);
@@ -827,10 +968,17 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                         </View>
                       {visibleTxs.length > 0 ? (
                         visibleTxs.map((tx, idx) => {
-                          const premiumColors = theme.colors.pocketFlatColors as string[];
+                          const premiumColors = theme.colors.chartColors as string[];
                           const txColor = selectedPocket?.is_default_free ? theme.colors.primary : premiumColors[pockets.findIndex(p => p.id === selectedPocket?.id) % premiumColors.length];
-                          return (
-                            <TouchableOpacity key={tx.id || idx} style={styles.txRow} activeOpacity={0.7} onPress={() => setSelectedTx(tx)}>
+                          
+                          const txRow = (
+                            <TouchableOpacity key={tx.id || idx} style={styles.txRow} activeOpacity={0.7} onPress={() => {
+                              setSelectedTx(tx);
+                              // Si tocan el gasto de prueba, cerramos el TourOverlay para que no haya 2 Modals abiertos en Android
+                              if (tx.metadata?.is_demo) {
+                                stopTour();
+                              }
+                            }}>
                               <View style={[{ width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 }, { backgroundColor: tx.amount < 0 ? txColor + '20' : theme.colors.primary + '20' }]}>
                                 <CategoryIcon iconName={tx.amount < 0 ? (selectedPocket.icon || 'tag') : 'trending-up'} size={18} color={tx.amount < 0 ? txColor : theme.colors.primary} />
                               </View>
@@ -843,6 +991,12 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                               </Text>
                             </TouchableOpacity>
                           );
+
+                          return tx.metadata?.is_demo ? (
+                            <TourStep key={tx.id || idx} name={`demo_tx_${tx.id}`}>
+                              {txRow}
+                            </TourStep>
+                          ) : txRow;
                         })
                       ) : (
                         <View style={{ padding: 32, alignItems: 'center', opacity: 0.35 }}>
@@ -911,9 +1065,9 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                     <Text style={styles.fieldLabel}>Presupuesto mensual</Text>
                     <TextInput
                       style={styles.fieldInput}
-                      placeholder="$ 200.000"
+                      placeholder="Ej. 500.000"
                       keyboardType="numeric"
-                      value={newBudget ? Number(newBudget).toLocaleString('es-CO') : ''}
+                      value={newBudget ? Number(newBudget).toLocaleString(currencyConfig.locale) : ''}
                       onChangeText={v => setNewBudget(v.replace(/\D/g, ''))}
                       placeholderTextColor={theme.colors.onSurfaceVariant + '60'}
                     />
@@ -938,6 +1092,19 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
           transaction={selectedTx}
           pockets={pockets}
           onClose={() => setSelectedTx(null)}
+          onDelete={async (tx) => {
+            setSelectedTx(null);
+            try {
+              await supabase.rpc('delete_transaction_with_reversal', { 
+                p_tx_id: tx.id, 
+                p_user_id: session.user.id 
+              });
+              onRefresh();
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } catch (e) {
+              notify.error('Error al eliminar');
+            }
+          }}
         />
     </KeyboardAvoidingView>
   );

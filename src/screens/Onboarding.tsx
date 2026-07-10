@@ -6,6 +6,8 @@ import { supabase } from '../lib/supabase';
 import { formatMoneyDigits, formatMoney } from '../lib/format';
 import { notify } from '../lib/notify';
 import { getCategoryColorPair } from '../theme/theme';
+import { useCurrency } from '../lib/CurrencyContext';
+import { SUPPORTED_CURRENCIES, SupportedCurrency } from '../lib/currency';
 
 const CATEGORIES = [
   { id: 'Alimentación', name: 'Alimentación', icon: 'Utensils' },
@@ -26,6 +28,7 @@ const CategoryIcon = ({ id, color, size = 24 }: { id: string, color: string, siz
 
 export const Onboarding = ({ session, onComplete }: { session: any, onComplete: () => void }) => {
   const { theme } = useTheme();
+  const { currency, symbol, formatMoney, formatInput, setCurrency } = useCurrency();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -89,7 +92,7 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
       const { error: profileError } = await supabase.from('profiles').upsert({
         id: session.user.id,
         full_name: session.user.user_metadata?.full_name || 'Usuario',
-        preferred_currency: 'COP'
+        preferred_currency: currency
       });
       if (profileError) throw new Error('No se pudo inicializar tu perfil.');
 
@@ -203,6 +206,30 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
           
           {step === 1 && (
             <View>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.onSurfaceVariant, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1.5 }}>Moneda Base</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 24 }}>
+                  {SUPPORTED_CURRENCIES.map(c => (
+                     <TouchableOpacity
+                        key={c.code}
+                        activeOpacity={0.8}
+                        onPress={() => setCurrency(c.code as SupportedCurrency)}
+                        style={[
+                           { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14, borderWidth: 1.5, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface },
+                           currency === c.code && { backgroundColor: theme.colors.primaryContainer, borderColor: theme.colors.primary }
+                        ]}
+                     >
+                        <Text style={[
+                           { fontSize: 13, fontWeight: '700', color: theme.colors.onSurfaceVariant },
+                           currency === c.code && { color: theme.colors.primary, fontWeight: '900' }
+                        ]}>
+                           {c.symbol} {c.code}
+                        </Text>
+                     </TouchableOpacity>
+                  ))}
+               </ScrollView>
+
+              <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.onSurfaceVariant, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1.5 }}>Bolsillos Frecuentes</Text>
+              
               <View style={[styles.pocketCard, { backgroundColor: theme.colors.surfaceContainerHigh, borderColor: theme.colors.primary, borderWidth: 1 }]}>
                 <Wind size={24} color={theme.colors.primary} />
                 <Text style={[styles.pocketName, { color: theme.colors.onSurface, flex: 1, ...theme.typography.title }]}>Libre (Sobrante)</Text>
@@ -235,11 +262,11 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
               <View style={{ alignItems: 'center', marginTop: 10, marginBottom: 32 }}>
                 <Text style={{ fontSize: 12, color: theme.colors.primary, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' }}>¿Cuánta plata vas a ingresar?</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-                  <Text style={{ fontSize: 24, fontWeight: '700', color: theme.colors.onSurface, marginRight: 4 }}>$</Text>
+                  <Text style={{ fontSize: 24, fontWeight: '700', color: theme.colors.onSurface, marginRight: 4 }}>{symbol}</Text>
                   <TextInput
                     style={{ fontSize: 52, fontWeight: '800', color: theme.colors.onSurface, textAlign: 'center', letterSpacing: -2, minWidth: 120 }}
                     value={incomeAmount}
-                    onChangeText={(t) => setIncomeAmount(formatMoneyDigits(t))}
+                    onChangeText={(t) => setIncomeAmount(formatInput(t))}
                     keyboardType="numeric"
                     placeholder="0"
                     placeholderTextColor={theme.colors.onSurfaceVariant + '40'}
@@ -298,10 +325,10 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
                     </View>
 
                     <View style={styles.ruleInputRow}>
-                      <Text style={[styles.rulePrefix, { color: theme.colors.primary, fontSize: 24, fontWeight: '700' }]}>{rule.type === 'fixed' ? '$' : '%'}</Text>
+                      <Text style={[styles.rulePrefix, { color: theme.colors.primary, fontSize: 24, fontWeight: '700' }]}>{rule.type === 'fixed' ? symbol : '%'}</Text>
                       <TextInput
                         style={[styles.ruleInput, { color: theme.colors.onSurface, fontSize: 24, fontWeight: '800' }]}
-                        value={rule.value > 0 ? (rule.type === 'fixed' ? formatMoneyDigits(String(rule.value)) : String(rule.value)) : ''}
+                        value={rule.value > 0 ? (rule.type === 'fixed' ? formatInput(String(rule.value)) : String(rule.value)) : ''}
                         onChangeText={(t) => {
                           const num = parseInt(t.replace(/\D/g, '')) || 0;
                           setRules({...rules, [id]: { ...rule, value: num }});

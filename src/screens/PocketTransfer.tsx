@@ -10,6 +10,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { normalize } from '../theme/theme';
 import { supabase } from '../lib/supabase';
 import { formatMoney, formatMoneyDigits } from '../lib/format';
+import { useCurrency } from '../lib/CurrencyContext';
 import { notify } from '../lib/notify';
 import type { Session } from '@supabase/supabase-js';
 
@@ -18,6 +19,7 @@ const { width } = Dimensions.get('window');
 export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, initialParams }: { pockets: any[], session: Session, onCancel: () => void, onSaveSuccess: () => void, initialParams?: { fromId?: string, toId?: string, amount?: number } }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
+  const { symbol, currency } = useCurrency();
   const [amount, setAmount] = useState(initialParams?.amount ? initialParams.amount.toString() : '');
   const [fromPocketId, setFromPocketId] = useState<string | null>(initialParams?.fromId || pockets[0]?.id || null);
   const [toPocketId, setToPocketId] = useState<string | null>(initialParams?.toId || null);
@@ -174,7 +176,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
               <View style={styles.premiumAmountBox}>
                 <Text style={styles.premiumAmountLabel}>Monto a Mover</Text>
                 <View style={styles.modernAmountInputRow}>
-                  <Text style={styles.modernCurrencySymbol}>$</Text>
+                  <Text style={styles.modernCurrencySymbol}>{symbol}</Text>
                   <TextInput
                     style={styles.modernAmountInput}
                     value={amount}
@@ -185,7 +187,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
                     placeholderTextColor={theme.colors.onSurfaceVariant}
                     autoFocus
                   />
-                  <Text style={styles.copBadge}>COP</Text>
+                  <Text style={styles.copBadge}>{currency}</Text>
                 </View>
               </View>
 
@@ -246,7 +248,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
               paddingVertical: 40,
               paddingHorizontal: 32,
               borderRadius: 32,
-              backgroundColor: 'rgba(255,255,255,0.03)',
+              backgroundColor: theme.colors.glassWhite,
               borderWidth: 1,
               borderColor: theme.colors.divider,
               ...theme.shadows.premium
@@ -255,12 +257,12 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
                 <CheckCircle2 size={40} color={theme.colors.primary} strokeWidth={2.5} />
               </View>
               
-              <Text style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)', marginBottom: 8, letterSpacing: 1, fontWeight: '500' }}>
+              <Text style={{ fontSize: 16, color: theme.colors.onSurfaceVariant, marginBottom: 8, letterSpacing: 1, fontWeight: '500' }}>
                 TRASPASO EXITOSO
               </Text>
               
-              <Text style={{ fontSize: 40, fontWeight: '900', color: '#FFF', marginBottom: 8, letterSpacing: -1 }}>
-                ${amount}
+              <Text style={{ fontSize: 40, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 8, letterSpacing: -1 }}>
+                {symbol}{amount}
               </Text>
               
             </Animated.View>

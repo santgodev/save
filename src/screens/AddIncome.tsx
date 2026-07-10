@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { formatMoney, formatMoneyDigits } from '../lib/format';
+import { useCurrency } from '../lib/CurrencyContext';
 import { notify } from '../lib/notify';
 import { useUserCycles } from '../lib/useCycleState';
 import type { Session } from '@supabase/supabase-js';
@@ -16,6 +17,7 @@ const formatCurrency = formatMoneyDigits;
 export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTransaction }: { pockets: any[], session: Session, onCancel: () => void, onSaveSuccess: () => void, editTransaction?: any }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
+  const { symbol } = useCurrency();
   
   const isEditing = !!editTransaction;
   const initialDistType = (editTransaction?.metadata?.mode === 'manual') ? 'single' : 'smart';
@@ -301,7 +303,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
         <View style={styles.premiumAmountBox}>
           <Text style={styles.premiumAmountLabel}>¿Cuánto Entró?</Text>
           <View style={styles.modernAmountInputRow}>
-            <Text style={styles.modernCurrencySymbol}>$</Text>
+            <Text style={styles.modernCurrencySymbol}>{symbol}</Text>
             <TextInput
               style={styles.modernAmountInput}
               value={amount}
