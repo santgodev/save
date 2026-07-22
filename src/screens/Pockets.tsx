@@ -66,7 +66,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     await AsyncStorage.setItem('@save_cycle_insight_dismissed', 'true');
   };
 
-  const { startTour, stopTour } = useTour();
+  const { startTour, stopTour, isActive: isTourActive } = useTour();
 
   const TOUR_STEPS: TourStepType[] = [
     {
@@ -98,59 +98,73 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     if (transactions) refreshMonthly(true);
   }, [transactions, refreshMonthly]);
 
-  const demoTourTriggeredRef = useRef<string | null>(null);
+  // Ref para evitar re-disparar el tour demo en la misma sesión (el ID se guarda en AsyncStorage)
 
   // Check and start tour when pockets load
   useEffect(() => {
     if (!isMonthlyLoading && monthState && pockets.length > 0) {
-      const expenses = transactions.filter(t => t.category !== 'Ingreso' && t.category !== 'Traslado');
       const demoExpenses = transactions.filter(t => (t as any).metadata?.is_demo);
       const isDemo = demoExpenses.length > 0;
-      const firstExp = isDemo ? demoExpenses[0] : (expenses.length === 1 ? expenses[0] : null);
 
-      if (isDemo && firstExp && demoTourTriggeredRef.current !== firstExp.id) {
-        demoTourTriggeredRef.current = firstExp.id;
-        // ALWAYS trigger the demo tour, ignoring @save_tour_pockets_seen
-        const targetPocket = pockets.find(p => p.category === firstExp.category) || pockets.find(p => p.is_default_free);
-        if (targetPocket) {
-          const customTour: TourStepType[] = [{
-            name: `pocket_${targetPocket.id}`,
-            title: '¡Tu primer gasto está aquí!',
-            description: `Acabas de registrar tu primer gasto. Toca este bolsillo para ver el detalle y cuánto presupuesto te queda.`,
-            iconName: 'Sparkles',
-            order: 1
-          }];
+      // --- PRIORIDAD 1: Flujo demo del Scanner ---
+      if (isDemo) {
+        const firstExp = demoExpenses[0];
+        AsyncStorage.getItem('@save_demo_tour_triggered_id').then(triggeredId => {
+          if (triggeredId === firstExp.id) return; // Ya se disparó esta sesión
+          AsyncStorage.setItem('@save_demo_tour_triggered_id', firstExp.id);
+
+          const targetPocket = pockets.find(p => p.category === firstExp.category) || pockets.find(p => p.is_default_free);
+          if (targetPocket) {
+            setTimeout(() => {
+              startTour([{
+                name: `pocket_${targetPocket.id}`,
+                title: '¡Tu primer gasto está aquí!',
+                description: 'Toca este bolsillo para ver el detalle y cuánto presupuesto te queda.',
+                iconName: 'Sparkles',
+                order: 1
+              }], undefined, { step: 3, total: 4 });
+              AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
+            }, 600);
+          }
+        });
+        return;
+      }
+
+      // --- PRIORIDAD 2: Tour mágico de usuario nuevo (step 3/4) ---
+      AsyncStorage.getItem('@save_magic_tour_pockets_pending').then(async (pending) => {
+        if (pending === 'true') {
+          await AsyncStorage.removeItem('@save_magic_tour_pockets_pending');
+          await AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
+
+          // Step 3/4 → mostrar bolsillo Libre
           setTimeout(() => {
-            startTour(customTour, undefined, { step: 3, total: 4 });
-            AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
+            startTour([{
+              name: 'pockets_free',
+              title: 'El Bolsillo Libre',
+              description: 'Lo que no asignes a otros bolsillos aterriza aquí. Es tu dinero flexible para cualquier gasto del momento.',
+              iconName: 'Unlock',
+              order: 1
+            }], () => {
+              // Step 4/4 → mostrar el primer bolsillo personalizado
+              const firstCustomPocket = pockets.find(p => !p.is_default_free);
+              if (!firstCustomPocket) return;
+              setTimeout(() => {
+                startTour([{
+                  name: `pocket_${firstCustomPocket.id}`,
+                  title: 'Toca cualquier Bolsillo',
+                  description: 'Abrélo para ver su historial, ajustar el presupuesto y manejar cada categoría a fondo.',
+                  iconName: 'PieChart',
+                  order: 1
+                }], undefined, { step: 4, total: 4 });
+              }, 300);
+            }, { step: 3, total: 4 });
           }, 600);
           return;
         }
-      }
 
-
-
-      // Normal tour flow
-      AsyncStorage.getItem('@save_tour_pockets_seen').then(seen => {
+        // --- PRIORIDAD 3: Tour básico de primera visita ---
+        const seen = await AsyncStorage.getItem('@save_tour_pockets_seen');
         if (!seen) {
-          if (firstExp) {
-            const targetPocket = pockets.find(p => p.category === firstExp.category) || pockets.find(p => p.is_default_free);
-            if (targetPocket) {
-              const customTour: TourStepType[] = [{
-                name: `pocket_${targetPocket.id}`,
-                title: '¡Tu primer gasto está aquí!',
-                description: `Acabas de registrar tu primer gasto. Toca este bolsillo para ver el detalle y cuánto presupuesto te queda.`,
-                iconName: 'Sparkles',
-                order: 1
-              }];
-              setTimeout(() => {
-                startTour(customTour, undefined, { step: 3, total: 4 });
-                AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
-              }, 600);
-              return;
-            }
-          }
-          
           setTimeout(() => {
             startTour(TOUR_STEPS);
             AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
@@ -163,7 +177,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   const pocketTourTriggeredRef = useRef<string | null>(null);
   const txTourTriggeredRef = useRef<string | null>(null);
 
-  // Tour inside Pocket Modal
+  // Tour dentro del Modal de Bolsillo (solo para el flujo demo)
   useEffect(() => {
     let tm: any;
     if (selectedPocket && !isMonthlyLoading && monthState) {
@@ -172,10 +186,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
         const firstExp = demoExpenses[0];
         if ((selectedPocket.category === firstExp.category || selectedPocket.is_default_free) && pocketTourTriggeredRef.current !== firstExp.id) {
           pocketTourTriggeredRef.current = firstExp.id;
-          // Wait 1 second to allow the BottomSheet spring animation to fully settle.
-          // If we measure too early, the TourOverlay will draw the hole in the wrong place.
+          // Esperar a que el BottomSheet termine de animarse antes de medir posiciones
           tm = setTimeout(() => {
-            // Check again if selectedPocket is still open!
             if (!selectedPocket) return;
             startTour([{
               name: `demo_tx_${firstExp.id}`,
@@ -349,7 +361,15 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 50, friction: 8 }).start();
   };
 
-  const closePocket = () => {
+  useEffect(() => {
+    if (selectedPocket) {
+      Animated.timing(sheetAnim, { toValue: 0, duration: 0, useNativeDriver: true }).start();
+    }
+  }, [selectedPocket, isTourActive]);
+
+  const closePocket = (force = false) => {
+    if (isTourActive && !force) return;
+    stopTour();
     Animated.timing(sheetAnim, { toValue: height, duration: 250, useNativeDriver: true }).start(() => setSelectedPocket(null));
   };
 
@@ -653,24 +673,37 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.onSurface }}>Tus Bolsillos</Text>
             </View>
-            <TouchableOpacity 
-              onPress={() => {
-                const steps = [...TOUR_STEPS];
-                const expenses = transactions.filter(t => t.category !== 'Ingreso' && t.category !== 'Traslado');
-                if (expenses.length > 0) {
-                  const firstExp = expenses[0];
-                  const targetPocket = pockets.find(p => p.category === firstExp.category) || pockets.find(p => p.is_default_free);
-                  if (targetPocket) {
-                    steps.push({
-                      name: `pocket_${targetPocket.id}`,
-                      title: '¡Tu primer gasto está aquí!',
-                      description: `Acabas de registrar tu primer gasto. Toca este bolsillo para ver el detalle y cuánto presupuesto te queda.`,
-                      iconName: 'Sparkles',
-                      order: 2
-                    });
-                  }
-                }
-                startTour(steps);
+            <TouchableOpacity
+              onPress={async () => {
+                // Resetear TODOS los flags del tour mágico para poder probarlo completo
+                await AsyncStorage.multiRemove([
+                  'tour_dashboard_done',
+                  '@save_tour_pockets_seen',
+                  '@save_magic_tour_pending',
+                  '@save_magic_tour_pockets_pending',
+                  '@save_demo_tour_triggered_id',
+                  'tour_scanner_done',
+                ]);
+                // Lanzar el flujo de 4 pasos directamente desde Pockets (step 3/4 y 4/4)
+                const firstCustomPocket = pockets.find(p => !p.is_default_free);
+                startTour([{
+                  name: 'pockets_free',
+                  title: 'El Bolsillo Libre',
+                  description: 'Lo que no asignes a otros bolsillos aterriza aquí. Es tu dinero flexible para cualquier gasto.',
+                  iconName: 'Unlock',
+                  order: 1
+                }], () => {
+                  if (!firstCustomPocket) return;
+                  setTimeout(() => {
+                    startTour([{
+                      name: `pocket_${firstCustomPocket.id}`,
+                      title: 'Toca cualquier Bolsillo',
+                      description: 'Abrélo para ver su historial, ajustar el presupuesto y manejar cada categoría a fondo.',
+                      iconName: 'PieChart',
+                      order: 1
+                    }], undefined, { step: 4, total: 4 });
+                  }, 300);
+                }, { step: 3, total: 4 });
               }}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}
             >
@@ -686,47 +719,73 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
               const allocated = getPocketAlloc(p);
               const spent = mp?.spent_month ?? 0;
               const available = p.is_default_free ? (allocated - spent) : (mp?.available ?? p.budget ?? 0);
-              
-
-                
               const remaining = available;             // ← lo que queda hoy, directo de la DB
               const isOver = remaining < 0 || (allocated > 0 && spent > allocated);
               const pctUsed = allocated > 0 ? Math.min((spent / allocated) * 100, 100) : 0;
-              
               const premiumColors = theme.colors.chartColors as string[];
               const flatColor = p.is_default_free ? theme.colors.primary : premiumColors[i % premiumColors.length];
               const cardBg = isOver ? theme.colors.error : flatColor + 'E6';
 
               return (
-                <TourStep name={`pocket_${p.id}`} key={p.id || i}>
-                  <TouchableOpacity
-                    style={styles.cardWrap}
-                    activeOpacity={0.88}
-                    onPress={() => openPocket(p)}
-                  >
-                    <View style={[styles.card, { backgroundColor: cardBg, padding: 18, paddingTop: 20, paddingBottom: 22, minHeight: 150 }]}>
-                      <View style={{ marginBottom: 20 }}>
-                        <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}>
-                          <CategoryIcon iconName={p.icon} size={16} color="#FFF" />
-                        </View>
-                      </View>
-
-                      <Text style={{ fontSize: 18, fontWeight: '900', color: '#FFF', marginBottom: 4 }} numberOfLines={1}>{p.name}</Text>
-                      
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 20 }}>
-                        Plan: {allocated > 0 ? formatCOP(allocated) : '$0'}
-                      </Text>
-
-                      <View style={{ marginTop: 'auto' }}>
-                        <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={8} />
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
-                          <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>{remaining < 0 ? 'EXCESO' : 'TE QUEDA'}</Text>
-                          <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }} numberOfLines={1} adjustsFontSizeToFit>{formatCOP(Math.abs(remaining))}</Text>
-                        </View>
-                      </View>
+                p.is_default_free ? (
+                  <TourStep name={`pocket_${p.id}`} key={p.id || i}>
+                    <View style={styles.cardWrap}>
+                      <TourStep name="pockets_free">
+                        <TouchableOpacity
+                          style={{ flex: 1 }}
+                          activeOpacity={0.88}
+                          onPress={() => openPocket(p)}
+                        >
+                          <View style={[styles.card, { backgroundColor: cardBg, padding: 18, paddingTop: 20, paddingBottom: 22, minHeight: 150 }]}>
+                            <View style={{ marginBottom: 20 }}>
+                              <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}>
+                                <CategoryIcon iconName={p.icon} size={16} color="#FFF" />
+                              </View>
+                            </View>
+                            <Text style={{ fontSize: 18, fontWeight: '900', color: '#FFF', marginBottom: 4 }} numberOfLines={1}>{p.name}</Text>
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 20 }}>
+                              Plan: {allocated > 0 ? formatCOP(allocated) : '$0'}
+                            </Text>
+                            <View style={{ marginTop: 'auto' }}>
+                              <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={8} />
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
+                                <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>{remaining < 0 ? 'EXCESO' : 'TE QUEDA'}</Text>
+                                <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }} numberOfLines={1} adjustsFontSizeToFit>{formatCOP(Math.abs(remaining))}</Text>
+                              </View>
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      </TourStep>
                     </View>
-                  </TouchableOpacity>
-                </TourStep>
+                  </TourStep>
+                ) : (
+                  <TourStep name={`pocket_${p.id}`} key={p.id || i}>
+                    <TouchableOpacity
+                      style={styles.cardWrap}
+                      activeOpacity={0.88}
+                      onPress={() => openPocket(p)}
+                    >
+                      <View style={[styles.card, { backgroundColor: cardBg, padding: 18, paddingTop: 20, paddingBottom: 22, minHeight: 150 }]}>
+                        <View style={{ marginBottom: 20 }}>
+                          <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}>
+                            <CategoryIcon iconName={p.icon} size={16} color="#FFF" />
+                          </View>
+                        </View>
+                        <Text style={{ fontSize: 18, fontWeight: '900', color: '#FFF', marginBottom: 4 }} numberOfLines={1}>{p.name}</Text>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 20 }}>
+                          Plan: {allocated > 0 ? formatCOP(allocated) : '$0'}
+                        </Text>
+                        <View style={{ marginTop: 'auto' }}>
+                          <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={8} />
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
+                            <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>{remaining < 0 ? 'EXCESO' : 'TE QUEDA'}</Text>
+                            <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }} numberOfLines={1} adjustsFontSizeToFit>{formatCOP(Math.abs(remaining))}</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  </TourStep>
+                )
               );
             })}
 
@@ -741,14 +800,11 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
         </ScrollView>
           )}
-        </View>
 
-      {/* BottomSheet simplificado */}
         {selectedPocket && (
           <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
-            <Pressable style={styles.backdrop} onPress={closePocket}>
-              <Animated.View style={[styles.backdropTint, { opacity: sheetAnim.interpolate({ inputRange: [0, height], outputRange: [1, 0] }) }]} />
-            </Pressable>
+            <Pressable style={styles.backdrop} onPress={isTourActive ? undefined : () => closePocket()} />
+            <Animated.View style={[styles.backdropTint, { opacity: sheetAnim.interpolate({ inputRange: [0, height], outputRange: [1, 0] }) }]} pointerEvents="none" />
             <Animated.View style={[styles.sheet, { paddingHorizontal: 0, paddingTop: 0, transform: [{ translateY: sheetAnim }] }]}>
               {/* Colored top strip matching the pocket's card color */}
               {(() => {
@@ -797,7 +853,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                       <View style={{ flexDirection: 'row', gap: 8 }}>
                         <TouchableOpacity
                           style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}
-                          onPress={() => { closePocket(); setShowAllTxs(false); setIsEditingPocket(false); }}
+                          onPress={() => { closePocket(true); setShowAllTxs(false); setIsEditingPocket(false); }}
                         >
                           <X size={18} color="#FFF" strokeWidth={2.5} />
                         </TouchableOpacity>
@@ -908,11 +964,11 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                         {isOver && (
                           <TouchableOpacity
                             onPress={() => {
-                              closePocket();
+                              closePocket(true);
                               const bestSource = [...pockets]
                                 .filter(p => p.id !== selectedPocket.id && (p.budget || 0) > 0)
                                 .sort((a, b) => (b.budget || 0) - (a.budget || 0))[0];
-                              onTransferPress({ fromId: bestSource?.id, toId: selectedPocket.id, amount: Math.abs(available) });
+                              setTimeout(() => onTransferPress({ fromId: bestSource?.id, toId: selectedPocket.id, amount: Math.abs(available) }), 250);
                             }}
                             style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 14 }}
                           >
@@ -925,8 +981,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                           <TouchableOpacity
                             style={{ flex: 1, paddingVertical: 14, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
                             onPress={() => {
-                              closePocket();
-                              // Wait a bit for the modal to close before navigating
+                              closePocket(true);
                               setTimeout(() => onTransferPress({ fromId: selectedPocket.id }), 250);
                             }}
                           >
@@ -1106,6 +1161,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
             }
           }}
         />
+      </View>
     </KeyboardAvoidingView>
   );
 };

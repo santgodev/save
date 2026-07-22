@@ -52,12 +52,10 @@ const SplashScreen = () => {
   
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const textOpacity = useRef(new Animated.Value(0)).current;
-  
-  // AVE empieza escondido detrás de la S (valor negativo = a la izquierda)
-  const slideTextAnim = useRef(new Animated.Value(-80)).current; 
-  
-  // Empuja el bloque a la derecha para que la S se vea centrada mientras AVE está oculto
-  const containerShift = useRef(new Animated.Value(50)).current;
+  // AVE empieza oculto a la izquierda detrás de la S
+  const slideTextAnim = useRef(new Animated.Value(-60)).current;
+  // El bloque completo arranca desplazado a la derecha para que la S quede centrada
+  const containerShift = useRef(new Animated.Value(40)).current;
   const sloganOpacity = useRef(new Animated.Value(0)).current;
   const sloganTranslateY = useRef(new Animated.Value(10)).current;
 
@@ -66,98 +64,97 @@ const SplashScreen = () => {
 
   useEffect(() => {
     Animated.sequence([
-      // Escena 1: Aparece la S bien centrada
+      // Escena 1: La S aparece centrada
       Animated.timing(logoOpacity, {
         toValue: 1,
-        duration: 600,
+        duration: 500,
         useNativeDriver: true,
       }),
-      
-      // Pausa para apreciar la S sola
-      Animated.delay(200),
 
-      // Escena 2: La S se desplaza a su lugar y AVE sale deslizándose
+      // Pausa breve para apreciar la S sola
+      Animated.delay(250),
+
+      // Escena 2: El bloque se centra y AVE se desliza desde detrás
       Animated.parallel([
-        // El contenedor completo se centra para que "SAVE" quede en medio
         Animated.spring(containerShift, {
           toValue: 0,
           friction: 8,
           tension: 40,
           useNativeDriver: true,
         }),
-        // AVE aparece con fade
         Animated.timing(textOpacity, {
           toValue: 1,
-          duration: 400,
+          duration: 350,
           useNativeDriver: true,
         }),
-        // AVE se desliza desde detrás de la S hasta su posición natural (0)
         Animated.spring(slideTextAnim, {
           toValue: 0,
           friction: 8,
           tension: 40,
           useNativeDriver: true,
         }),
+        // Slogan aparece un poco después
         Animated.sequence([
-          Animated.delay(200),
+          Animated.delay(300),
           Animated.parallel([
-            Animated.timing(sloganOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
-            Animated.spring(sloganTranslateY, { toValue: 0, friction: 8, tension: 40, useNativeDriver: true })
-          ])
-        ])
-      ])
+            Animated.timing(sloganOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+            Animated.spring(sloganTranslateY, { toValue: 0, friction: 8, tension: 40, useNativeDriver: true }),
+          ]),
+        ]),
+      ]),
     ]).start();
   }, []);
 
+  const fontSize = 56;
+
   return (
     <View style={[styles.loadingContainer, { backgroundColor: theme.colors.background }]}>
-      <Animated.View style={{ 
-        flexDirection: 'row', 
-        alignItems: 'center', 
+      {/* SAVE animado — mismos colores que el TopBar */}
+      <Animated.View style={{
+        flexDirection: 'row',
+        alignItems: 'center',
         justifyContent: 'center',
-        transform: [{ translateX: containerShift }]
+        transform: [{ translateX: containerShift }],
       }}>
-        
-        {/* S — teal primario */}
-        <Animated.Text
-          style={{
-            fontSize: 56,
-            fontWeight: '900',
-            fontFamily: theme.fonts.headline,
-            color: '#47ADA2',
-            zIndex: 10,
-            opacity: logoOpacity,
-          }}
-        >
+        {/* S — color primario */}
+        <Animated.Text style={{
+          fontSize,
+          fontWeight: '900',
+          fontFamily: theme.fonts.headline,
+          color: theme.colors.primary,
+          opacity: logoOpacity,
+          zIndex: 10,
+        }}>
           S
         </Animated.Text>
-        
-        {/* A, V, E — colores de la paleta, salen deslizándose */}
-        <Animated.View style={{ 
-          zIndex: 1,
-          flexDirection: 'row',
-          opacity: textOpacity, 
-          transform: [{ translateX: slideTextAnim }],
-        }}>
-          <Text style={{ fontSize: 56, fontWeight: '900', fontFamily: theme.fonts.headline, color: '#F0927B' }}>A</Text>
-          <Text style={{ fontSize: 56, fontWeight: '900', fontFamily: theme.fonts.headline, color: '#B9E2A2' }}>V</Text>
-          <Text style={{ fontSize: 56, fontWeight: '900', fontFamily: theme.fonts.headline, color: '#D2A9D1' }}>E</Text>
-        </Animated.View>
 
+        {/* AVE — se deslizan desde detrás de la S */}
+        <Animated.View style={{
+          flexDirection: 'row',
+          opacity: textOpacity,
+          transform: [{ translateX: slideTextAnim }],
+          zIndex: 1,
+        }}>
+          <Text style={{ fontSize, fontWeight: '900', fontFamily: theme.fonts.headline, color: (theme.colors as any).pastel?.salmon || '#F0927B' }}>A</Text>
+          <Text style={{ fontSize, fontWeight: '900', fontFamily: theme.fonts.headline, color: (theme.colors as any).pastel?.teal || '#8AD6CE' }}>V</Text>
+          <Text style={{ fontSize, fontWeight: '900', fontFamily: theme.fonts.headline, color: (theme.colors as any).pastel?.lavender || '#D2A9D1' }}>E</Text>
+        </Animated.View>
       </Animated.View>
 
+      {/* Slogan / Proverbio */}
       <Animated.Text
         style={{
           opacity: sloganOpacity,
           transform: [{ translateY: sloganTranslateY }],
-          marginTop: 16,
-          fontSize: 12,
-          fontWeight: '700',
+          marginTop: 24,
+          marginHorizontal: 44,
+          fontSize: 13,
+          fontWeight: '600',
           fontFamily: theme.fonts.medium,
           color: theme.colors.onSurfaceVariant,
-          letterSpacing: 2,
-          textTransform: 'uppercase',
+          letterSpacing: 0.3,
           textAlign: 'center',
+          lineHeight: 21,
         }}
       >
         {randomSlogan}
@@ -165,6 +162,7 @@ const SplashScreen = () => {
     </View>
   );
 };
+
 
 
 function MainApp() {
@@ -187,10 +185,10 @@ function MainApp() {
   const [clearChatOnOpen, setClearChatOnOpen] = useState(false);
 
   useEffect(() => {
-    // Garantizamos que la animación inicial dure lo justo (2.2 segundos) para terminar y leer el eslogan
+    // Aumentamos a 3800ms para que el usuario pueda leer el slogan/proverbio completo
     const timer = setTimeout(() => {
       setMinSplashTimeElapsed(true);
-    }, 2200);
+    }, 3800);
     return () => clearTimeout(timer);
   }, []);
   

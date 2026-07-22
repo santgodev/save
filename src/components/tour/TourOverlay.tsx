@@ -17,7 +17,7 @@ import Animated, {
 import Svg, { Path } from 'react-native-svg';
 import { useTour } from './TourContext';
 import { useTheme } from '../../theme/ThemeContext';
-import { ChevronRight, X, Sparkles, Zap, PlusCircle, PieChart, Clock, CreditCard, BarChart2, Unlock } from 'lucide-react-native';
+import { ChevronRight, X, Sparkles, Zap, PlusCircle, PieChart, Clock, CreditCard, BarChart2, Unlock, ShoppingBag, CheckCircle, Trash2 } from 'lucide-react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -36,6 +36,9 @@ const getIcon = (name?: string, color: string = '#FFF') => {
     case 'CreditCard': return <CreditCard size={28} color={color} />;
     case 'BarChart2': return <BarChart2 size={28} color={color} />;
     case 'Unlock': return <Unlock size={28} color={color} />;
+    case 'Store': return <ShoppingBag size={28} color={color} />;
+    case 'Check': return <CheckCircle size={28} color={color} />;
+    case 'Trash2': return <Trash2 size={28} color={color} />;
     default: return <Sparkles size={28} color={color} />;
   }
 };

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Animated, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../theme/ThemeContext';
 import { ArrowRight, ArrowLeft, Wind, Check, Tag, Info, Utensils, Car, Home, Zap, Heart, Gamepad, GraduationCap, Target, DollarSign, Percent } from 'lucide-react-native';
 import { supabase } from '../lib/supabase';
@@ -66,14 +67,15 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
   }, [incomeNum, selectedCats, rules]);
 
   const getCurrentStepMeta = () => {
-    if (step === 1) return { title: 'Tus Bolsillos', sub: 'Selecciona las categorías donde sueles gastar tu plata.' };
-    if (step === 2) return { title: 'Tu primer ingreso', sub: 'Ingresa la plata que tienes y repártela en tus bolsillos.' };
+    if (step === 1) return { title: 'Tus Bolsillos', sub: 'Elige dónde va tu plata. Siempre puedes ajustar esto después.' };
+    if (step === 2) return { title: 'Tu primer ingreso', sub: '¿Cuánta plata arrancas hoy? Puedes omitir esto y ajustarlo después.' };
     return { title: '', sub: '' };
   };
 
   const isStepValid = (() => {
     if (step === 1) return selectedCats.length > 0;
-    if (step === 2) return incomeNum > 0 && remainingCascade >= 0;
+    // Paso 2: válido si no hay ingreso (omitir) O si hay ingreso y el remanente no es negativo
+    if (step === 2) return incomeNum === 0 || remainingCascade >= 0;
     return false;
   })();
 
@@ -142,7 +144,7 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
           p_user_id: session.user.id,
           p_amount: incomeNum,
           p_distribution: finalDistribution,
-          p_mode: 'manual', // Fue manual
+          p_mode: 'manual',
           p_merchant: 'Saldo Inicial',
           p_cycle_mode: 'start_fresh'
         });
@@ -152,7 +154,7 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
           throw new Error('No se pudo asentar tu saldo inicial.');
         }
 
-        // 4. (Opcional) Guardar una regla base en income_sources
+        // 4. Guardar regla base en income_sources
         const dbRules = selectedCats.map((id, idx) => {
           const rule = rules[id] || { type: 'fixed', value: 0 };
           const p = insertedPockets.find(pocket => pocket.category === id);
@@ -178,6 +180,12 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
           metadata: { income_type: 'fixed' }
         });
       }
+
+      // 5. Activar el tour mágico de 4 pasos para el usuario nuevo
+      await AsyncStorage.setItem('@save_magic_tour_pending', 'true');
+      // Limpiar flags anteriores del tour por si acaso
+      await AsyncStorage.removeItem('tour_dashboard_done');
+      await AsyncStorage.removeItem('@save_tour_pockets_seen');
 
       onComplete();
     } catch (e: any) {
@@ -256,7 +264,7 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
             </View>
           )}
 
-          {step === 2 && (
+          {step === 2 && (<>
             <View>
               {/* --- AMOUNT HERO --- */}
               <View style={{ alignItems: 'center', marginTop: 10, marginBottom: 32 }}>
@@ -346,7 +354,16 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
                 );
               })}
             </View>
-          )}
+
+            {/* Hint para omitir si no tiene saldo */}
+            {incomeNum === 0 && (
+              <View style={{ alignItems: 'center', marginTop: 8, marginBottom: 8 }}>
+                <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, fontWeight: '600', textAlign: 'center' }}>
+                  💡 Si no tienes saldo ahora, puedes omitir este paso tocando "¡Listo, empezar!"
+                </Text>
+              </View>
+            )}
+          </> )}
 
         </ScrollView>
       </Animated.View>
@@ -367,7 +384,7 @@ export const Onboarding = ({ session, onComplete }: { session: any, onComplete: 
           ) : (
             <>
               <Text style={{ color: theme.colors.onPrimary, ...theme.typography.title, fontWeight: '700' }}>
-                {step === totalSteps ? 'Crear mi cuenta' : 'Continuar'}
+                {step === totalSteps ? '¡Listo, empezar!' : 'Continuar'}
               </Text>
               <ArrowRight size={22} color={theme.colors.onPrimary} />
             </>

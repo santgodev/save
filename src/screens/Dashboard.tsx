@@ -80,12 +80,12 @@ export const Dashboard = ({
     let timeout: ReturnType<typeof setTimeout>;
 
     const checkTour = async () => {
-      const done = await AsyncStorage.getItem('tour_dashboard_done');
+      if (!isDataReady || !isFocused) return;
+
       const demoTxs = transactions.filter(t => (t as any).metadata?.is_demo);
       const hasDemo = demoTxs.length > 0;
 
-      if (!isDataReady || !isFocused) return;
-
+      // Prioridad 1: flujo demo del Scanner (ya tiene is_demo)
       if (hasDemo) {
         timeout = setTimeout(() => {
           startTour([{
@@ -96,7 +96,43 @@ export const Dashboard = ({
             order: 1
           }], undefined, { step: 2, total: 4 });
         }, 800);
-      } else if (!done) {
+        return;
+      }
+
+      // Prioridad 2: usuario nuevo que acaba de completar el Onboarding
+      const magicPending = await AsyncStorage.getItem('@save_magic_tour_pending');
+      if (magicPending === 'true') {
+        await AsyncStorage.removeItem('@save_magic_tour_pending');
+        timeout = setTimeout(() => {
+          // Step 1/4 → al terminar, lanza step 2/4 y setea flag para Pockets
+          startTour([{
+            name: 'bottom_add',
+            title: 'Registra tus Gastos',
+            description: 'Cada vez que gastes, toca este botón para anotar en cuál bolsillo cae. Así sabes siempre cuánto te queda.',
+            iconName: 'PlusCircle',
+            order: 1
+          }], () => {
+            // Step 2/4
+            setTimeout(() => {
+              startTour([{
+                name: 'bottom_pockets',
+                title: 'Explora tus Bolsillos',
+                description: 'Aquí verás tu dinero organizado por categorías. Es el corazón de Save.',
+                iconName: 'PieChart',
+                order: 1
+              }], async () => {
+                // Al terminar step 2/4, activar paso 3/4 en Pockets
+                await AsyncStorage.setItem('@save_magic_tour_pockets_pending', 'true');
+              }, { step: 2, total: 4 });
+            }, 300);
+          }, { step: 1, total: 4 });
+        }, 1000);
+        return;
+      }
+
+      // Prioridad 3: tour básico de primera visita (usuario que ya completó onboarding antes)
+      const done = await AsyncStorage.getItem('tour_dashboard_done');
+      if (!done) {
         timeout = setTimeout(() => {
           startTour(TOUR_STEPS);
           AsyncStorage.setItem('tour_dashboard_done', 'true');
@@ -110,6 +146,7 @@ export const Dashboard = ({
       if (timeout) clearTimeout(timeout);
     };
   }, [isDataReady, transactions, startTour, isFocused]);
+
 
   useEffect(() => {
     const hours = new Date().getHours();
