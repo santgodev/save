@@ -19,6 +19,11 @@ export const detectPatterns = (transactions: Transaction[]): DetectedPattern[] =
   transactions.forEach(tx => {
     if (!tx.amount || tx.amount >= 0) return;
     
+    // Ignorar traslados internos o transferencias entre bolsillos
+    const category = (tx.category as string) || '';
+    if (category.toLowerCase() === 'traslado' || category.toLowerCase() === 'transferencia') return;
+    if ((tx as any).metadata?.type === 'internal_transfer_out' || (tx as any).metadata?.type === 'internal_transfer_in') return;
+    
     // Asumimos que canonical_merchant existe en el objeto o lo calculamos si no viene
     const key = (tx as any).canonical_merchant || tx.merchant.toLowerCase().trim();
     

@@ -168,7 +168,7 @@ export const TourOverlay = () => {
   if (!isRendered) return null;
 
   return (
-    <AnimatedView style={[StyleSheet.absoluteFill, { zIndex: isActive ? 9999 : -1 }]} pointerEvents={isActive ? 'auto' : 'none'}>
+    <AnimatedView style={[StyleSheet.absoluteFill, { zIndex: isActive ? 9999 : -1 }]} pointerEvents={isActive ? (currentStepData?.allowTouches ? 'box-none' : 'auto') : 'none'}>
       <AnimatedView style={[StyleSheet.absoluteFill, svgStyle]} pointerEvents="none">
         <Svg width="100%" height="100%">
           <AnimatedPath
@@ -178,6 +178,20 @@ export const TourOverlay = () => {
           />
         </Svg>
       </AnimatedView>
+      
+      {currentStepData?.onTargetClick && currentElementLayout && (
+        <TouchableOpacity
+          style={{
+            position: 'absolute',
+            left: currentElementLayout.x - 4,
+            top: currentElementLayout.y - 4,
+            width: currentElementLayout.width + 8,
+            height: currentElementLayout.height + 8,
+            zIndex: 100,
+          }}
+          onPress={() => currentStepData.onTargetClick!()}
+        />
+      )}
       
       {/* Marco brillante */}
       <AnimatedView style={animatedPulseStyle} pointerEvents="none" />
@@ -242,19 +256,29 @@ export const TourOverlay = () => {
             </View>
 
             <Text style={[styles.title, { color: theme.colors.onPrimary }]}>{currentStepData.title}</Text>
-            <Text style={[styles.description, { color: theme.colors.onPrimary, opacity: 0.85 }]}>{currentStepData.description}</Text>
+            {typeof currentStepData.description === 'string' ? (
+              <Text style={[styles.description, { color: theme.colors.onPrimary, opacity: 0.85 }]}>{currentStepData.description}</Text>
+            ) : (
+              <View style={[styles.description, { opacity: 0.85 }]}>
+                {currentStepData.description}
+              </View>
+            )}
 
             <View style={styles.footer}>
               <TouchableOpacity onPress={stopTour} style={{ padding: 10 }}>
                  <Text style={{ color: theme.colors.onPrimary, opacity: 0.6, fontWeight: '700' }}>Omitir</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity onPress={nextStep} style={[styles.nextButton, { backgroundColor: theme.colors.onPrimary }]}>
-                <Text style={{ color: theme.colors.primary, fontWeight: '900', marginRight: 4 }}>
-                  {currentStepIndex === steps.length - 1 ? '¡Entendido!' : 'Siguiente'}
-                </Text>
-                {currentStepIndex !== steps.length - 1 && <ChevronRight size={18} color={theme.colors.primary} />}
-              </TouchableOpacity>
+              {!currentStepData.hideNextButton && (
+                <TouchableOpacity onPress={nextStep} style={[styles.nextButton, { backgroundColor: theme.colors.surface }]}>
+                  <Text style={[styles.nextButtonText, { color: theme.colors.primary }]}>
+                    {currentStepData.nextButtonText 
+                      ? currentStepData.nextButtonText 
+                      : (currentStepIndex === steps.length - 1 ? 'Entendido' : 'Siguiente')}
+                  </Text>
+                  {currentStepIndex !== steps.length - 1 && <ChevronRight size={18} color={theme.colors.primary} />}
+                </TouchableOpacity>
+              )}
             </View>
           </AnimatedView>
         )}
@@ -338,5 +362,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 16,
+  },
+  nextButtonText: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginRight: 6
   }
 });

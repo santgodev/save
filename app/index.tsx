@@ -26,8 +26,11 @@ import { Onboarding } from '../src/screens/Onboarding';
 import { AddIncome } from '../src/screens/AddIncome';
 import { PocketTransfer } from '../src/screens/PocketTransfer';
 import { Camera, X, Repeat, TrendingUp, Sparkles, Zap } from 'lucide-react-native';
-import { TourProvider } from '../src/components/tour/TourContext';
+import { TourProvider, useTour } from '../src/components/tour/TourContext';
+import { TourStep } from '../src/components/tour/TourStep';
+import { DeviceEventEmitter } from 'react-native';
 import { TourOverlay } from '../src/components/tour/TourOverlay';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
 
@@ -194,6 +197,7 @@ function MainApp() {
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(300)).current;
+  const { startTour } = useTour();
 
   const handleShowChatChange = (val: boolean) => {
     setShowChat(val);
@@ -370,10 +374,49 @@ function MainApp() {
   const toggleActionMenu = (show: boolean) => {
     if (show) {
       setActionMenuVisible(true);
-      Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
-        Animated.spring(slideAnim, { toValue: 0, tension: 65, friction: 10, useNativeDriver: true })
-      ]).start();
+      AsyncStorage.getItem('tour_action_menu_done').then(done => {
+        if (!done) {
+          AsyncStorage.getItem('@save_magic_tour_pending').then(magicPending => {
+            if (magicPending === 'true') return; // el magic_tour se encarga
+            AsyncStorage.setItem('tour_action_menu_done', 'true');
+            Animated.parallel([
+              Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
+              Animated.spring(slideAnim, { toValue: 0, tension: 65, friction: 10, useNativeDriver: true })
+            ]).start(() => {
+              setTimeout(() => {
+                startTour([
+                  {
+                    name: 'action_income',
+                    title: 'Entró Plata',
+                    description: 'Registra aquí tu sueldo, pagos o cualquier dinero que te entre. Save lo repartirá en tus bolsillos automáticamente.',
+                    iconName: 'TrendingUp',
+                    order: 1
+                  },
+                  {
+                    name: 'action_expense',
+                    title: 'Gasto Rápido',
+                    description: 'Para esos pequeños gastos del día a día (un café, el bus, una propina). Simple y rápido.',
+                    iconName: 'Zap',
+                    order: 2
+                  },
+                  {
+                    name: 'action_scan',
+                    title: 'Escanear Recibo',
+                    description: 'Nuestra función estrella. Toma una foto a cualquier factura y la IA organiza el gasto por ti.',
+                    iconName: 'Camera',
+                    order: 3
+                  }
+                ]);
+              }, 100);
+            });
+          });
+        } else {
+          Animated.parallel([
+            Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
+            Animated.spring(slideAnim, { toValue: 0, tension: 65, friction: 10, useNativeDriver: true })
+          ]).start();
+        }
+      });
     } else {
       Animated.parallel([
         Animated.timing(fadeAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
@@ -460,20 +503,26 @@ function MainApp() {
               <Text style={[styles.menuTitle, { color: theme.colors.onSurface }]}>¿Qué quieres hacer?</Text>
               
               <View style={[styles.menuGrid, { flexWrap: 'wrap', justifyContent: 'center' }]}>
-                 <TouchableOpacity activeOpacity={0.8} style={[styles.menuItem, { width: '45%', marginBottom: 16 }]} onPress={() => { toggleActionMenu(false); setCurrentScreen('add_income'); }}>
-                    <View style={[styles.menuIcon, { backgroundColor: (theme.colors as any).pastel.teal + '25' }]}><TrendingUp size={28} color={(theme.colors as any).pastel.teal} /></View>
-                    <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Entró Plata</Text>
-                 </TouchableOpacity>
+                 <TourStep name="action_income">
+                   <TouchableOpacity activeOpacity={0.8} style={[styles.menuItem, { width: '45%', marginBottom: 16 }]} onPress={() => { toggleActionMenu(false); setCurrentScreen('add_income'); }}>
+                      <View style={[styles.menuIcon, { backgroundColor: (theme.colors as any).pastel.teal + '25' }]}><TrendingUp size={28} color={(theme.colors as any).pastel.teal} /></View>
+                      <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Entró Plata</Text>
+                   </TouchableOpacity>
+                 </TourStep>
 
-                 <TouchableOpacity activeOpacity={0.8} style={[styles.menuItem, { width: '45%', marginBottom: 16 }]} onPress={() => { toggleActionMenu(false); setCurrentScreen('quick_expense'); }}>
-                    <View style={[styles.menuIcon, { backgroundColor: (theme.colors as any).pastel.salmon + '25' }]}><Zap size={28} color={(theme.colors as any).pastel.salmon} /></View>
-                    <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Gasto Rápido</Text>
-                 </TouchableOpacity>
+                 <TourStep name="action_expense">
+                   <TouchableOpacity activeOpacity={0.8} style={[styles.menuItem, { width: '45%', marginBottom: 16 }]} onPress={() => { toggleActionMenu(false); setCurrentScreen('quick_expense'); }}>
+                      <View style={[styles.menuIcon, { backgroundColor: (theme.colors as any).pastel.salmon + '25' }]}><Zap size={28} color={(theme.colors as any).pastel.salmon} /></View>
+                      <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Gasto Rápido</Text>
+                   </TouchableOpacity>
+                 </TourStep>
 
-                 <TouchableOpacity activeOpacity={0.8} style={[styles.menuItem, { width: '45%' }]} onPress={() => { toggleActionMenu(false); setCurrentScreen('scanner'); }}>
-                    <View style={[styles.menuIcon, { backgroundColor: theme.colors.primaryContainer }]}><Camera size={28} color={theme.colors.primary} /></View>
-                    <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Escanear Recibo</Text>
-                 </TouchableOpacity>
+                 <TourStep name="action_scan">
+                   <TouchableOpacity activeOpacity={0.8} style={[styles.menuItem, { width: '45%' }]} onPress={() => { toggleActionMenu(false); setCurrentScreen('scanner'); }}>
+                      <View style={[styles.menuIcon, { backgroundColor: theme.colors.primaryContainer }]}><Camera size={28} color={theme.colors.primary} /></View>
+                      <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Escanear Recibo</Text>
+                   </TouchableOpacity>
+                 </TourStep>
               </View>
 
               <TouchableOpacity style={[styles.closeMenu, { backgroundColor: theme.colors.surface }]} onPress={() => toggleActionMenu(false)}>
@@ -501,7 +550,10 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => setSession(currentSession));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => setSession(newSession));
-    return () => subscription.unsubscribe();
+    
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   return (

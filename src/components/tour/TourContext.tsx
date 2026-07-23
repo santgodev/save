@@ -3,9 +3,14 @@ import React, { createContext, useContext, useState, useRef, useCallback, useMem
 export type TourStepType = {
   name: string;
   title: string;
-  description: string;
+  description: React.ReactNode;
   iconName?: string;
   order: number;
+  onTargetClick?: () => void;
+  onNext?: () => void;
+  nextButtonText?: string;
+  hideNextButton?: boolean;
+  allowTouches?: boolean;
 };
 
 export type LayoutRect = {
@@ -74,10 +79,14 @@ export const TourProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const nextStep = useCallback(() => {
+    if (steps[currentStepIndex]?.onNext) {
+      steps[currentStepIndex].onNext!();
+    }
     if (currentStepIndex < steps.length - 1) {
       const nextIdx = currentStepIndex + 1;
       setCurrentStepIndex(nextIdx);
       setCurrentLayout(layoutsRef.current[steps[nextIdx].name] || null);
+      setGlobalProgress(prev => prev ? { ...prev, step: prev.step + 1 } : null);
     } else {
       setIsActive(false);
       if (onTourCompleteRef.current) {

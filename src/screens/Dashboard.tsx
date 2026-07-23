@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowUpRight, TrendingUp, Sparkles, Tag, ShoppingBag, ShieldCheck, Zap, PlusCircle, Activity, Info, AlertTriangle, Coins, Plus, Wallet, Target, Flame, Clock, History, LayoutGrid, Briefcase, ChevronRight } from 'lucide-react-native';
+import { ArrowUpRight, TrendingUp, Sparkles, Tag, ShoppingBag, ShieldCheck, Zap, PlusCircle, Activity, AlertTriangle, Coins, Plus, Wallet, Target, Flame, Clock, History, LayoutGrid, Briefcase, ChevronRight, Pointer, Lock } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
@@ -62,15 +62,26 @@ export const Dashboard = ({
   const [selectedTx, setSelectedTx] = useState<any>(null);
   const [pendingIncomes, setPendingIncomes] = useState<any[]>([]);
   const [showClosureModal, setShowClosureModal] = useState(false); // set to true when unclosed cycle found
-  const { startTour, stopTour } = useTour();
+  const { startTour } = useTour();
 
   const isFocused = useIsFocused();
 
   const TOUR_STEPS: TourStepType[] = [
     {
       name: 'bottom_add',
-      title: 'Anota tus Gastos',
-      description: 'Toca aquí para registrar un movimiento manual, o mantén presionado para escanear un recibo con la cámara.',
+      title: 'El botón que lo hace todo',
+      description: (
+        <View style={{ gap: 12, marginTop: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+            <Pointer size={18} color="white" style={{ marginTop: 2 }} />
+            <Text style={{ color: 'white', flex: 1, fontSize: 14 }}>TOCA para anotar un gasto rápido.</Text>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+            <Lock size={18} color="white" style={{ marginTop: 2 }} />
+            <Text style={{ color: 'white', flex: 1, fontSize: 14 }}>MANTÉN PRESIONADO para abrir el scanner y capturar un recibo con la cámara. ¡Dos funciones en uno!</Text>
+          </View>
+        </View>
+      ),
       iconName: 'PlusCircle',
       order: 1
     }
@@ -99,44 +110,50 @@ export const Dashboard = ({
         return;
       }
 
-      // Prioridad 2: usuario nuevo que acaba de completar el Onboarding
+      // Prioridad 2: usuario nuevo que acaba de completar el Onboarding — tour de 4 pasos
       const magicPending = await AsyncStorage.getItem('@save_magic_tour_pending');
       if (magicPending === 'true') {
         await AsyncStorage.removeItem('@save_magic_tour_pending');
         timeout = setTimeout(() => {
-          // Step 1/4 → al terminar, lanza step 2/4 y setea flag para Pockets
+
+          // ── Step 1/4: El botón + ──
           startTour([{
             name: 'bottom_add',
-            title: 'Registra tus Gastos',
-            description: 'Cada vez que gastes, toca este botón para anotar en cuál bolsillo cae. Así sabes siempre cuánto te queda.',
+            title: 'El corazón de Save',
+            description: (
+              <View style={{ gap: 12, marginTop: 4 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                  <Pointer size={18} color="white" style={{ marginTop: 2 }} />
+                  <Text style={{ color: 'white', flex: 1, fontSize: 14 }}>TOCA para registrar gastos o ingresos.</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+                  <Lock size={18} color="white" style={{ marginTop: 2 }} />
+                  <Text style={{ color: 'white', flex: 1, fontSize: 14 }}>MANTÉN PRESIONADO para abrir la cámara y escanear un recibo.</Text>
+                </View>
+              </View>
+            ),
             iconName: 'PlusCircle',
             order: 1
           }], () => {
-            // Step 2/4
             setTimeout(() => {
+
+              // ── Step 2/4: Bolsillos ──
               startTour([{
                 name: 'bottom_pockets',
-                title: 'Explora tus Bolsillos',
-                description: 'Aquí verás tu dinero organizado por categorías. Es el corazón de Save.',
+                title: 'Tu dinero, organizado',
+                description: 'Aquí verás tu plata repartida por categorías. Cuando registres un ingreso, Save lo distribuye automáticamente entre tus bolsillos.',
                 iconName: 'PieChart',
                 order: 1
               }], async () => {
-                // Al terminar step 2/4, activar paso 3/4 en Pockets
+                // Al terminar step 2/4, activar pasos 3 y 4 en Pockets
                 await AsyncStorage.setItem('@save_magic_tour_pockets_pending', 'true');
               }, { step: 2, total: 4 });
+
             }, 300);
           }, { step: 1, total: 4 });
+
         }, 1000);
         return;
-      }
-
-      // Prioridad 3: tour básico de primera visita (usuario que ya completó onboarding antes)
-      const done = await AsyncStorage.getItem('tour_dashboard_done');
-      if (!done) {
-        timeout = setTimeout(() => {
-          startTour(TOUR_STEPS);
-          AsyncStorage.setItem('tour_dashboard_done', 'true');
-        }, 1000);
       }
     };
 
@@ -146,6 +163,7 @@ export const Dashboard = ({
       if (timeout) clearTimeout(timeout);
     };
   }, [isDataReady, transactions, startTour, isFocused]);
+
 
 
   useEffect(() => {
@@ -371,7 +389,7 @@ export const Dashboard = ({
             <View style={{ marginBottom: 20, marginTop: 12 }}>
               <View style={{ flexDirection: 'column', gap: 6 }}>
                 <Text style={{ ...theme.typography.label, color: theme.colors.onSurfaceVariant, opacity: 0.8, letterSpacing: 1 }}>
-                  DISPONIBLE DEL CICLO
+                  DISPONIBLE DEL MES
                 </Text>
                 <Text style={{ ...theme.typography.display, color: netFlowMonth < 0 ? theme.colors.error : theme.colors.onSurface, lineHeight: 48 }} numberOfLines={1} adjustsFontSizeToFit>
                   {formatMoney(netFlowMonth)}

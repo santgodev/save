@@ -69,7 +69,7 @@ const HistoryCard = ({ cycle, theme }: { cycle: any, theme: any }) => {
         <Text style={{ ...theme.typography.h2, color: theme.colors.onSurface, letterSpacing: -0.5 }}>{cycle.name}</Text>
         {isCurrent && (
           <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, backgroundColor: theme.colors.primaryContainer }}>
-            <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.primary, letterSpacing: 1 }}>CICLO ACTIVO</Text>
+            <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.primary, letterSpacing: 1 }}>MES ACTUAL</Text>
           </View>
         )}
       </View>
@@ -117,7 +117,7 @@ const HistoryCard = ({ cycle, theme }: { cycle: any, theme: any }) => {
           {loadingDetails ? (
             <ActivityIndicator size="small" color={theme.colors.primary} style={{ marginVertical: 20 }} />
           ) : details.length === 0 ? (
-            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 14, fontStyle: 'italic', textAlign: 'center' }}>Sin movimientos en este ciclo.</Text>
+            <Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 14, fontStyle: 'italic', textAlign: 'center' }}>Sin movimientos en este mes.</Text>
           ) : (
             <View style={{ gap: 20 }}>
               {details.map((d: any) => {
@@ -224,7 +224,7 @@ export const HistoryScreen = () => {
         {cycles.length === 0 ? (
           <View style={styles.emptyState}>
             <HelpCircle size={48} color={theme.colors.outlineVariant} />
-            <Text style={styles.emptyText}>Aún no tienes ciclos registrados.</Text>
+            <Text style={styles.emptyText}>Aún no tienes meses registrados.</Text>
           </View>
         ) : (
           cycles.map((cycle) => (

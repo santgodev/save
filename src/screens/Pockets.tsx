@@ -141,7 +141,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
             startTour([{
               name: 'pockets_free',
               title: 'El Bolsillo Libre',
-              description: 'Lo que no asignes a otros bolsillos aterriza aquí. Es tu dinero flexible para cualquier gasto del momento.',
+              description: 'Cuando registres un ingreso, el dinero que no asignes a otros bolsillos llega aquí automáticamente. Es tu plata flexible para gastos del día a día.',
               iconName: 'Unlock',
               order: 1
             }], () => {
@@ -151,8 +151,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
               setTimeout(() => {
                 startTour([{
                   name: `pocket_${firstCustomPocket.id}`,
-                  title: 'Toca cualquier Bolsillo',
-                  description: 'Abrélo para ver su historial, ajustar el presupuesto y manejar cada categoría a fondo.',
+                  title: 'Abre un Bolsillo',
+                  description: 'Toca cualquier bolsillo para ver su historial, cuánto gastaste y cuánto te queda. ¡Así de simple es controlar tu plata con Save!',
                   iconName: 'PieChart',
                   order: 1
                 }], undefined, { step: 4, total: 4 });
@@ -194,7 +194,9 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
               title: 'Elimina tu gasto de prueba',
               description: 'Toca este movimiento para abrir el detalle y limpiar tu cuenta.',
               iconName: 'Trash2',
-              order: 1
+              order: 1,
+              allowTouches: true,
+              hideNextButton: true
             }], undefined, { step: 4, total: 4 });
           }, 1000);
         }
@@ -576,7 +578,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                 {/* Header */}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                   <Text style={{ fontSize: 12, fontWeight: '900', color: theme.colors.onSurfaceVariant, letterSpacing: 1, textTransform: 'uppercase' }}>
-                    Mis ingresos de {monthState?.cycle_name || 'este ciclo'}
+                    Mis ingresos de {monthState?.cycle_name || 'este mes'}
                   </Text>
                 </View>
 
@@ -606,7 +608,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
               </View>
             ) : (
               <View style={{ backgroundColor: theme.colors.surface, borderRadius: theme.radius.xl, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: theme.colors.outlineVariant + '60', alignItems: 'center', opacity: 0.6 }}>
-                <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.onSurfaceVariant }}>Sin ingresos registrados en {monthState?.cycle_name || 'este ciclo'}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.onSurfaceVariant }}>Sin ingresos registrados en {monthState?.cycle_name || 'este mes'}</Text>
               </View>
             )}
 
@@ -670,46 +672,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
           {/* Grid de Bolsillos */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.onSurface }}>Tus Bolsillos</Text>
-            </View>
-            <TouchableOpacity
-              onPress={async () => {
-                // Resetear TODOS los flags del tour mágico para poder probarlo completo
-                await AsyncStorage.multiRemove([
-                  'tour_dashboard_done',
-                  '@save_tour_pockets_seen',
-                  '@save_magic_tour_pending',
-                  '@save_magic_tour_pockets_pending',
-                  '@save_demo_tour_triggered_id',
-                  'tour_scanner_done',
-                ]);
-                // Lanzar el flujo de 4 pasos directamente desde Pockets (step 3/4 y 4/4)
-                const firstCustomPocket = pockets.find(p => !p.is_default_free);
-                startTour([{
-                  name: 'pockets_free',
-                  title: 'El Bolsillo Libre',
-                  description: 'Lo que no asignes a otros bolsillos aterriza aquí. Es tu dinero flexible para cualquier gasto.',
-                  iconName: 'Unlock',
-                  order: 1
-                }], () => {
-                  if (!firstCustomPocket) return;
-                  setTimeout(() => {
-                    startTour([{
-                      name: `pocket_${firstCustomPocket.id}`,
-                      title: 'Toca cualquier Bolsillo',
-                      description: 'Abrélo para ver su historial, ajustar el presupuesto y manejar cada categoría a fondo.',
-                      iconName: 'PieChart',
-                      order: 1
-                    }], undefined, { step: 4, total: 4 });
-                  }, 300);
-                }, { step: 3, total: 4 });
-              }}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}
-            >
-              <Sparkles size={14} color={theme.colors.primary} />
-              <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.primary }}>Ver Tour</Text>
-            </TouchableOpacity>
+            <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.onSurface }}>Tus Bolsillos</Text>
           </View>
           <View style={styles.grid}>
             {sorted.map((p, i) => {
@@ -1037,9 +1000,16 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                               <View style={[{ width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginRight: 14 }, { backgroundColor: tx.amount < 0 ? txColor + '20' : theme.colors.primary + '20' }]}>
                                 <CategoryIcon iconName={tx.amount < 0 ? (selectedPocket.icon || 'tag') : 'trending-up'} size={18} color={tx.amount < 0 ? txColor : theme.colors.primary} />
                               </View>
-                              <View style={{ flex: 1 }}>
-                                <Text style={{ fontSize: 15, fontWeight: '800', color: theme.colors.onSurface, fontFamily: theme.fonts.body }}>{tx.merchant || tx.category}</Text>
-                                <Text style={[styles.txDate, { fontFamily: theme.fonts.body }]}>{new Date((tx.date_string || tx.created_at).split('T')[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}</Text>
+                              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                                <View style={{ flex: 1 }}>
+                                  <Text style={{ fontSize: 15, fontWeight: '800', color: theme.colors.onSurface, fontFamily: theme.fonts.body }}>{tx.merchant || tx.category}</Text>
+                                  <Text style={[styles.txDate, { fontFamily: theme.fonts.body }]}>{new Date((tx.date_string || tx.created_at).split('T')[0] + 'T12:00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })}</Text>
+                                </View>
+                                {tx.metadata?.is_demo && (
+                                  <View style={{ backgroundColor: theme.colors.primary, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginRight: 8 }}>
+                                    <Text style={{ fontSize: 9, fontWeight: '900', color: theme.colors.onPrimary, letterSpacing: 0.5, textTransform: 'uppercase' }}>Prueba</Text>
+                                  </View>
+                                )}
                               </View>
                               <Text style={[styles.txAmt, { color: tx.amount < 0 ? theme.colors.error : theme.colors.primary, fontFamily: theme.fonts.headline }]}>
                                 {tx.amount < 0 ? '- ' : '+ '}{formatCOP(Math.abs(tx.amount))}

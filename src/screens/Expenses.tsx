@@ -369,6 +369,10 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
         pockets={pockets}
         onClose={() => setSelectedTx(null)}
         onEdit={onEditIncome}
+        onDelete={(tx) => {
+          setSelectedTx(null);
+          handleDeleteTrigger(tx);
+        }}
       />
       </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
