@@ -40,18 +40,18 @@ interface DashboardProps {
   isLoading?: boolean;
 }
 
-export const Dashboard = ({ 
-  transactions, 
-  pockets, 
+export const Dashboard = ({
+  transactions,
+  pockets,
   session,
   isDataReady,
   onOpenScanner,
   onOpenScannerDemo,
   onViewAll,
   onOpenChat,
-  userProfile, 
+  userProfile,
   onRefresh,
-  isLoading = false 
+  isLoading = false
 }: DashboardProps) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
@@ -97,16 +97,26 @@ export const Dashboard = ({
       const hasDemo = demoTxs.length > 0;
 
       // Prioridad 1: flujo demo del Scanner (ya tiene is_demo)
+      // FIX: antes esto se disparaba en CADA visita al Dashboard mientras
+      // existiera la transacción de prueba (no había flag de "ya lo vi"),
+      // así que la burbuja "ve a bolsillos" podía insistir para siempre.
+      // Ahora se guarda el id de la transacción de prueba ya mostrada,
+      // igual que ya se hacía en Pockets.tsx.
       if (hasDemo) {
-        timeout = setTimeout(() => {
-          startTour([{
-            name: 'bottom_pockets',
-            title: 'Abre tus bolsillos',
-            description: 'Ve a la pestaña de Bolsillos para ver cómo la Inteligencia Artificial organizó tu primer gasto mágico.',
-            iconName: 'Sparkles',
-            order: 1
-          }], undefined, { step: 2, total: 4 });
-        }, 800);
+        const firstDemoTx = demoTxs[0];
+        AsyncStorage.getItem('@save_demo_dashboard_tour_seen').then(seenId => {
+          if (seenId === firstDemoTx.id) return;
+          AsyncStorage.setItem('@save_demo_dashboard_tour_seen', firstDemoTx.id);
+          timeout = setTimeout(() => {
+            startTour([{
+              name: 'bottom_pockets',
+              title: 'Abre tus bolsillos',
+              description: 'Ve a la pestaña de Bolsillos para ver cómo la Inteligencia Artificial organizó tu primer gasto mágico.',
+              iconName: 'Sparkles',
+              order: 1
+            }], undefined, { step: 2, total: 4 });
+          }, 800);
+        });
         return;
       }
 
@@ -155,6 +165,19 @@ export const Dashboard = ({
         }, 1000);
         return;
       }
+
+      // Prioridad 3: usuario existente / sin onboarding reciente -- se
+      // muestra UNA sola vez la explicación básica del botón + (toca vs.
+      // mantén presionado). FIX: este tour (TOUR_STEPS) ya estaba escrito
+      // pero nunca se llamaba desde ningún lado -- solo los usuarios que
+      // acababan de terminar el onboarding veían la explicación del +.
+      const dashboardTourDone = await AsyncStorage.getItem('tour_dashboard_done');
+      if (!dashboardTourDone) {
+        timeout = setTimeout(() => {
+          startTour(TOUR_STEPS);
+          AsyncStorage.setItem('tour_dashboard_done', 'true');
+        }, 800);
+      }
     };
 
     checkTour();
@@ -176,10 +199,10 @@ export const Dashboard = ({
 
     // Auto-hide greeting after 4 seconds
     const timer = setTimeout(() => {
-      Animated.timing(greetingAnim, { 
-        toValue: 0, 
-        duration: 500, 
-        useNativeDriver: false 
+      Animated.timing(greetingAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: false
       }).start(() => setShowGreeting(false));
     }, 4000);
 
@@ -189,22 +212,22 @@ export const Dashboard = ({
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     scrollContent: { paddingHorizontal: 24, paddingTop: Math.max(insets.top, 16) + 104, paddingBottom: 150 },
-    
+
     headerSection: { marginBottom: 32 },
     sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
     sectionTitleOrganic: { ...theme.typography.h3, color: theme.colors.onSurface },
     viewAllAction: { ...theme.typography.bodySmall, fontWeight: '800', color: theme.colors.primary },
-    
-    txItem: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      padding: 16, 
-      backgroundColor: theme.colors.surface, 
-      borderRadius: theme.radius.lg, 
-      marginBottom: 14, 
-      borderWidth: 1, 
+
+    txItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 16,
+      backgroundColor: theme.colors.surface,
+      borderRadius: theme.radius.lg,
+      marginBottom: 14,
+      borderWidth: 1,
       borderColor: theme.colors.divider,
-      ...theme.shadows.sm 
+      ...theme.shadows.sm
     },
     txIconBoxUI: { width: 48, height: 48, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
     txMain: { flex: 1, marginLeft: 16 },
@@ -257,26 +280,26 @@ export const Dashboard = ({
     if (!monthState) return { current: 1, total: 30, progress: 0 };
     const start = new Date(monthState.start_date);
     start.setHours(0,0,0,0);
-    
+
     let totalDays = 30;
     if (monthState.end_date) {
       const end = new Date(monthState.end_date);
       end.setHours(0,0,0,0);
       totalDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
     }
-    
+
     const today = new Date();
     today.setHours(0,0,0,0);
-    
+
     let currentDay = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    
+
     if (currentDay < 1) currentDay = 1;
     if (!monthState.end_date && currentDay > totalDays) {
-       totalDays = currentDay; 
+       totalDays = currentDay;
     } else if (monthState.end_date && currentDay > totalDays) {
        currentDay = totalDays;
     }
-    
+
     return { current: currentDay, total: totalDays, progress: currentDay / totalDays };
   }, [monthState]);
 
@@ -370,20 +393,20 @@ export const Dashboard = ({
           <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
       ) : (
-        <ScrollView 
+        <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
           keyboardShouldPersistTaps="handled"
         >
           <Animated.View style={{ opacity: fadeAnim }}>
-            
+
             {/* HEADER PREMIUM — BALANCE & BUDGET HEALTH */}
             <View style={[styles.headerSection, { paddingTop: 0 }]}>
-              <CycleNav 
-                cycles={cycles} 
-                activeCycleId={selectedCycleId} 
-                onChange={setSelectedCycleId} 
+              <CycleNav
+                cycles={cycles}
+                activeCycleId={selectedCycleId}
+                onChange={setSelectedCycleId}
               />
 
             <View style={{ marginBottom: 20, marginTop: 12 }}>
@@ -416,7 +439,7 @@ export const Dashboard = ({
                   colors={(theme.colors as any).brandGradient || ['#8AD6CE', '#B9E2A2', '#D2A9D1']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
-                  style={{ 
+                  style={{
                     position: 'absolute',
                     left: 0,
                     top: 0,
@@ -429,18 +452,18 @@ export const Dashboard = ({
                     shadowRadius: 10,
                   }}
                 />
-                
+
                 {/* DAY INDICATOR (The 'Pace' Dot) */}
                 {(() => {
                   const monthProgress = cycleDays.progress * 100;
                   return (
-                    <View style={{ 
-                      position: 'absolute', 
-                      left: `${monthProgress}%`, 
-                      top: -2, 
-                      bottom: -2, 
-                      width: 4, 
-                      backgroundColor: theme.colors.onSurface, 
+                    <View style={{
+                      position: 'absolute',
+                      left: `${monthProgress}%`,
+                      top: -2,
+                      bottom: -2,
+                      width: 4,
+                      backgroundColor: theme.colors.onSurface,
                       borderRadius: 2,
                       zIndex: 20,
                       borderWidth: 1,
@@ -460,8 +483,8 @@ export const Dashboard = ({
                   const monthProgress = cycleDays.progress;
                   // FIX BUG 6: usar income_month como denominador, no allocated_total
                   const spendingProgress = totalIncomeMonth > 0 ? (totalSpentMonth / totalIncomeMonth) : 0;
-                  
-                  // Inteligencia de sentido común: la mayoría de gastos fijos (arriendo, deudas, servicios) 
+
+                  // Inteligencia de sentido común: la mayoría de gastos fijos (arriendo, deudas, servicios)
                   // se pagan en los primeros días del mes. Exigir un ritmo lineal es irrealista.
                   // Agregamos un "colchón" del 50% al inicio del mes, que se reduce gradualmente a 0% al final.
                   const frontLoadBuffer = 0.50 * (1 - monthProgress);
@@ -481,20 +504,20 @@ export const Dashboard = ({
 
           {/* SAGE PROACTIVO — INSIGHT RÁPIDO */}
           {isDataReady && (
-            <TouchableOpacity 
-              activeOpacity={0.9} 
-              onPress={() => { 
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 if (onOpenChat) {
                   onOpenChat(aiInsight ? `Háblame más sobre: ${aiInsight.title}` : "Analiza mis gastos de este mes y dime dónde puedo recortar.");
                 }
               }}
-              style={{ 
+              style={{
                 backgroundColor: theme.colors.glassWhite,
-                padding: 18, 
-                borderRadius: 24, 
-                marginBottom: 24, 
-                borderWidth: 1.5, 
+                padding: 18,
+                borderRadius: 24,
+                marginBottom: 24,
+                borderWidth: 1.5,
                 borderColor: theme.colors.divider,
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -538,14 +561,14 @@ export const Dashboard = ({
                     <Text style={{ fontSize: 20, fontWeight: '900', color: theme.colors.primary }}>{formatMoney(event.expected_amount)}</Text>
                   </View>
                   <View style={{ flexDirection: 'row', gap: 12 }}>
-                     <TouchableOpacity 
+                     <TouchableOpacity
                        activeOpacity={0.8}
                        onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); confirmPending(event.id, event.expected_amount); }}
                        style={{ flex: 1, backgroundColor: theme.colors.primary, paddingVertical: 14, borderRadius: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
                      >
                         <Text style={{ color: theme.colors.onPrimary, fontWeight: '900', fontSize: 15 }}>Confirmar</Text>
                      </TouchableOpacity>
-                     <TouchableOpacity 
+                     <TouchableOpacity
                        activeOpacity={0.8}
                        onPress={() => dismissPending(event.id)}
                        style={{ backgroundColor: theme.colors.surfaceContainerHigh, paddingVertical: 14, paddingHorizontal: 20, borderRadius: 16, alignItems: 'center' }}
@@ -559,14 +582,14 @@ export const Dashboard = ({
           )}
 
           {/* QUICK ADD GIGANTE (EL REY) */}
-          <TouchableOpacity 
-            activeOpacity={0.8} 
-            onPress={() => { 
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); 
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
               if (transactions.length === 0 && onOpenScannerDemo) {
                 onOpenScannerDemo();
               } else {
-                onOpenScanner(); 
+                onOpenScanner();
               }
             }}
             style={{ backgroundColor: theme.colors.primary, borderRadius: theme.radius.xl, padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 32, ...theme.shadows.md }}
@@ -590,8 +613,8 @@ export const Dashboard = ({
 
           {/* BOTON TEMPORAL DE DEMO PARA EL USUARIO */}
           {onOpenScannerDemo && (
-            <TouchableOpacity 
-              activeOpacity={0.8} 
+            <TouchableOpacity
+              activeOpacity={0.8}
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenScannerDemo(); }}
               style={{ backgroundColor: theme.colors.surface, borderRadius: theme.radius.xl, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 32, borderWidth: 1, borderColor: theme.colors.primary + '40', borderStyle: 'dashed' }}
             >
@@ -623,7 +646,7 @@ export const Dashboard = ({
                 return activePockets.map((mp, i) => {
                   const originalPocket = pockets.find(p => p.id === mp.id);
                   let planAlloc = mp.allocated;
-                  
+
                   if (originalPocket?.is_default_free) {
                     const monthIncome = monthState?.income_month ?? 0;
                     const othersAlloc = pockets.filter(x => !x.is_default_free).reduce((acc, x) => {
@@ -692,7 +715,7 @@ export const Dashboard = ({
 
 
 
-      <TransactionDetailModal 
+      <TransactionDetailModal
         visible={!!selectedTx}
         transaction={selectedTx}
         pockets={pockets}
@@ -701,7 +724,6 @@ export const Dashboard = ({
 
       <MonthClosureModal
         visible={showClosureModal}
-        pockets={pockets}
         cycleId={unclosedPrevCycle?.id ?? ''}
         cycleName={unclosedPrevCycle?.name ?? 'Mes anterior'}
         userId={session?.user?.id ?? ''}

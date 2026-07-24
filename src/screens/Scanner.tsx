@@ -35,87 +35,87 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   const styles = useMemo(() => StyleSheet.create({
     scannerContainer: { flex: 1, backgroundColor: (theme.colors as any).scannerBackground },
     scannerTopBar: { position: 'absolute', top: 0, width: '100%', zIndex: 100, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center' },
-    closeBtn: { 
-      width: 48, 
-      height: 48, 
-      borderRadius: 24, 
-      backgroundColor: 'rgba(255,255,255,0.12)', 
-      alignItems: 'center', 
+    closeBtn: {
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: 'rgba(255,255,255,0.12)',
+      alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1.5,
       borderColor: theme.colors.divider
     },
-    scannerBadge: { 
-      paddingHorizontal: 14, 
-      paddingVertical: 8, 
-      borderRadius: 20, 
-      borderWidth: 1.5, 
+    scannerBadge: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 20,
+      borderWidth: 1.5,
       borderColor: theme.colors.divider,
-      ...theme.shadows.premium 
+      ...theme.shadows.premium
     },
     scannerBadgeText: { color: theme.colors.onSurface, fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5 },
-    
+
     scannerInitialView: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
     scannerInitialText: { color: theme.colors.onSurfaceVariant, fontSize: 18, fontWeight: '700', marginTop: 24, marginBottom: 40, textAlign: 'center' },
-    
-    mainCameraButton: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      gap: 14, 
+
+    mainCameraButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
       width: '100%',
-      backgroundColor: theme.colors.primary, 
-      paddingVertical: 20, 
+      backgroundColor: theme.colors.primary,
+      paddingVertical: 20,
       borderRadius: 24,
       justifyContent: 'center',
       ...theme.shadows.premium,
       marginBottom: 16
     },
     mainCameraButtonText: { color: theme.colors.onPrimary, fontSize: 17, fontWeight: '900', letterSpacing: -0.5 },
-    
+
     scannerProgressContainer: { position: 'absolute', bottom: 0, width: '100%', paddingHorizontal: 16 },
-    scannerProgressCard: { 
-      padding: 24, 
-      borderRadius: 36, 
-      overflow: 'hidden', 
+    scannerProgressCard: {
+      padding: 24,
+      borderRadius: 36,
+      overflow: 'hidden',
       backgroundColor: theme.colors.glassWhite,
-      borderWidth: 1.5, 
+      borderWidth: 1.5,
       borderColor: theme.colors.divider,
-      ...theme.shadows.premium 
+      ...theme.shadows.premium
     },
     scannerActionTitle: { fontWeight: '900', color: theme.colors.onSurface, fontSize: 18, marginBottom: 16, letterSpacing: -0.5 },
-    
+
     beautifulResultCard: { marginTop: 4 },
-    aiVerificationShield: { 
-      flexDirection: 'row', 
-      gap: 8, 
-      alignSelf: 'center', 
-      paddingHorizontal: 16, 
-      paddingVertical: 8, 
-      borderRadius: 16, 
+    aiVerificationShield: {
+      flexDirection: 'row',
+      gap: 8,
+      alignSelf: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 16,
       backgroundColor: theme.colors.primaryContainer,
       marginBottom: 24,
       borderWidth: 1,
       borderColor: theme.colors.primary + '30'
     },
     aiValidationText: { fontSize: 10, fontWeight: '900', color: theme.colors.primary, letterSpacing: 1, textTransform: 'uppercase' },
-    
+
     premiumAmountBox: { alignItems: 'center', marginBottom: 24 },
     premiumAmountLabel: { fontSize: 12, color: theme.colors.primary, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
     modernAmountInputRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
     modernCurrencySymbol: { fontSize: 24, fontWeight: '800', color: theme.colors.onSurface, marginRight: 4 },
     modernAmountInput: { fontSize: 52, fontWeight: '900', color: theme.colors.onSurface, textAlign: 'center', letterSpacing: -2, minWidth: 120 },
     copBadge: { fontSize: 12, fontWeight: '900', color: theme.colors.primary, marginLeft: 8 },
-    
+
     dividerCustom: { height: 1.5, backgroundColor: theme.colors.divider, marginVertical: 24 },
-    
-    premiumDetailItem: { 
-      flexDirection: 'row', 
-      alignItems: 'center', 
-      gap: 16, 
-      backgroundColor: theme.colors.surface, 
-      padding: 18, 
-      borderRadius: 24, 
-      borderWidth: 1, 
+
+    premiumDetailItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 16,
+      backgroundColor: theme.colors.surface,
+      padding: 18,
+      borderRadius: 24,
+      borderWidth: 1,
       borderColor: theme.colors.divider,
       marginBottom: 12
     },
@@ -124,12 +124,12 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
     premiumDetailInput: { fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, paddingVertical: 4 },
     premiumDetailValue: { fontSize: 16, fontWeight: '800', color: theme.colors.onSurface },
     originalTicketBadge: { fontSize: 10, fontWeight: '800', color: theme.colors.secondary, marginTop: 4, fontStyle: 'italic' },
-    
+
     categoryPicker: { flexDirection: 'row', gap: 8, marginTop: 12, marginBottom: 24 },
-    catChip: { 
-      paddingHorizontal: 16, 
-      paddingVertical: 10, 
-      borderRadius: 14, 
+    catChip: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 14,
       backgroundColor: theme.colors.primaryContainer,
       borderWidth: 1,
       borderColor: theme.colors.divider
@@ -137,7 +137,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
     catChipActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
     catText: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },
     catTextActive: { color: theme.colors.onPrimary },
-    
+
     premiumConfirmBtn: { borderRadius: 24, overflow: 'hidden', height: 64, ...theme.shadows.soft },
     btnGradient: { flex: 1, alignItems: 'center', justifyContent: 'center' },
     premiumConfirmBtnText: { color: theme.colors.onPrimary, fontWeight: '900', fontSize: 17, letterSpacing: -0.3 }
@@ -154,9 +154,9 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   const [extractedData, setExtractedData] = useState<any>(null);
   const [isManualMode, setIsManualMode] = useState(initialMode === 'manual');
   const [editableMerchant, setEditableMerchant] = useState('');
-  
+
   const amountInputRef = React.useRef<TextInput>(null);
-  const { startTour } = useTour();
+  const { startTour, stopTour } = useTour();
 
 
   const TOUR_STEPS: TourStepType[] = useMemo(() => [
@@ -210,7 +210,14 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       title: '¡Pruébalo tú mismo!',
       description: 'Dale a "Guardar gasto" para ver cómo se registra en tus finanzas.',
       iconName: 'Check',
-      order: 4
+      order: 4,
+      // FIX: antes se podía cerrar este paso con "Entendido" sin tocar el
+      // botón real -- a diferencia del paso equivalente en Bolsillos
+      // (borrar la transacción de prueba), que sí obliga a tocar el
+      // elemento real. Ahora se exige el toque real: se oculta "Entendido"
+      // y se deja pasar el toque hasta el botón "Guardar gasto" debajo.
+      allowTouches: true,
+      hideNextButton: true
     }
   ], []);
 
@@ -231,7 +238,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
     setIsManualMode(false);
     setProgress(0); // Show image without blur overlay first
     AsyncStorage.removeItem('tour_dashboard_done'); // Reset dashboard tour for demo test
-    
+
     try {
       const localImageUri = Image.resolveAssetSource(require('../../assets/images/factura.png')).uri;
       setImage(localImageUri);
@@ -242,7 +249,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
     // Wait 1.5 seconds for the user to see the photo before starting the progress
     setTimeout(() => {
       setProgress(10);
-      
+
       let p = 10;
       const interval = setInterval(() => {
         p += 15;
@@ -256,7 +263,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
 
         let demoMerchant = 'Rincón del Sabor S.A.S.';
         let demoAmount = '67540';
-        
+
         if (currency === 'USD') {
           demoMerchant = 'Whole Foods Market';
           demoAmount = '4550';
@@ -285,9 +292,9 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
         });
         setEditableAmount(formatMoneyDigits(demoAmount));
         setEditableMerchant(demoMerchant);
-        
+
         setSelectedCategory(matchingCat);
-        
+
         setIsManualMode(false);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
@@ -314,11 +321,11 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       }, 400);
     }
   }, [initialMode]);
-  
+
   const availableCategories = useMemo(() => {
     const defaultCats = ['Comida', 'Transporte', 'Ocio', 'Ahorros', 'Otros'];
     if (!pockets || pockets.length === 0) return defaultCats;
-    
+
     // Get unique categories from pockets
     const pocketCats = pockets.map(p => p.category).filter(Boolean);
     return Array.from(new Set(pocketCats));
@@ -398,9 +405,9 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       }
 
       const { data, error } = await supabase.functions.invoke('ocr-receipt', {
-        body: { 
+        body: {
           image_base64: base64,
-          categories: availableCategories 
+          categories: availableCategories
         },
         headers: { Authorization: `Bearer ${accessToken}` },
       });
@@ -446,6 +453,11 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
 
   const saveToSupabase = async () => {
     if (isSaving) return;
+    // FIX: si venimos del tour demo (allowTouches deja pasar el toque real
+    // hasta este botón), hay que cerrar el overlay del tour aquí mismo --
+    // si no, se queda "vivo" (isActive=true) apuntando a un botón que ya no
+    // existe cuando la pantalla cambie a Dashboard después de guardar.
+    if (initialMode === 'demo') stopTour();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setIsSaving(true);
     try {
@@ -471,9 +483,9 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
 
       setIsSaving(false);
       setSaved(true);
-      
+
       // Reproducir sonido "ding" eliminado a petición del usuario
-      
+
       Animated.sequence([
         Animated.timing(scaleAnim, {
           toValue: 1,
@@ -503,7 +515,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <KeyboardAvoidingView style={[styles.scannerContainer, { backgroundColor: theme.colors.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        
+
         {image && (
           <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }]}>
             <Image source={{ uri: image }} style={{ width: '100%', height: '100%', opacity: 0.6 }} resizeMode="contain" />
@@ -512,17 +524,17 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
 
         <View style={[styles.scannerTopBar, { paddingTop: Math.max(insets.top, 16) + 16 }]}>
           {initialMode !== 'demo' ? (
-            <TouchableOpacity 
-              style={[styles.closeBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outlineVariant }]} 
-              onPress={() => { 
-                if (image) { 
-                  setImage(null); 
-                  setExtractedData(null); 
-                  setProgress(0); 
+            <TouchableOpacity
+              style={[styles.closeBtn, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outlineVariant }]}
+              onPress={() => {
+                if (image) {
+                  setImage(null);
+                  setExtractedData(null);
+                  setProgress(0);
                 } else {
-                  onGoBack(); 
+                  onGoBack();
                 }
-                Keyboard.dismiss(); 
+                Keyboard.dismiss();
               }}
             >
               <XIcon size={24} color={theme.colors.onSurface} strokeWidth={2.5} />
@@ -579,7 +591,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
                       <Text style={[styles.aiValidationText, { textAlign: 'center', marginBottom: 12, color: theme.colors.onSurfaceVariant }]}>
                         AGREGAR MANUALMENTE
                       </Text>
-                      <TouchableOpacity 
+                      <TouchableOpacity
                         activeOpacity={0.7}
                         onPress={runDemoMode}
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}
@@ -615,7 +627,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
                      <View style={[styles.premiumIconBox, { backgroundColor: theme.colors.surfaceContainerHighest }]}><Store size={20} color={theme.colors.onSurface} /></View>
                      <View style={{ flex: 1 }}>
                         <Text style={styles.premiumDetailLabel}>Detalle o Comercio</Text>
-                        <TextInput 
+                        <TextInput
                           style={styles.premiumDetailInput}
                           value={editableMerchant}
                           onChangeText={setEditableMerchant}
@@ -630,8 +642,8 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
                   <View style={styles.categoryPicker}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
                       {availableCategories.map((cat) => (
-                        <TouchableOpacity 
-                          key={cat} 
+                        <TouchableOpacity
+                          key={cat}
                           onPress={() => setSelectedCategory(cat)}
                           style={[styles.catChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outlineVariant }, selectedCategory === cat && styles.catChipActive]}
                         >
@@ -661,7 +673,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
         {saved && (
           <View style={[StyleSheet.absoluteFillObject, { zIndex: 1000, alignItems: 'center', justifyContent: 'center' }]}>
             <BlurView intensity={Platform.OS === 'ios' ? 80 : 100} tint="dark" style={StyleSheet.absoluteFillObject} />
-            <Animated.View style={{ 
+            <Animated.View style={{
               transform: [
                 { translateY: scaleAnim.interpolate({ inputRange: [0, 1], outputRange: [200, 0] }) },
                 { scale: scaleAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }
@@ -688,20 +700,20 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
                   ...theme.shadows.soft
                 }}
               >
-                <CategoryIcon 
-                  iconName={pockets?.find(p => p.name === selectedCategory)?.icon || 'sparkles'} 
-                  size={36} color="#FFF" strokeWidth={2} 
+                <CategoryIcon
+                  iconName={pockets?.find(p => p.name === selectedCategory)?.icon || 'sparkles'}
+                  size={36} color="#FFF" strokeWidth={2}
                 />
               </LinearGradient>
-              
+
               <Text style={{ fontSize: 16, color: 'rgba(255,255,255,0.6)', marginBottom: 8, letterSpacing: 1, fontWeight: '500' }}>
                 GASTO REGISTRADO
               </Text>
-              
+
               <Text style={{ fontSize: 40, fontWeight: '900', color: '#FFF', marginBottom: 8, letterSpacing: -1 }}>
                 {editableAmount || '$0'}
               </Text>
-              
+
               <Text style={{ fontSize: 16, color: 'rgba(255,255,255,0.8)', fontWeight: '400' }}>
                 en {selectedCategory}
               </Text>

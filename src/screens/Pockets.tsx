@@ -928,9 +928,14 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                           <TouchableOpacity
                             onPress={() => {
                               closePocket(true);
+                              // FIX: elegir el bolsillo de origen por el disponible REAL del
+                              // ciclo (RPC get_cycle_state via getMonthlyPocket), no por
+                              // pockets.budget -- esa columna no refleja el disponible actual.
                               const bestSource = [...pockets]
-                                .filter(p => p.id !== selectedPocket.id && (p.budget || 0) > 0)
-                                .sort((a, b) => (b.budget || 0) - (a.budget || 0))[0];
+                                .filter(p => p.id !== selectedPocket.id)
+                                .map(p => ({ pocket: p, avail: getMonthlyPocket(p.id)?.available ?? 0 }))
+                                .filter(x => x.avail > 0)
+                                .sort((a, b) => b.avail - a.avail)[0]?.pocket;
                               setTimeout(() => onTransferPress({ fromId: bestSource?.id, toId: selectedPocket.id, amount: Math.abs(available) }), 250);
                             }}
                             style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 14 }}

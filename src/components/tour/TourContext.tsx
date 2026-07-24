@@ -53,7 +53,7 @@ export const TourProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [steps, setSteps] = useState<TourStepType[]>([]);
   const [globalProgress, setGlobalProgress] = useState<GlobalProgressType | null>(null);
-  
+
   // Ref to store layouts of registered elements
   const layoutsRef = useRef<Record<string, LayoutRect>>({});
   // State to trigger re-render when a layout is needed/updated
@@ -61,20 +61,18 @@ export const TourProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const onTourCompleteRef = useRef<(() => void) | undefined>(undefined);
 
   const startTour = useCallback((tourSteps: TourStepType[], onTourComplete?: () => void, progress?: GlobalProgressType) => {
-    // Sort steps by order
     const sortedSteps = [...tourSteps].sort((a, b) => a.order - b.order);
     setSteps(sortedSteps);
     setCurrentStepIndex(0);
     setGlobalProgress(progress || null);
     setIsActive(true);
-    
-    // Set initial layout if already registered
+
     if (sortedSteps.length > 0 && layoutsRef.current[sortedSteps[0].name]) {
       setCurrentLayout(layoutsRef.current[sortedSteps[0].name]);
     } else {
       setCurrentLayout(null);
     }
-    
+
     onTourCompleteRef.current = onTourComplete;
   }, []);
 
@@ -98,26 +96,22 @@ export const TourProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const stopTour = useCallback(() => {
     setIsActive(false);
-    if (onTourCompleteRef.current) {
-      onTourCompleteRef.current();
-      onTourCompleteRef.current = undefined;
-    }
+    onTourCompleteRef.current = undefined;
   }, []);
 
   const registerElementLayout = useCallback((name: string, layout: LayoutRect) => {
     layoutsRef.current[name] = layout;
-    
-    // If we are currently on this step but missing layout, update it
+
     if (isActive && steps[currentStepIndex]?.name === name) {
       setCurrentLayout((prev) => {
         if (
-          prev && 
-          Math.abs(prev.x - layout.x) < 1 && 
-          Math.abs(prev.y - layout.y) < 1 && 
-          Math.abs(prev.width - layout.width) < 1 && 
+          prev &&
+          Math.abs(prev.x - layout.x) < 1 &&
+          Math.abs(prev.y - layout.y) < 1 &&
+          Math.abs(prev.width - layout.width) < 1 &&
           Math.abs(prev.height - layout.height) < 1
         ) {
-          return prev; // No layout change, prevent re-render loop
+          return prev;
         }
         return layout;
       });

@@ -31,6 +31,8 @@ import { TourStep } from '../src/components/tour/TourStep';
 import { DeviceEventEmitter } from 'react-native';
 import { TourOverlay } from '../src/components/tour/TourOverlay';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SubscriptionProvider, useSubscription } from '../src/lib/SubscriptionContext';
+import { Paywall } from '../src/screens/Paywall';
 
 const { width, height } = Dimensions.get('window');
 
@@ -52,7 +54,7 @@ const SLOGANS = [
 
 const SplashScreen = () => {
   const { theme } = useTheme();
-  
+
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const textOpacity = useRef(new Animated.Value(0)).current;
   // AVE empieza oculto a la izquierda detrás de la S
@@ -181,7 +183,7 @@ function MainApp() {
   const [isDataReady, setIsDataReady] = useState(false);
   const [isFetchingData, setIsFetchingData] = useState(false);
   const [minSplashTimeElapsed, setMinSplashTimeElapsed] = useState(false);
-  
+
   const [actionMenuVisible, setActionMenuVisible] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [chatInitialMessage, setChatInitialMessage] = useState<string | undefined>(undefined);
@@ -194,10 +196,46 @@ function MainApp() {
     }, 3800);
     return () => clearTimeout(timer);
   }, []);
-  
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(300)).current;
-  const { startTour } = useTour();
+  const { startTour, isActive: tourActive } = useTour();
+  const { isSubscribed, isLoading: subLoading } = useSubscription();
+
+  // Save es 100% premium (sin versión gratis permanente): el paywall debe
+  // aparecer DESPUÉS del tour de bienvenida, no encima de él. Mientras el
+  // tour mágico de 4 pasos siga pendiente (banderas puestas por Onboarding
+  // y consumidas en Dashboard/Pockets) o haya un tour activo en pantalla,
+  // no mostramos el paywall todavía.
+  const [tourFlowPending, setTourFlowPending] = useState(true);
+  // SOLO DESARROLLO -- deja saltar el paywall sin pagar para poder probar
+  // el resto de la app. __DEV__ es false en cualquier build de producción
+  // (incluyendo TestFlight/App Store), así que esto nunca llega a un
+  // usuario real.
+  const [devPaywallBypass, setDevPaywallBypass] = useState(false);
+
+  useEffect(() => {
+    if (!session?.user?.id || pockets.length === 0) {
+      setTourFlowPending(false);
+      return;
+    }
+    let cancelled = false;
+    const check = async () => {
+      const [magicPending, pocketsPending] = await Promise.all([
+        AsyncStorage.getItem('@save_magic_tour_pending'),
+        AsyncStorage.getItem('@save_magic_tour_pockets_pending'),
+      ]);
+      const pending = magicPending === 'true' || pocketsPending === 'true';
+      if (!cancelled) setTourFlowPending(pending);
+      return pending;
+    };
+    check();
+    const interval = setInterval(async () => {
+      const pending = await check();
+      if (!pending) clearInterval(interval);
+    }, 1000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [session?.user?.id, pockets.length]);
 
   const handleShowChatChange = (val: boolean) => {
     setShowChat(val);
@@ -219,7 +257,7 @@ function MainApp() {
           {
             title: 'Abrir Escáner',
             subtitle: 'Escanear recibo con cámara',
-            icon: 'capture', 
+            icon: 'capture',
             id: 'open_scanner'
           },
           {
@@ -251,7 +289,7 @@ function MainApp() {
         console.warn('QuickActions error:', e);
       }
     };
-    
+
     // Solo manejamos la acción si el usuario ya está autenticado o la data se está cargando
     // Esto se ejecutará cada vez que la app monte
     handleInitialAction();
@@ -338,12 +376,6 @@ function MainApp() {
 
       if (txRes.data) {
         setTransactions(txRes.data);
-        // Debugging for Vivienda
-        const viviendaTxs = txRes.data.filter(t => t.category === 'Vivienda');
-        console.log('--- DEBUG VIVIENDA ---');
-        console.log('Pocket:', pkRes.data?.find(p => p.category === 'Vivienda'));
-        console.log('Transactions:', viviendaTxs.map(t => ({ id: t.id, date: t.date_string, merchant: t.merchant, amount: t.amount, created_at: t.created_at })));
-        console.log('----------------------');
       }
       if (pkRes.data) {
         setPockets(pkRes.data);
@@ -376,39 +408,44 @@ function MainApp() {
       setActionMenuVisible(true);
       AsyncStorage.getItem('tour_action_menu_done').then(done => {
         if (!done) {
-          AsyncStorage.getItem('@save_magic_tour_pending').then(magicPending => {
-            if (magicPending === 'true') return; // el magic_tour se encarga
-            AsyncStorage.setItem('tour_action_menu_done', 'true');
-            Animated.parallel([
-              Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
-              Animated.spring(slideAnim, { toValue: 0, tension: 65, friction: 10, useNativeDriver: true })
-            ]).start(() => {
-              setTimeout(() => {
-                startTour([
-                  {
-                    name: 'action_income',
-                    title: 'Entró Plata',
-                    description: 'Registra aquí tu sueldo, pagos o cualquier dinero que te entre. Save lo repartirá en tus bolsillos automáticamente.',
-                    iconName: 'TrendingUp',
-                    order: 1
-                  },
-                  {
-                    name: 'action_expense',
-                    title: 'Gasto Rápido',
-                    description: 'Para esos pequeños gastos del día a día (un café, el bus, una propina). Simple y rápido.',
-                    iconName: 'Zap',
-                    order: 2
-                  },
-                  {
-                    name: 'action_scan',
-                    title: 'Escanear Recibo',
-                    description: 'Nuestra función estrella. Toma una foto a cualquier factura y la IA organiza el gasto por ti.',
-                    iconName: 'Camera',
-                    order: 3
-                  }
-                ]);
-              }, 100);
-            });
+          // FIX: antes esto se saltaba si '@save_magic_tour_pending' seguía
+          // en 'true', con la idea de "el magic_tour se encarga". Pero
+          // Dashboard borra esa bandera apenas la lee (antes de que el
+          // usuario pueda llegar a tocar el +), así que la condición nunca
+          // se cumplía de verdad y el tour de los 3 botones dependía de una
+          // carrera de tiempos poco confiable. Ahora se dispara de forma
+          // directa la primera vez que alguien abre el menú +, sin importar
+          // si acaba de pasar por el tour de bienvenida o no.
+          AsyncStorage.setItem('tour_action_menu_done', 'true');
+          Animated.parallel([
+            Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
+            Animated.spring(slideAnim, { toValue: 0, tension: 65, friction: 10, useNativeDriver: true })
+          ]).start(() => {
+            setTimeout(() => {
+              startTour([
+                {
+                  name: 'action_income',
+                  title: 'Entró Plata',
+                  description: 'Registra aquí tu sueldo, pagos o cualquier dinero que te entre. Save lo repartirá en tus bolsillos automáticamente.',
+                  iconName: 'TrendingUp',
+                  order: 1
+                },
+                {
+                  name: 'action_expense',
+                  title: 'Gasto Rápido',
+                  description: 'Para esos pequeños gastos del día a día (un café, el bus, una propina). Simple y rápido.',
+                  iconName: 'Zap',
+                  order: 2
+                },
+                {
+                  name: 'action_scan',
+                  title: 'Escanear Recibo',
+                  description: 'Nuestra función estrella. Toma una foto a cualquier factura y la IA organiza el gasto por ti.',
+                  iconName: 'Camera',
+                  order: 3
+                }
+              ]);
+            }, 100);
           });
         } else {
           Animated.parallel([
@@ -439,10 +476,10 @@ function MainApp() {
       case 'quick_expense': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="manual" />;
       case 'demo_scanner': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('dashboard'); }} initialMode="demo" />;
       case 'expenses':
-        return <Expenses 
-          transactions={transactions} 
-          pockets={pockets} 
-          session={session} 
+        return <Expenses
+          transactions={transactions}
+          pockets={pockets}
+          session={session}
           onRefresh={() => loadUserData(session!.user.id)}
           onEditIncome={(tx) => {
             setEditIncomeTx(tx);
@@ -468,10 +505,24 @@ function MainApp() {
     return <Auth onLoginSuccess={() => {}} />;
   }
 
+  // Paywall: Save no tiene versión gratis permanente. Se muestra una vez
+  // que el usuario terminó el onboarding y el tour de bienvenida, y se
+  // queda bloqueando el resto de la app hasta que activa la prueba
+  // gratis de 7 días o se suscribe.
+  if (pockets.length > 0 && !subLoading && !isSubscribed && !tourFlowPending && !tourActive && !devPaywallBypass) {
+    return (
+      <Paywall
+        onSubscribed={() => {}}
+        onLogout={async () => { await supabase.auth.signOut(); }}
+        onDevSkip={__DEV__ ? () => setDevPaywallBypass(true) : undefined}
+      />
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'demo_scanner' && currentScreen !== 'onboarding' && currentScreen !== 'add_income' && (
-        <TopBar 
+        <TopBar
           title={currentScreen === 'dashboard' ? 'Save' : currentScreen === 'expenses' ? 'Movimientos' : currentScreen === 'pockets' ? 'Bolsillos' : 'Perfil'}
           userName={session.user?.user_metadata?.full_name || session.user?.user_metadata?.name || session.user?.email?.split('@')[0]}
           userAvatar={session.user?.user_metadata?.avatar_url || session.user?.user_metadata?.picture}
@@ -501,7 +552,7 @@ function MainApp() {
            <Animated.View style={[styles.menuContent, { transform: [{ translateY: slideAnim }], backgroundColor: theme.colors.background }]}>
               <View style={[styles.menuHandle, { backgroundColor: theme.colors.divider }]} />
               <Text style={[styles.menuTitle, { color: theme.colors.onSurface }]}>¿Qué quieres hacer?</Text>
-              
+
               <View style={[styles.menuGrid, { flexWrap: 'wrap', justifyContent: 'center' }]}>
                  <TourStep name="action_income">
                    <TouchableOpacity activeOpacity={0.8} style={[styles.menuItem, { width: '45%', marginBottom: 16 }]} onPress={() => { toggleActionMenu(false); setCurrentScreen('add_income'); }}>
@@ -533,12 +584,12 @@ function MainApp() {
        )}
 
        {showPocketTransfer && (
-         <PocketTransfer 
-           session={session} 
-           pockets={pockets} 
-           initialParams={transferParams ?? undefined} 
-           onCancel={() => { setTransferParams(null); setShowPocketTransfer(false); }} 
-           onSaveSuccess={() => { setTransferParams(null); setShowPocketTransfer(false); loadUserData(session!.user.id); }} 
+         <PocketTransfer
+           session={session}
+           pockets={pockets}
+           initialParams={transferParams ?? undefined}
+           onCancel={() => { setTransferParams(null); setShowPocketTransfer(false); }}
+           onSaveSuccess={() => { setTransferParams(null); setShowPocketTransfer(false); loadUserData(session!.user.id); }}
          />
        )}
     </View>
@@ -550,7 +601,7 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => setSession(currentSession));
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => setSession(newSession));
-    
+
     return () => {
       subscription.unsubscribe();
     };
@@ -560,10 +611,12 @@ export default function App() {
     <SafeAreaProvider>
       <ThemeProvider userId={session?.user?.id}>
         <CurrencyProvider userId={session?.user?.id}>
-          <TourProvider>
-            <MainApp />
-            <TourOverlay />
-          </TourProvider>
+          <SubscriptionProvider userId={session?.user?.id}>
+            <TourProvider>
+              <MainApp />
+              <TourOverlay />
+            </TourProvider>
+          </SubscriptionProvider>
         </CurrencyProvider>
       </ThemeProvider>
     </SafeAreaProvider>
@@ -577,14 +630,14 @@ const styles = StyleSheet.create({
   loadingText: { marginTop: 16, fontWeight: '800', textAlign: 'center' },
   actionMenu: { ...StyleSheet.absoluteFillObject, zIndex: 1000 },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
-  menuContent: { 
-    position: 'absolute', 
-    bottom: 0, 
-    left: 0, 
-    right: 0, 
-    borderTopLeftRadius: 40, 
-    borderTopRightRadius: 40, 
-    padding: 32, 
+  menuContent: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
+    padding: 32,
     paddingBottom: Platform.OS === 'ios' ? 60 : 40,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)'

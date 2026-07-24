@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Switch, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Switch, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '../lib/supabase';
@@ -12,20 +12,45 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 interface MonthClosureModalProps {
   visible: boolean;
-  pockets: any[];
   cycleId: string;
   cycleName: string;
   userId: string;
   onClosed: () => void;
 }
 
-export function MonthClosureModal({ visible, pockets, cycleId, cycleName, userId, onClosed }: MonthClosureModalProps) {
+export function MonthClosureModal({ visible, cycleId, cycleName, userId, onClosed }: MonthClosureModalProps) {
   const [loading, setLoading] = useState(false);
   const { theme } = useTheme();
-  
+
   const [sweeps, setSweeps] = useState<Record<string, boolean>>({});
 
-  const pocketsWithBalance = pockets.filter(p => !p.is_default_free && p.available > 0);
+  // FIX: los bolsillos del ciclo que se esta cerrando NO vienen de la prop
+  // `pockets` (esa es la config actual, sin .available). Los traemos con el
+  // mismo RPC que usa el resto de la app (get_cycle_state) para el cycleId
+  // especifico que se va a cerrar -- asi si trae `available` real.
+  const [cyclePockets, setCyclePockets] = useState<any[]>([]);
+  const [loadingState, setLoadingState] = useState(false);
+
+  useEffect(() => {
+    if (!visible || !cycleId) {
+      setCyclePockets([]);
+      return;
+    }
+    setLoadingState(true);
+    supabase
+      .rpc('get_cycle_state', { p_cycle_id: cycleId })
+      .then(({ data, error }) => {
+        if (!error && data?.pockets) {
+          setCyclePockets(data.pockets);
+        } else {
+          if (error) console.error('Error cargando estado del ciclo a cerrar:', error);
+          setCyclePockets([]);
+        }
+        setLoadingState(false);
+      });
+  }, [visible, cycleId]);
+
+  const pocketsWithBalance = cyclePockets.filter(p => !p.is_default_free && p.available > 0);
 
   const handleToggle = (id: string) => {
     Haptics.selectionAsync();
@@ -89,7 +114,11 @@ export function MonthClosureModal({ visible, pockets, cycleId, cycleName, userId
               Elige qué hacer con el sobrante. "Arrastrar" lo sumará a tu próximo mes. "A Libre" barrerá el dinero y empezará de cero.
             </Text>
 
-            {pocketsWithBalance.length === 0 ? (
+            {loadingState ? (
+              <View style={[styles.emptyState, { paddingVertical: 40 }]}>
+                <ActivityIndicator color={theme.colors.primary} />
+              </View>
+            ) : pocketsWithBalance.length === 0 ? (
               <View style={[styles.emptyState, { backgroundColor: theme.colors.surfaceContainer, borderRadius: theme.radius.lg }]}>
                 <Info size={24} color={theme.colors.onSurfaceVariant} />
                 <Text style={[{ color: theme.colors.onSurfaceVariant, marginTop: 12, textAlign: 'center' }, theme.typography.bodyMedium]}>No tuviste sobrantes en tus bolsillos asignados.</Text>
@@ -121,10 +150,10 @@ export function MonthClosureModal({ visible, pockets, cycleId, cycleName, userId
           </ScrollView>
 
           <View style={[styles.footer, { backgroundColor: theme.colors.surface }]}>
-            <TouchableOpacity 
-              style={[{ backgroundColor: theme.colors.primary, borderRadius: theme.radius.xl, padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', ...theme.shadows.sm }, loading && styles.buttonDisabled]} 
+            <TouchableOpacity
+              style={[{ backgroundColor: theme.colors.primary, borderRadius: theme.radius.xl, padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', ...theme.shadows.sm }, (loading || loadingState) && styles.buttonDisabled]}
               onPress={handleConfirm}
-              disabled={loading}
+              disabled={loading || loadingState}
               activeOpacity={0.8}
             >
               <Text style={[{ color: '#FFF' }, theme.typography.h3]}>{loading ? 'Procesando...' : 'Confirmar Cierre'}</Text>

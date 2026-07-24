@@ -8,7 +8,6 @@ import { supabase } from '../lib/supabase';
 import { formatMoney, formatMoneyDigits } from '../lib/format';
 import { useCurrency } from '../lib/CurrencyContext';
 import { notify } from '../lib/notify';
-import { useUserCycles } from '../lib/useCycleState';
 import type { Session } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
@@ -22,10 +21,11 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
   const isEditing = !!editTransaction;
   const initialDistType = (editTransaction?.metadata?.mode === 'manual') ? 'single' : 'smart';
   const initialAmount = editTransaction ? Math.abs(editTransaction.amount).toString() : '';
-  
-  // Get active cycle ID from global cache (already fetched by Dashboard/Pockets).
-  // Used to tag new income transactions to the correct cycle via register_income.
-  const { activeCycle } = useUserCycles();
+
+  // NOTA: el ciclo al que se asigna este ingreso lo decide el servidor
+  // (register_income resuelve el ciclo abierto del usuario, o crea uno
+  // nuevo si p_cycle_mode = 'start_fresh'). El cliente no necesita ni debe
+  // mandar un cycle_id.
 
   const [distType, setDistType] = useState<'smart' | 'single'>(initialDistType);
   const [amount, setAmount] = useState(initialAmount ? formatCurrency(initialAmount) : '');

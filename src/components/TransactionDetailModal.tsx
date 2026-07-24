@@ -59,13 +59,6 @@ export const TransactionDetailModal = ({ visible, transaction, onClose, pockets,
     hour: '2-digit', minute: '2-digit'
   });
 
-  const relatedPocket = pockets?.find(p => p.name === transaction.category);
-  const rawImpact = relatedPocket && relatedPocket.budget > 0 && transaction.category !== 'Ingreso' 
-    ? (Math.abs(transaction.amount) / relatedPocket.budget) * 100 
-    : 0;
-  
-  const impactPercentage = rawImpact > 0 && rawImpact < 1 ? '<1' : Math.round(rawImpact).toString();
-
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <BlurView intensity={Platform.OS === 'ios' ? 40 : 100} tint="dark" style={styles.overlay}>
@@ -215,20 +208,5 @@ const styles = StyleSheet.create({
   infoValue: {
     fontSize: 15,
     fontWeight: '800',
-  },
-  budgetImpactBox: {
-    marginTop: 16,
-    width: '100%',
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  budgetImpactText: {
-    fontSize: 14,
-    fontWeight: '700',
-    textAlign: 'center',
-    lineHeight: 20,
   },
 });

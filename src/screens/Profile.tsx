@@ -427,7 +427,7 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
           setIsDeleting(true);
           console.log('Borrar cuenta solicitado...');
           try {
-            const { error } = await supabase.functions.invoke('delete-account');
+            const { error } = await supabase.functions.invoke('delete-account', { body: {} });
             
             if (error) {
               console.error("Error al borrar cuenta:", error);
