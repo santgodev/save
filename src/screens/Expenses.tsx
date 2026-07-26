@@ -36,7 +36,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
   const [selectedTx, setSelectedTx] = useState<any>(null);
   const [showSuccess, setShowSuccess] = useState(false);
 
-  const { cycles, activeCycle } = useUserCycles();
+  const { cycles, activeCycle, loading: cyclesLoading } = useUserCycles();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -210,7 +210,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        {!selectedCycleId ? (
+        {(cyclesLoading || (!selectedCycleId && cycles.length > 0)) ? (
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
             <ActivityIndicator size="large" color={theme.colors.primary} />
           </View>

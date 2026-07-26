@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { X, CheckCircle2, Circle, ArrowRight, Sparkles, Wallet, DollarSign, Percent, Briefcase, Tag, PlusCircle } from 'lucide-react-native';
+import { X, CheckCircle2, Circle, ArrowRight, Sparkles, Wallet, DollarSign, Percent, Briefcase, Tag, PlusCircle, Check, Utensils, Car, Home, Zap, Heart, Gamepad, PiggyBank, GraduationCap } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
@@ -19,7 +19,20 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
   const { symbol } = useCurrency();
   
   const isEditing = !!editTransaction;
-  const initialDistType = (editTransaction?.metadata?.mode === 'manual') ? 'single' : 'smart';
+  const POCKET_COLORS = theme.colors.chartColors as string[];
+  const colorOf = (id: string, idx: number): string =>
+    id === 'Otros' ? theme.colors.primary : POCKET_COLORS[idx % POCKET_COLORS.length];
+    
+  const CatIcon = ({ id, color, size = 20 }: { id: string; color: string; size?: number }) => {
+    const map: any = {
+      Alimentación: Utensils, Transporte: Car, Vivienda: Home,
+      Servicios: Zap, Salud: Heart, Ocio: Gamepad, Ahorros: PiggyBank, Educación: GraduationCap,
+    };
+    const Icon = map[id] || Tag;
+    return <Icon size={size} color={color} />;
+  };
+
+  const initialDistType = (editTransaction?.metadata?.mode === 'manual' || pockets.filter(p => !p.is_default_free).length === 0) ? 'single' : 'smart';
   const initialAmount = editTransaction ? Math.abs(editTransaction.amount).toString() : '';
 
   // NOTA: el ciclo al que se asigna este ingreso lo decide el servidor
@@ -58,28 +71,37 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
       try {
         const { data, error } = await supabase
           .from('income_sources')
-          .select('distribution_rules')
+          .select('distribution_rules, amount')
           .eq('user_id', session.user.id)
           .order('created_at', { ascending: false })
           .limit(1);
 
         let dbRules = (!error && data && data.length > 0) ? (data[0].distribution_rules || []) : [];
         
+        if (!error && data && data.length > 0 && data[0].amount) {
+          setAmount(prev => prev ? prev : formatCurrency(data[0].amount));
+        }
+
         // Ensure new pockets with a budget are added to the rules
         const pocketsInRules = new Set(dbRules.map((r: any) => r.pocket_id));
         let maxPriority = dbRules.reduce((max: number, r: any) => Math.max(max, r.priority || 0), 0);
         
         pockets.forEach(p => {
-          if (!p.is_default_free && p.allocated > 0 && !pocketsInRules.has(p.id)) {
+          if (!p.is_default_free && !pocketsInRules.has(p.id)) {
             maxPriority += 1;
             dbRules.push({
               pocket_id: p.id,
               priority: maxPriority,
               type: 'fixed',
-              value: p.allocated
+              value: p.allocated > 0 ? p.allocated : 0
             });
           }
         });
+
+        // Only switch to single if there are NO rules (i.e. user has NO custom pockets)
+        if (dbRules.length === 0 && distType === 'smart') {
+          setDistType('single');
+        }
 
         // Prevent layout shift by only updating if the fetched rules are actually different
         if (JSON.stringify(dbRules) !== JSON.stringify(rules)) {
@@ -471,20 +493,48 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
                 </View>
               )}
             </>
-          ) : pockets.map(p => {
-            const isSingleSelected = distType === 'single' && singlePocketId === p.id;
-            return (
-              <View key={p.id} style={[styles.pocketItem, isSingleSelected && styles.pocketItemSelected]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.pocketName}>{p.name}</Text>
-                </View>
-
-                <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSinglePocketId(p.id); }} style={{ padding: 8 }}>
-                  {isSingleSelected ? <CheckCircle2 size={28} color={theme.colors.primary} /> : <Circle size={28} color={theme.colors.outlineVariant} />}
+          ) : pockets.map((p, idx) => {
+              const isSingleSelected = distType === 'single' && singlePocketId === p.id;
+              const color = colorOf(p.category || p.name, idx);
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  activeOpacity={0.8}
+                  style={[styles.pocketItem, isSingleSelected ? {
+                    backgroundColor: theme.isDark ? color + '28' : color + '1A',
+                    borderColor: 'transparent',
+                    shadowColor: color,
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.22,
+                    shadowRadius: 14,
+                    elevation: 5,
+                  } : {
+                    backgroundColor: theme.colors.surfaceContainerLow,
+                    borderColor: 'transparent',
+                    shadowOpacity: 0,
+                    elevation: 0,
+                  }]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setSinglePocketId(p.id);
+                  }}
+                >
+                  <View style={[{
+                    width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center'
+                  }, {
+                    backgroundColor: isSingleSelected ? color : theme.colors.surfaceContainerHighest,
+                  }]}>
+                    <CatIcon id={p.category || p.name} color={isSingleSelected ? '#FFF' : theme.colors.onSurfaceVariant} size={18} />
+                  </View>
+                  <Text style={[styles.pocketName, { flex: 1, marginLeft: 12, color: isSingleSelected ? theme.colors.onSurface : theme.colors.onSurfaceVariant, fontFamily: (theme.fonts as any).headline }]}>
+                    {p.name}
+                  </Text>
+                  {isSingleSelected
+                    ? <View style={[{ width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, { backgroundColor: color }]}><Check size={12} color="#FFF" strokeWidth={3} /></View>
+                    : <View style={[{ width: 20, height: 20, borderRadius: 10 }, { backgroundColor: theme.colors.surfaceContainerHighest }]} />}
                 </TouchableOpacity>
-              </View>
-            );
-          })}
+              );
+            })}
         </View>
         </View>
       </ScrollView>

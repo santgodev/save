@@ -220,14 +220,6 @@ export const TourOverlay = () => {
           <AnimatedView 
             style={[styles.tooltipCard, animatedTooltipStyle, { backgroundColor: theme.colors.primary }]}
           >
-            
-            {/* El pico de la flecha apuntando al botón */}
-            <View style={[
-              styles.triangle, 
-              { borderBottomColor: theme.colors.primary },
-              isTargetInTopHalf ? styles.triangleTop : styles.triangleBottom
-            ]} />
-
             <View style={styles.header}>
                <View style={[styles.iconBox, { backgroundColor: theme.colors.onPrimary + '20' }]}>
                  {getIcon(currentStepData.iconName, theme.colors.onPrimary)}
@@ -296,26 +288,6 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 20,
     position: 'relative',
-  },
-  triangle: {
-    position: 'absolute',
-    left: '50%',
-    marginLeft: -15,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 15,
-    borderRightWidth: 15,
-    borderBottomWidth: 20,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-  },
-  triangleTop: {
-    top: -15,
-    transform: [{ rotate: '0deg' }],
-  },
-  triangleBottom: {
-    bottom: -15,
-    transform: [{ rotate: '180deg' }],
   },
   header: {
     flexDirection: 'row',

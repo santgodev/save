@@ -1,13 +1,13 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, TouchableOpacity, Animated, StyleSheet, ScrollView, Dimensions, useWindowDimensions, Pressable, TextInput, Modal, ActivityIndicator, Platform, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, LayoutAnimation
+  View, Text, TouchableOpacity, Animated, StyleSheet, ScrollView, Dimensions, useWindowDimensions, Pressable, TextInput, Modal, ActivityIndicator, Platform, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, LayoutAnimation, DeviceEventEmitter
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import Slider from '@react-native-community/slider';
 import {
   ChevronDown, Edit3,
-  Plus, X, Trash2, AlertCircle, Clock, ArrowRight, Check, Pencil, Info, Sparkles
+  Plus, X, Trash2, AlertCircle, Clock, ArrowRight, Check, Pencil, Info, Sparkles, CheckCircle2
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../theme/ThemeContext';
@@ -15,6 +15,7 @@ import { normalize, getDeterministicColor } from '../theme/theme';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { AnimatedProgressBar } from '../components/AnimatedProgressBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useCycleState, useUserCycles } from '../lib/useCycleState';
 import { formatMoney } from '../lib/format';
@@ -22,6 +23,7 @@ import { useCurrency } from '../lib/CurrencyContext';
 import { notify } from '../lib/notify';
 import { CycleNav } from '../components/CycleNav';
 import { TransactionDetailModal } from '../components/TransactionDetailModal';
+import { MiniAnimatedSaveLogo } from '../components/TopBar';
 import { TourStep } from '../components/tour/TourStep';
 import { useTour, TourStepType } from '../components/tour/TourContext';
 import type { Session } from '@supabase/supabase-js';
@@ -30,6 +32,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
+  const isFocused = useIsFocused();
   const { formatMoney: formatMoneyCurrency, config: currencyConfig } = useCurrency();
 
   const [selectedPocket, setSelectedPocket] = useState<any | null>(null);
@@ -67,7 +70,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   };
 
   const { startTour, stopTour, isActive: isTourActive } = useTour();
-
+  const [showDemoSuccess, setShowDemoSuccess] = useState(false);
   const TOUR_STEPS: TourStepType[] = [
     {
       name: 'pockets_free',
@@ -79,6 +82,16 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   ];
 
   const sheetAnim = useRef(new Animated.Value(height)).current;
+  const bounceAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(bounceAnim, { toValue: -5, duration: 400, useNativeDriver: true }),
+        Animated.timing(bounceAnim, { toValue: 0, duration: 400, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
 
   // 1. Fuente ÚNICA de verdad — RPC get_cycle_state (vía useCycleState)
   //    Contiene bolsillos (con .allocated, .spent_month, .available) y totales del ciclo.
@@ -98,35 +111,35 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     if (transactions) refreshMonthly(true);
   }, [transactions, refreshMonthly]);
 
-  // Ref para evitar re-disparar el tour demo en la misma sesión (el ID se guarda en AsyncStorage)
-
   // Check and start tour when pockets load
   useEffect(() => {
-    if (!isMonthlyLoading && monthState && pockets.length > 0) {
+    if (!isFocused || pockets.length === 0) return;
+
+    const checkDemoTour = async () => {
       const demoExpenses = transactions.filter(t => (t as any).metadata?.is_demo);
       const isDemo = demoExpenses.length > 0;
 
       // --- PRIORIDAD 1: Flujo demo del Scanner ---
       if (isDemo) {
         const firstExp = demoExpenses[0];
-        AsyncStorage.getItem('@save_demo_tour_triggered_id').then(triggeredId => {
-          if (triggeredId === firstExp.id) return; // Ya se disparó esta sesión
-          AsyncStorage.setItem('@save_demo_tour_triggered_id', firstExp.id);
+        const triggeredId = await AsyncStorage.getItem('@save_demo_tour_triggered_id_v3');
+        if (triggeredId === firstExp.id) return; // Ya se disparó esta sesión
+        await AsyncStorage.setItem('@save_demo_tour_triggered_id_v3', firstExp.id);
 
-          const targetPocket = pockets.find(p => p.category === firstExp.category) || pockets.find(p => p.is_default_free);
-          if (targetPocket) {
-            setTimeout(() => {
-              startTour([{
-                name: `pocket_${targetPocket.id}`,
-                title: '¡Tu primer gasto está aquí!',
-                description: 'Toca este bolsillo para ver el detalle y cuánto presupuesto te queda.',
-                iconName: 'Sparkles',
-                order: 1
-              }], undefined, { step: 3, total: 4 });
-              AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
-            }, 600);
-          }
-        });
+        let targetPocket = pockets.find(p => p.name === firstExp.category) || pockets.find(p => p.is_default_free);
+        if (!targetPocket) targetPocket = pockets[0];
+        const stepName = targetPocket.is_default_free ? 'pockets_free' : `pocket_${targetPocket.id}`;
+        
+        setTimeout(() => {
+          startTour([{
+            name: stepName,
+            title: '¡Tu primer gasto está aquí!',
+            description: 'Toca este bolsillo para ver el detalle y cuánto presupuesto te queda.',
+            iconName: 'Sparkles',
+            order: 1
+          }], undefined, { step: 5, total: 5 });
+          AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
+        }, 500);
         return;
       }
 
@@ -171,40 +184,17 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
           }, 600);
         }
       });
-    }
-  }, [isMonthlyLoading, monthState, pockets, transactions, startTour]);
+    };
+    checkDemoTour();
+  }, [isFocused, isMonthlyLoading, monthState, pockets, transactions, startTour]);
 
   const pocketTourTriggeredRef = useRef<string | null>(null);
   const txTourTriggeredRef = useRef<string | null>(null);
 
   // Tour dentro del Modal de Bolsillo (solo para el flujo demo)
   useEffect(() => {
-    let tm: any;
-    if (selectedPocket && !isMonthlyLoading && monthState) {
-      const demoExpenses = transactions.filter(t => (t as any).metadata?.is_demo);
-      if (demoExpenses.length > 0) {
-        const firstExp = demoExpenses[0];
-        if ((selectedPocket.category === firstExp.category || selectedPocket.is_default_free) && pocketTourTriggeredRef.current !== firstExp.id) {
-          pocketTourTriggeredRef.current = firstExp.id;
-          // Esperar a que el BottomSheet termine de animarse antes de medir posiciones
-          tm = setTimeout(() => {
-            if (!selectedPocket) return;
-            startTour([{
-              name: `demo_tx_${firstExp.id}`,
-              title: 'Elimina tu gasto de prueba',
-              description: 'Toca este movimiento para abrir el detalle y limpiar tu cuenta.',
-              iconName: 'Trash2',
-              order: 1,
-              allowTouches: true,
-              hideNextButton: true
-            }], undefined, { step: 4, total: 4 });
-          }, 1000);
-        }
-      }
-    }
-    return () => {
-      if (tm) clearTimeout(tm);
-    };
+    // ELIMINADO: TourOverlay no puede mostrarse sobre Modals nativos.
+    // Usaremos una burbuja Animated local sobre el gasto en lugar de startTour.
   }, [selectedPocket, isMonthlyLoading, monthState, transactions, startTour]);
 
   // We removed the Tour inside Transaction Modal because TourOverlay cannot overlay native Modals properly.
@@ -372,7 +362,13 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   const closePocket = (force = false) => {
     if (isTourActive && !force) return;
     stopTour();
-    Animated.timing(sheetAnim, { toValue: height, duration: 250, useNativeDriver: true }).start(() => setSelectedPocket(null));
+    Animated.timing(sheetAnim, { toValue: height, duration: 250, useNativeDriver: true }).start(async () => {
+      setSelectedPocket(null);
+      const demoProgress = await AsyncStorage.getItem('@save_demo_in_progress');
+      if (demoProgress === 'true') {
+        await AsyncStorage.removeItem('@save_demo_in_progress');
+      }
+    });
   };
 
   // formatMoney del CurrencyContext para que respete la moneda del usuario.
@@ -665,7 +661,6 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
               </View>
             </View>
           )}
-
 
           {/* Banner de diferencia eliminado de aquí */}
           {/* El bloque de adjustActions se movió al final de la grilla */}
@@ -1023,9 +1018,15 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                           );
 
                           return tx.metadata?.is_demo ? (
-                            <TourStep key={tx.id || idx} name={`demo_tx_${tx.id}`}>
+                            <View key={tx.id || idx}>
                               {txRow}
-                            </TourStep>
+                              <Animated.View style={{ position: 'absolute', top: -35, alignSelf: 'center', transform: [{ translateY: bounceAnim }] }}>
+                                <View style={{ backgroundColor: theme.colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}>
+                                  <Text style={{ color: theme.colors.onPrimary, fontSize: 12, fontWeight: '800' }}>¡Toca el gasto!</Text>
+                                </View>
+                                <View style={{ width: 0, height: 0, backgroundColor: 'transparent', borderStyle: 'solid', borderLeftWidth: 6, borderRightWidth: 6, borderTopWidth: 6, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: theme.colors.primary, alignSelf: 'center' }} />
+                              </Animated.View>
+                            </View>
                           ) : txRow;
                         })
                       ) : (
@@ -1131,11 +1132,54 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
               });
               onRefresh();
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              
+              if (tx.metadata?.is_demo) {
+                setShowDemoSuccess(true);
+              }
             } catch (e) {
               notify.error('Error al eliminar');
             }
           }}
         />
+
+        <Modal visible={showDemoSuccess} animationType="fade" transparent>
+          <BlurView intensity={90} tint="dark" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+            <View style={{ backgroundColor: theme.colors.surface, borderRadius: 40, width: '100%', padding: 40, alignItems: 'center', ...theme.shadows.xl, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+              
+              {/* Check Icon matching WelcomeModal Play Icon layout */}
+              <View style={{ width: 90, height: 90, borderRadius: 45, backgroundColor: theme.colors.primary + '20', alignItems: 'center', justifyContent: 'center', marginBottom: 28 }}>
+                <View style={{ width: 70, height: 70, borderRadius: 35, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', ...theme.shadows.lg }}>
+                  <Check size={36} color="#FFF" strokeWidth={3.5} />
+                </View>
+              </View>
+
+              {/* SAVE Logo Matching Header */}
+              <View style={{ transform: [{ scale: 1.2 }], marginBottom: 16 }}>
+                <MiniAnimatedSaveLogo />
+              </View>
+
+              <Text style={{ fontFamily: theme.fonts.body, fontSize: 19, color: theme.colors.onSurface, textAlign: 'center', marginBottom: 40, lineHeight: 28 }}>
+                ¡Felicidades! Has completado el <Text style={{ fontWeight: '900', color: theme.colors.primary, textDecorationLine: 'underline' }}>tutorial</Text> con éxito. Ya estás listo para controlar tus finanzas.
+              </Text>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={{ width: '100%', backgroundColor: theme.colors.primary, paddingVertical: 22, borderRadius: 28, alignItems: 'center', ...theme.shadows.lg }}
+                onPress={async () => {
+                  setShowDemoSuccess(false);
+                  closePocket(true);
+                  await AsyncStorage.removeItem('@save_demo_in_progress');
+                  DeviceEventEmitter.emit('demo_completed');
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                  <Text style={{ fontFamily: theme.fonts.headline, color: '#FFFFFF', fontSize: 20, fontWeight: '900', letterSpacing: 0.5 }}>Comenzar a usar Save</Text>
+                  <ArrowRight size={22} color="#FFFFFF" strokeWidth={3} />
+                </View>
+              </TouchableOpacity>
+            </View>
+          </BlurView>
+        </Modal>
       </View>
     </KeyboardAvoidingView>
   );

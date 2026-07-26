@@ -89,8 +89,8 @@ export function useCycleState(cycleId?: string, autoLoad: boolean = true) {
   }, [cycleId, cacheKey]);
 
   useEffect(() => {
-    if (autoLoad && cycleId) refresh();
-  }, [autoLoad, refresh, cycleId]);
+    if (autoLoad) refresh();
+  }, [autoLoad, refresh]);
 
   return { state, loading, error, refresh };
 }

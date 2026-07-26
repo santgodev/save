@@ -221,11 +221,11 @@ function MainApp() {
     }
     let cancelled = false;
     const check = async () => {
-      const [magicPending, pocketsPending] = await Promise.all([
+      const [magicPending, demoInProgress] = await Promise.all([
         AsyncStorage.getItem('@save_magic_tour_pending'),
-        AsyncStorage.getItem('@save_magic_tour_pockets_pending'),
+        AsyncStorage.getItem('@save_demo_in_progress'),
       ]);
-      const pending = magicPending === 'true' || pocketsPending === 'true';
+      const pending = magicPending === 'true' || demoInProgress === 'true';
       if (!cancelled) setTourFlowPending(pending);
       return pending;
     };
@@ -233,8 +233,17 @@ function MainApp() {
     const interval = setInterval(async () => {
       const pending = await check();
       if (!pending) clearInterval(interval);
-    }, 1000);
-    return () => { cancelled = true; clearInterval(interval); };
+    }, 1500);
+
+    const demoSub = DeviceEventEmitter.addListener('demo_completed', () => {
+      if (!cancelled) setTourFlowPending(false);
+    });
+
+    return () => { 
+      cancelled = true; 
+      clearInterval(interval); 
+      demoSub.remove();
+    };
   }, [session?.user?.id, pockets.length]);
 
   const handleShowChatChange = (val: boolean) => {
@@ -420,33 +429,32 @@ function MainApp() {
           Animated.parallel([
             Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
             Animated.spring(slideAnim, { toValue: 0, tension: 65, friction: 10, useNativeDriver: true })
-          ]).start(() => {
-            setTimeout(() => {
-              startTour([
-                {
-                  name: 'action_income',
-                  title: 'Entró Plata',
-                  description: 'Registra aquí tu sueldo, pagos o cualquier dinero que te entre. Save lo repartirá en tus bolsillos automáticamente.',
-                  iconName: 'TrendingUp',
-                  order: 1
-                },
-                {
-                  name: 'action_expense',
-                  title: 'Gasto Rápido',
-                  description: 'Para esos pequeños gastos del día a día (un café, el bus, una propina). Simple y rápido.',
-                  iconName: 'Zap',
-                  order: 2
-                },
-                {
-                  name: 'action_scan',
-                  title: 'Escanear Recibo',
-                  description: 'Nuestra función estrella. Toma una foto a cualquier factura y la IA organiza el gasto por ti.',
-                  iconName: 'Camera',
-                  order: 3
-                }
-              ]);
-            }, 100);
-          });
+          ]).start();
+          setTimeout(() => {
+            startTour([
+              {
+                name: 'action_income',
+                title: 'Entró Plata',
+                description: 'Registra aquí tu sueldo, pagos o cualquier dinero que te entre. Save lo repartirá en tus bolsillos automáticamente.',
+                iconName: 'TrendingUp',
+                order: 1
+              },
+              {
+                name: 'action_expense',
+                title: 'Gasto Rápido',
+                description: 'Para esos pequeños gastos del día a día (un café, el bus, una propina). Simple y rápido.',
+                iconName: 'Zap',
+                order: 2
+              },
+              {
+                name: 'action_scan',
+                title: 'Escanear Recibo',
+                description: 'Nuestra función estrella. Toma una foto a cualquier factura y la IA organiza el gasto por ti.',
+                iconName: 'Camera',
+                order: 3
+              }
+            ]);
+          }, 300);
         } else {
           Animated.parallel([
             Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
@@ -474,7 +482,7 @@ function MainApp() {
       case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('quick_expense')} onOpenScannerDemo={() => setCurrentScreen('demo_scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} />;
       case 'scanner': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="camera" />;
       case 'quick_expense': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="manual" />;
-      case 'demo_scanner': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('dashboard'); }} initialMode="demo" />;
+      case 'demo_scanner': return <Scanner onGoBack={async () => { await AsyncStorage.removeItem('@save_demo_in_progress'); setCurrentScreen('dashboard'); }} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('dashboard'); setTourFlowPending(false); }} initialMode="demo" />;
       case 'expenses':
         return <Expenses
           transactions={transactions}

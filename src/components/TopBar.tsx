@@ -45,7 +45,7 @@ type Message = {
 
 let hasShownGreeting = false;
 
-const MiniAnimatedSaveLogo = () => {
+export const MiniAnimatedSaveLogo = () => {
   const { theme } = useTheme();
   
   const logoOpacity = useRef(new Animated.Value(0)).current;

@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Animated, Dimensions, TouchableOpacity, Platform, ActivityIndicator, RefreshControl, SafeAreaView
+  View, Text, StyleSheet, ScrollView, Animated, Dimensions, TouchableOpacity, Platform, ActivityIndicator, RefreshControl, SafeAreaView, Modal
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowUpRight, TrendingUp, Sparkles, Tag, ShoppingBag, ShieldCheck, Zap, PlusCircle, Activity, AlertTriangle, Coins, Plus, Wallet, Target, Flame, Clock, History, LayoutGrid, Briefcase, ChevronRight, Pointer, Lock } from 'lucide-react-native';
+import { ArrowUpRight, TrendingUp, Sparkles, Tag, ShoppingBag, ShieldCheck, Zap, PlusCircle, Activity, AlertTriangle, Coins, Plus, Wallet, Target, Flame, Clock, History, LayoutGrid, Briefcase, ChevronRight, Pointer, Lock, ArrowRight, Play, Map, Rocket } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
@@ -22,6 +22,7 @@ import { Transaction } from '../types';
 import { TransactionDetailModal } from '../components/TransactionDetailModal';
 import { MonthClosureModal } from '../components/MonthClosureModal';
 import { CycleNav } from '../components/CycleNav';
+import { MiniAnimatedSaveLogo } from '../components/TopBar';
 import type { Session } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
@@ -57,6 +58,7 @@ export const Dashboard = ({
   const { theme } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [showGreeting, setShowGreeting] = useState(true);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false);
   const greetingAnim = useRef(new Animated.Value(1)).current;
   const [greeting, setGreeting] = useState('Hola');
   const [selectedTx, setSelectedTx] = useState<any>(null);
@@ -73,12 +75,12 @@ export const Dashboard = ({
       description: (
         <View style={{ gap: 12, marginTop: 4 }}>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-            <Pointer size={18} color="white" style={{ marginTop: 2 }} />
-            <Text style={{ color: 'white', flex: 1, fontSize: 14 }}>TOCA para anotar un gasto rápido.</Text>
+            <Pointer size={18} color="#1A1A1A" style={{ marginTop: 2 }} />
+            <Text style={{ color: '#1A1A1A', flex: 1, fontSize: 14, fontWeight: '500' }}>Toca para ver opciones.</Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-            <Lock size={18} color="white" style={{ marginTop: 2 }} />
-            <Text style={{ color: 'white', flex: 1, fontSize: 14 }}>MANTÉN PRESIONADO para abrir el scanner y capturar un recibo con la cámara. ¡Dos funciones en uno!</Text>
+            <Lock size={18} color="#1A1A1A" style={{ marginTop: 2 }} />
+            <Text style={{ color: '#1A1A1A', flex: 1, fontSize: 14, fontWeight: '500' }}>Mantén presionado para escanear.</Text>
           </View>
         </View>
       ),
@@ -114,7 +116,7 @@ export const Dashboard = ({
               description: 'Ve a la pestaña de Bolsillos para ver cómo la Inteligencia Artificial organizó tu primer gasto mágico.',
               iconName: 'Sparkles',
               order: 1
-            }], undefined, { step: 2, total: 4 });
+            }], undefined, { step: 4, total: 5 });
           }, 800);
         });
         return;
@@ -123,46 +125,10 @@ export const Dashboard = ({
       // Prioridad 2: usuario nuevo que acaba de completar el Onboarding — tour de 4 pasos
       const magicPending = await AsyncStorage.getItem('@save_magic_tour_pending');
       if (magicPending === 'true') {
-        await AsyncStorage.removeItem('@save_magic_tour_pending');
-        timeout = setTimeout(() => {
-
-          // ── Step 1/4: El botón + ──
-          startTour([{
-            name: 'bottom_add',
-            title: 'El corazón de Save',
-            description: (
-              <View style={{ gap: 12, marginTop: 4 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                  <Pointer size={18} color="white" style={{ marginTop: 2 }} />
-                  <Text style={{ color: 'white', flex: 1, fontSize: 14 }}>TOCA para registrar gastos o ingresos.</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-                  <Lock size={18} color="white" style={{ marginTop: 2 }} />
-                  <Text style={{ color: 'white', flex: 1, fontSize: 14 }}>MANTÉN PRESIONADO para abrir la cámara y escanear un recibo.</Text>
-                </View>
-              </View>
-            ),
-            iconName: 'PlusCircle',
-            order: 1
-          }], () => {
-            setTimeout(() => {
-
-              // ── Step 2/4: Bolsillos ──
-              startTour([{
-                name: 'bottom_pockets',
-                title: 'Tu dinero, organizado',
-                description: 'Aquí verás tu plata repartida por categorías. Cuando registres un ingreso, Save lo distribuye automáticamente entre tus bolsillos.',
-                iconName: 'PieChart',
-                order: 1
-              }], async () => {
-                // Al terminar step 2/4, activar pasos 3 y 4 en Pockets
-                await AsyncStorage.setItem('@save_magic_tour_pockets_pending', 'true');
-              }, { step: 2, total: 4 });
-
-            }, 300);
-          }, { step: 1, total: 4 });
-
-        }, 1000);
+        // No removemos el flag aquí para que app/index.tsx no dispare el Paywall
+        // bloqueando el WelcomeModal. Se remueve al hacer click en el botón del modal.
+        await AsyncStorage.setItem('tour_dashboard_done', 'true');
+        setShowWelcomeModal(true);
         return;
       }
 
@@ -236,7 +202,7 @@ export const Dashboard = ({
     txAmountUI: { ...theme.typography.bodyLarge, fontWeight: '900' }
   }), [theme, insets.top]);
 
-  const { cycles, activeCycle } = useUserCycles();
+  const { cycles, activeCycle, loading: cyclesLoading } = useUserCycles();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -388,7 +354,7 @@ export const Dashboard = ({
 
   return (
     <View style={styles.container}>
-      {(!selectedCycleId || monthLoading) ? (
+      {((!selectedCycleId && cycles.length > 0) || monthLoading || cyclesLoading) ? (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
@@ -581,47 +547,22 @@ export const Dashboard = ({
             </View>
           )}
 
-          {/* QUICK ADD GIGANTE (EL REY) */}
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              if (transactions.length === 0 && onOpenScannerDemo) {
-                onOpenScannerDemo();
-              } else {
-                onOpenScanner();
-              }
-            }}
-            style={{ backgroundColor: theme.colors.primary, borderRadius: theme.radius.xl, padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 32, ...theme.shadows.md }}
-          >
-            <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: theme.radius.full }}>
-              {transactions.length === 0 ? (
-                <Sparkles size={24} color={theme.colors.onPrimary} />
-              ) : (
-                <Plus size={24} color={theme.colors.onPrimary} />
-              )}
-            </View>
-            <View style={{ alignItems: 'flex-start' }}>
-              <Text style={{ ...theme.typography.h3, color: theme.colors.onPrimary }}>Registrar Gasto</Text>
-              {transactions.length === 0 && (
-                <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: '800', marginTop: 2 }}>
-                  ✨ Toca aquí para ver la magia
-                </Text>
-              )}
-            </View>
-          </TouchableOpacity>
-
-          {/* BOTON TEMPORAL DE DEMO PARA EL USUARIO */}
-          {onOpenScannerDemo && (
+          {/* QUICK ADD GIGANTE */}
+          <View style={{ marginBottom: 32 }}>
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onOpenScannerDemo(); }}
-              style={{ backgroundColor: theme.colors.surface, borderRadius: theme.radius.xl, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginBottom: 32, borderWidth: 1, borderColor: theme.colors.primary + '40', borderStyle: 'dashed' }}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                onOpenScanner();
+              }}
+              style={{ backgroundColor: theme.colors.primary, borderRadius: theme.radius.xl, padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, ...theme.shadows.md }}
             >
-              <Sparkles size={18} color={theme.colors.primary} />
-              <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.primary }}>Probar Flujo de Onboarding Mágico</Text>
+              <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: theme.radius.full }}>
+                <Plus size={24} color={theme.colors.onPrimary} />
+              </View>
+              <Text style={{ ...theme.typography.h3, color: theme.colors.onPrimary }}>Registrar gasto</Text>
             </TouchableOpacity>
-          )}
+          </View>
 
           {/* BOLSILLOS (Resumen Simple) */}
           <View style={{ marginBottom: 32 }}>
@@ -713,14 +654,56 @@ export const Dashboard = ({
       </ScrollView>
       )}
 
-
-
       <TransactionDetailModal
         visible={!!selectedTx}
         transaction={selectedTx}
         pockets={pockets}
         onClose={() => setSelectedTx(null)}
       />
+
+      <Modal visible={showWelcomeModal} animationType="fade" transparent>
+        <BlurView intensity={90} tint="dark" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          
+          <View style={{ backgroundColor: theme.colors.surface, borderRadius: 40, width: '100%', padding: 40, alignItems: 'center', ...theme.shadows.xl, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+            
+            {/* Tutorial Play Icon (YouTube style) */}
+            <View style={{ width: 90, height: 90, borderRadius: 45, backgroundColor: theme.colors.primary + '20', alignItems: 'center', justifyContent: 'center', marginBottom: 28 }}>
+              <View style={{ width: 70, height: 70, borderRadius: 35, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', ...theme.shadows.lg }}>
+                <Play size={32} color="#FFF" fill="#FFF" style={{ marginLeft: 4 }} />
+              </View>
+            </View>
+
+            {/* SAVE Logo Matching Header */}
+            <View style={{ transform: [{ scale: 1.2 }], marginBottom: 16 }}>
+              <MiniAnimatedSaveLogo />
+            </View>
+
+            <Text style={{ fontFamily: theme.fonts.body, fontSize: 19, color: theme.colors.onSurface, textAlign: 'center', marginBottom: 40, lineHeight: 28 }}>
+              Acompáñanos por un <Text style={{ fontWeight: '900', color: theme.colors.primary, textDecorationLine: 'underline' }}>tutorial</Text> por Save, y ya estarás listo para controlar tus finanzas.
+            </Text>
+            
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={{ width: '100%', backgroundColor: theme.colors.primary, paddingVertical: 22, borderRadius: 28, alignItems: 'center', ...theme.shadows.lg }}
+              onPress={async () => {
+                await AsyncStorage.removeItem('@save_magic_tour_pending');
+                await AsyncStorage.setItem('@save_demo_in_progress', 'true');
+                setShowWelcomeModal(false);
+                if (onOpenScannerDemo) {
+                  setTimeout(() => {
+                    onOpenScannerDemo();
+                  }, 300);
+                }
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                <Text style={{ fontFamily: theme.fonts.headline, color: '#FFFFFF', fontSize: 20, fontWeight: '900', letterSpacing: 0.5 }}>Iniciar tutorial</Text>
+                <ArrowRight size={22} color="#FFFFFF" strokeWidth={3} />
+              </View>
+            </TouchableOpacity>
+          </View>
+        </BlurView>
+      </Modal>
 
       <MonthClosureModal
         visible={showClosureModal}

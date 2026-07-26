@@ -222,7 +222,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   ], []);
 
   React.useEffect(() => {
-    if (!isOpeningPicker && initialMode !== 'demo') {
+    if (!isOpeningPicker && initialMode !== 'demo' && initialMode !== 'manual') {
       AsyncStorage.getItem('tour_scanner_done').then(done => {
         if (!done) {
           setTimeout(() => {
@@ -300,7 +300,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
 
         // Start the specialized DEMO tour after a brief pause to let them see the results
         setTimeout(() => {
-          startTour(DEMO_TOUR_STEPS, undefined, { step: 1, total: 4 });
+          startTour(DEMO_TOUR_STEPS, undefined, { step: 1, total: 5 });
         }, 600);
 
       }, 2500);
@@ -308,9 +308,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   };
 
   React.useEffect(() => {
-    if (initialMode === 'manual') {
-      setTimeout(() => amountInputRef.current?.focus(), 400);
-    } else if (initialMode === 'camera') {
+    if (initialMode === 'camera') {
       // Esperar a que pase la animación de navegación y abrir cámara
       setTimeout(() => {
         takePhoto();
@@ -552,7 +550,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
           )}
         </View>
 
-        <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: Math.max(insets.top, 16) + 80, paddingBottom: Math.max(insets.bottom, 24) + 20 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingTop: Math.max(insets.top, 16) + 80, paddingBottom: Math.max(insets.bottom, 24) + 20 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {(image && progress > 0 && progress < 100) ? (
             <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }]}>
                <BlurView intensity={20} tint="dark" style={{ padding: 40, borderRadius: 32, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: theme.colors.divider }}>
@@ -583,22 +581,6 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
                     <View style={styles.aiVerificationShield}>
                       <Sparkles size={14} color={theme.colors.primary} fill={theme.colors.primary} />
                       <Text style={styles.aiValidationText}>Escaneo Inteligente</Text>
-                    </View>
-                  )}
-
-                  {!image && (
-                    <View style={{ alignItems: 'center', marginBottom: 16 }}>
-                      <Text style={[styles.aiValidationText, { textAlign: 'center', marginBottom: 12, color: theme.colors.onSurfaceVariant }]}>
-                        AGREGAR MANUALMENTE
-                      </Text>
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={runDemoMode}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 }}
-                      >
-                        <Sparkles size={14} color={theme.colors.primary} />
-                        <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.primary }}>Ver Demostración IA</Text>
-                      </TouchableOpacity>
                     </View>
                   )}
 

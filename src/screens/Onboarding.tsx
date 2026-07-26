@@ -238,6 +238,15 @@ export const Onboarding = ({ session, onComplete }: { session: any; onComplete: 
                   </TouchableOpacity>
                 );
               })}
+
+              <View style={{ marginTop: 24, marginBottom: 8, padding: 12, backgroundColor: theme.colors.surface, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: theme.colors.outlineVariant }}>
+                <View style={{ backgroundColor: theme.colors.primaryContainer, padding: 6, borderRadius: 10 }}>
+                  <Info size={16} color={theme.colors.primary} strokeWidth={2.5} />
+                </View>
+                <Text style={{ flex: 1, fontFamily: theme.fonts.body, fontSize: 13, color: theme.colors.onSurfaceVariant, lineHeight: 18 }}>
+                  Podrás crear tus propios bolsillos personalizados más adelante.
+                </Text>
+              </View>
             </View>
           )}
 
