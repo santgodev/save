@@ -60,6 +60,20 @@ supabase/
 `SUPABASE_URL` y `SUPABASE_ANON_KEY` ya están disponibles dentro de las
 Edge Functions sin configuración extra.
 
+## 2b. Secret opcional — validación de suscripción
+
+| Nombre | De dónde sacarlo | Usado por |
+|---|---|---|
+| `REVENUECAT_SECRET_KEY` | Dashboard de RevenueCat → Project Settings → API Keys → **Secret API Key** (no es la misma que `EXPO_PUBLIC_REVENUECAT_IOS_API_KEY` del cliente, esa es pública) | `chat-advisor`, `ocr-receipt` (`_shared/entitlement.ts`) |
+
+**No es obligatorio.** Mientras no exista, `chat-advisor` y `ocr-receipt`
+funcionan exactamente igual que hoy. Si lo configuras, empiezan a loguear
+(sin bloquear a nadie) un evento `entitlement.unpaid_api_call` en
+`user_events` cada vez que alguien sin suscripción activa en RevenueCat
+llama a esas funciones — útil para medir cuánto se está usando la API sin
+pagar antes de decidir si activar un bloqueo real. Ver el comentario en
+`_shared/entitlement.ts` para el porqué de que hoy solo observe.
+
 ### Opción A — Dashboard
 
 Project Settings → **Edge Functions** → **Secrets** → *Add new secret*

@@ -23,6 +23,7 @@ import { useCurrency } from '../lib/CurrencyContext';
 import { notify } from '../lib/notify';
 import { CycleNav } from '../components/CycleNav';
 import { TransactionDetailModal } from '../components/TransactionDetailModal';
+import { CycleUndoModal } from '../components/CycleUndoModal';
 import { MiniAnimatedSaveLogo } from '../components/TopBar';
 import { TourStep } from '../components/tour/TourStep';
 import { useTour, TourStepType } from '../components/tour/TourContext';
@@ -42,6 +43,9 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   const [isSaving, setIsSaving] = useState(false);
 
   const [selectedTx, setSelectedTx] = useState<any>(null);
+  const [showUndoModal, setShowUndoModal] = useState(false);
+  const [undoWasReverted, setUndoWasReverted] = useState(true);
+  
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
   const [newBudget, setNewBudget] = useState('');
@@ -137,53 +141,20 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
             description: 'Toca este bolsillo para ver el detalle y cuánto presupuesto te queda.',
             iconName: 'Sparkles',
             order: 1
-          }], undefined, { step: 5, total: 5 });
+          }], undefined, { step: 6, total: 6 });
           AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
         }, 500);
         return;
       }
 
-      // --- PRIORIDAD 2: Tour mágico de usuario nuevo (step 3/4) ---
-      AsyncStorage.getItem('@save_magic_tour_pockets_pending').then(async (pending) => {
-        if (pending === 'true') {
-          await AsyncStorage.removeItem('@save_magic_tour_pockets_pending');
-          await AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
-
-          // Step 3/4 → mostrar bolsillo Libre
-          setTimeout(() => {
-            startTour([{
-              name: 'pockets_free',
-              title: 'El Bolsillo Libre',
-              description: 'Cuando registres un ingreso, el dinero que no asignes a otros bolsillos llega aquí automáticamente. Es tu plata flexible para gastos del día a día.',
-              iconName: 'Unlock',
-              order: 1
-            }], () => {
-              // Step 4/4 → mostrar el primer bolsillo personalizado
-              const firstCustomPocket = pockets.find(p => !p.is_default_free);
-              if (!firstCustomPocket) return;
-              setTimeout(() => {
-                startTour([{
-                  name: `pocket_${firstCustomPocket.id}`,
-                  title: 'Abre un Bolsillo',
-                  description: 'Toca cualquier bolsillo para ver su historial, cuánto gastaste y cuánto te queda. ¡Así de simple es controlar tu plata con Save!',
-                  iconName: 'PieChart',
-                  order: 1
-                }], undefined, { step: 4, total: 4 });
-              }, 300);
-            }, { step: 3, total: 4 });
-          }, 600);
-          return;
-        }
-
-        // --- PRIORIDAD 3: Tour básico de primera visita ---
-        const seen = await AsyncStorage.getItem('@save_tour_pockets_seen');
-        if (!seen) {
-          setTimeout(() => {
-            startTour(TOUR_STEPS);
-            AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
-          }, 600);
-        }
-      });
+      // --- PRIORIDAD 2: Tour básico de primera visita ---
+      const seen = await AsyncStorage.getItem('@save_tour_pockets_seen');
+      if (!seen) {
+        setTimeout(() => {
+          startTour(TOUR_STEPS);
+          AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
+        }, 600);
+      }
     };
     checkDemoTour();
   }, [isFocused, isMonthlyLoading, monthState, pockets, transactions, startTour]);
@@ -249,19 +220,21 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     const capitalizedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
     const allocated = parseInt(newBudget.replace(/\D/g, '')) || 0;
     
-    // FIX BUG 8: El nuevo bolsillo parte con budget = 0 (saldo real vacío).
-    // El plan (allocated_budget) sí refleja lo que el usuario asignó.
-    // El saldo real (budget) crece solo cuando le llegan ingresos vía
-    // register_income. Antes se inicializaba budget = allocated, lo que
-    // inflaba el disponible sin que hubiera plata real.
-    await supabase.from('pockets').insert({
-      user_id: session.user.id,
-      name: capitalizedName,
-      category: capitalizedName,
-      budget: 0,
-      allocated_budget: allocated,
-      icon: newIcon || 'tag'
-    });
+    // El bolsillo nace en 0: allocated_budget solo crece cuando un ingreso le
+    // reparte plata vía register_income. Sembrarlo con la cifra que el usuario
+    // escribe aquí inventaria dinero que ningún ingreso respalda.
+    //
+    // PENDIENTE: por eso `allocated` (arriba) queda sin usar y el campo
+    // "Presupuesto mensual" del modal no guarda nada. Falta decidir si se
+    // quita ese campo de la UI o si el "plan" vive en su propia columna,
+    // separada del dinero disponible.
+      await supabase.from('pockets').insert({
+        user_id: session.user.id,
+        name: capitalizedName,
+        category: capitalizedName,
+        allocated_budget: 0,
+        icon: newIcon || 'tag'
+      });
     setNewName('');
     setNewBudget('');
     setNewIcon('tag');
@@ -277,10 +250,10 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
       const cleanName = editName.trim();
       const capitalizedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
       
+      // Solo se editan nombre e icono. El monto del campo "Presupuesto (Plan)"
+      // se descarta a propósito: escribirlo en allocated_budget crearía plata
+      // sin ingreso que la respalde. Mismo pendiente que en syncPocketToCloud.
       const updates: any = { name: capitalizedName, category: capitalizedName, icon: editIcon };
-      if (!selectedPocket.is_default_free) {
-        updates.allocated_budget = parseInt(editBudgetValue.replace(/\D/g, '')) || 0;
-      }
       
       await supabase.from('pockets').update(updates).eq('id', selectedPocket.id);
       
@@ -309,9 +282,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     if (!selectedPocket) return;
     setEditName(selectedPocket.name);
     setEditIcon(selectedPocket.icon || 'tag');
-    const mp = getMonthlyPocket(selectedPocket.id);
-    const alloc = mp?.allocated ?? selectedPocket.allocated_budget ?? selectedPocket.budget ?? 0;
-    setEditBudgetValue(alloc > 0 ? String(alloc) : '');
+    const plan = selectedPocket.allocated_budget ?? 0;
+    setEditBudgetValue(plan > 0 ? String(plan) : '');
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setIsEditingPocket(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -465,17 +437,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
   // Centralized helper to get the precise allocated budget for this month
   const getPocketAlloc = (p: any) => {
-    if (p.is_default_free) {
-      // Libre receives whatever is left from the monthIncome after other pockets are funded
-      const othersAlloc = pockets.filter(x => !x.is_default_free).reduce((acc, x) => {
-         const mp = getMonthlyPocket(x.id);
-         const val = mp?.allocated ?? x.allocated_budget ?? x.budget ?? 0;
-         return acc + val;
-      }, 0);
-      return Math.max(0, monthIncome - othersAlloc);
-    }
     const mp = getMonthlyPocket(p.id);
-    return mp?.allocated ?? p.allocated_budget ?? p.budget ?? 0;
+    return mp?.allocated ?? p.allocated_budget ?? 0;
   };
 
   // Sort: libre siempre último, el resto por % gastado (más lleno primero)
@@ -487,8 +450,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     const mpA = (monthState?.pockets || []).find(p => p.id === a.id);
     const mpB = (monthState?.pockets || []).find(p => p.id === b.id);
     
-    const allocA = mpA?.allocated ?? (a as any).allocated_budget ?? a.budget ?? 1;
-    const allocB = mpB?.allocated ?? (b as any).allocated_budget ?? b.budget ?? 1;
+    const allocA = mpA?.allocated ?? (a as any).allocated_budget ?? 1;
+    const allocB = mpB?.allocated ?? (b as any).allocated_budget ?? 1;
     
     const pctA = (mpA?.spent_month ?? 0) / (allocA || 1);
     const pctB = (mpB?.spent_month ?? 0) / (allocB || 1);
@@ -671,12 +634,12 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
           </View>
           <View style={styles.grid}>
             {sorted.map((p, i) => {
-              // Plan (allocated_budget) y disponible (budget) vienen del RPC
-              // o de la prop. NO restamos gasto otra vez — el RPC ya lo hizo.
+              // Plan y disponible vienen del RPC get_cycle_state.
+              // NO restamos gasto otra vez — el RPC ya lo hizo.
               const mp = getMonthlyPocket(p.id);
               const allocated = getPocketAlloc(p);
               const spent = mp?.spent_month ?? 0;
-              const available = p.is_default_free ? (allocated - spent) : (mp?.available ?? p.budget ?? 0);
+              const available = mp?.available ?? 0;
               const remaining = available;             // ← lo que queda hoy, directo de la DB
               const isOver = remaining < 0 || (allocated > 0 && spent > allocated);
               const pctUsed = allocated > 0 ? Math.min((spent / allocated) * 100, 100) : 0;
@@ -702,7 +665,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                             </View>
                             <Text style={{ fontSize: 18, fontWeight: '900', color: '#FFF', marginBottom: 4 }} numberOfLines={1}>{p.name}</Text>
                             <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 20 }}>
-                              Plan: {allocated > 0 ? formatCOP(allocated) : '$0'}
+                              Asignado: {allocated > 0 ? formatCOP(allocated) : '$0'}
                             </Text>
                             <View style={{ marginTop: 'auto' }}>
                               <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={8} />
@@ -731,7 +694,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                         </View>
                         <Text style={{ fontSize: 18, fontWeight: '900', color: '#FFF', marginBottom: 4 }} numberOfLines={1}>{p.name}</Text>
                         <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 20 }}>
-                          Plan: {allocated > 0 ? formatCOP(allocated) : '$0'}
+                          Asignado: {allocated > 0 ? formatCOP(allocated) : '$0'}
                         </Text>
                         <View style={{ marginTop: 'auto' }}>
                           <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={8} />
@@ -772,7 +735,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                 const mp = getMonthlyPocket(selectedPocket.id);
                 const planAlloc = getPocketAlloc(selectedPocket);
                 const spent = mp?.spent_month ?? 0;
-                const available = selectedPocket.is_default_free ? (planAlloc - spent) : (mp?.available ?? selectedPocket.budget ?? 0);
+                const available = selectedPocket.is_default_free ? (planAlloc - spent) : (mp?.available ?? 0);
                 const isOver = available < 0;
                 const pctUsed = planAlloc > 0 ? Math.min((spent / planAlloc) * 100, 100) : 0;
                 const pocketColor = isOver ? theme.colors.error : flatColor;
@@ -923,9 +886,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                           <TouchableOpacity
                             onPress={() => {
                               closePocket(true);
-                              // FIX: elegir el bolsillo de origen por el disponible REAL del
-                              // ciclo (RPC get_cycle_state via getMonthlyPocket), no por
-                              // pockets.budget -- esa columna no refleja el disponible actual.
+                              // Elegir el bolsillo de origen por el disponible REAL del
+                              // ciclo (RPC get_cycle_state via getMonthlyPocket).
                               const bestSource = [...pockets]
                                 .filter(p => p.id !== selectedPocket.id)
                                 .map(p => ({ pocket: p, avail: getMonthlyPocket(p.id)?.available ?? 0 }))
@@ -1126,11 +1088,20 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
           onDelete={async (tx) => {
             setSelectedTx(null);
             try {
-              await supabase.rpc('delete_transaction_with_reversal', { 
+              const { data, error } = await supabase.rpc('delete_transaction_with_reversal', { 
                 p_tx_id: tx.id, 
                 p_user_id: session.user.id 
               });
-              onRefresh();
+              
+              if (error) throw error;
+              
+              if (data && data.cycle_deleted) {
+                setUndoWasReverted(!!data.cycle_reverted);
+                setShowUndoModal(true);
+              } else {
+                onRefresh();
+              }
+              
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               
               if (tx.metadata?.is_demo) {
@@ -1141,6 +1112,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
             }
           }}
         />
+
+        <CycleUndoModal visible={showUndoModal} reverted={undoWasReverted} />
 
         <Modal visible={showDemoSuccess} animationType="fade" transparent>
           <BlurView intensity={90} tint="dark" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
-import { X, CheckCircle2, Circle, ArrowRight, Sparkles, Wallet, DollarSign, Percent, Briefcase, Tag, PlusCircle, Check, Utensils, Car, Home, Zap, Heart, Gamepad, PiggyBank, GraduationCap } from 'lucide-react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator, Switch } from 'react-native';
+import { X, CheckCircle2, Circle, ArrowRight, Sparkles, Wallet, DollarSign, Percent, Briefcase, Tag, PlusCircle, Check, Utensils, Car, Home, Zap, Heart, Gamepad, PiggyBank, GraduationCap, Info } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
@@ -42,7 +42,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
 
   const [distType, setDistType] = useState<'smart' | 'single'>(initialDistType);
   const [amount, setAmount] = useState(initialAmount ? formatCurrency(initialAmount) : '');
-  const [source, setSource] = useState(editTransaction?.merchant || 'Me pagaron');
+  const [source, setSource] = useState<'Sueldo' | 'Venta' | 'Extra'>((editTransaction?.merchant as any) || 'Sueldo');
   const [cycleMode, setCycleMode] = useState<'accumulate' | 'start_fresh'>('accumulate');
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -50,15 +50,17 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
     let initialRules: any[] = [];
     let priority = 0;
     pockets.forEach(p => {
-      if (!p.is_default_free && p.allocated > 0) {
+      if (!p.is_default_free && p.allocated_budget && p.allocated_budget > 0) {
         priority += 1;
-        initialRules.push({ pocket_id: p.id, priority, type: 'fixed', value: p.allocated });
+        initialRules.push({ pocket_id: p.id, priority, type: 'fixed', value: p.allocated_budget });
       }
     });
     return initialRules;
   }, [pockets]);
 
   const [rules, setRules] = useState<any[]>(defaultRules);
+  const [existingSourceId, setExistingSourceId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const variosPocket = pockets.find(p => p.is_default_free) || pockets.find(p => p.name.toLowerCase() === 'libre') || pockets.find(p => p.name.toLowerCase() === 'varios') || pockets[0];
   const initialSinglePocket = (initialDistType === 'single' && editTransaction?.metadata?.distribution) 
@@ -71,29 +73,48 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
       try {
         const { data, error } = await supabase
           .from('income_sources')
-          .select('distribution_rules, amount')
+          .select('id, distribution_rules, amount')
           .eq('user_id', session.user.id)
           .order('created_at', { ascending: false })
           .limit(1);
 
         let dbRules = (!error && data && data.length > 0) ? (data[0].distribution_rules || []) : [];
-        
+
+        if (!error && data && data.length > 0) {
+          setExistingSourceId(data[0].id);
+        }
+
         if (!error && data && data.length > 0 && data[0].amount) {
           setAmount(prev => prev ? prev : formatCurrency(data[0].amount));
         }
 
+        // SYNC: Si el usuario editó el presupuesto del bolsillo en la pestaña Pockets,
+        // queremos que esa meta se refleje en las reglas de distribución fijas.
+        dbRules = dbRules.map((rule: any) => {
+          if (rule.type === 'fixed') {
+            const pocket = pockets.find(p => p.id === rule.pocket_id);
+            if (pocket && !pocket.is_default_free) {
+              // Si el usuario edita el presupuesto a 0, queremos que la regla también sea 0.
+              const plan = typeof pocket.allocated_budget === 'number' ? pocket.allocated_budget : rule.value;
+              return { ...rule, value: plan };
+            }
+          }
+          return rule;
+        });
+
         // Ensure new pockets with a budget are added to the rules
         const pocketsInRules = new Set(dbRules.map((r: any) => r.pocket_id));
         let maxPriority = dbRules.reduce((max: number, r: any) => Math.max(max, r.priority || 0), 0);
-        
+
         pockets.forEach(p => {
           if (!p.is_default_free && !pocketsInRules.has(p.id)) {
             maxPriority += 1;
+            const plan = p.allocated_budget && p.allocated_budget > 0 ? p.allocated_budget : 0;
             dbRules.push({
               pocket_id: p.id,
               priority: maxPriority,
               type: 'fixed',
-              value: p.allocated > 0 ? p.allocated : 0
+              value: plan
             });
           }
         });
@@ -109,6 +130,8 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
         }
       } catch (e) {
         console.error('Error fetching rules:', e);
+      } finally {
+        setIsLoading(false);
       }
     };
     fetchRules();
@@ -179,7 +202,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
     pocketItemSelected: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primaryContainer, borderWidth: 1.5 },
     pocketName: { fontSize: 16, fontWeight: '700', color: theme.colors.onSurface },
     
-    ruleCard: { borderRadius: 24, padding: 20, backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.divider, ...theme.shadows.sm },
+    ruleCard: { borderRadius: 24, padding: 20, backgroundColor: theme.colors.surfaceContainerLow, borderColor: 'transparent', shadowOpacity: 0, elevation: 0 },
     ruleHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
     priorityBadge: { width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
     ruleTitle: { flex: 1, fontSize: 16, fontWeight: '700', color: theme.colors.onSurface },
@@ -218,7 +241,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
         if (rule.type === 'fixed') {
           amt = Math.min(remaining, rule.value);
         } else if (rule.type === 'percentage') {
-          amt = Math.round(remaining * (rule.value / 100));
+          amt = Math.min(remaining, Math.round(val * (rule.value / 100)));
         }
         if (amt > 0) {
           distribution[rule.pocket_id] = (distribution[rule.pocket_id] || 0) + amt;
@@ -264,12 +287,39 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
         p_distribution: finalPreview,
         p_mode: distType === 'smart' ? 'equal' : 'manual',
         p_merchant: source,
-        p_cycle_mode: cycleMode
+        p_cycle_mode: cycleMode,
+        p_rollover_mode: 'sweep_to_savings'
       };
 
       const { error } = await supabase.rpc(rpcName, rpcPayload);
 
       if (error) throw error;
+
+      // Mantener income_sources.distribution_rules sincronizado con la última
+      // repartición "smart" que el usuario realmente usó, en vez de dejarlo
+      // congelado en lo que se guardó una sola vez durante el onboarding.
+      // Best-effort: el ingreso ya quedó registrado vía RPC, así que un
+      // fallo aquí no debe bloquear el flujo principal.
+      if (!isEditing && distType === 'smart') {
+        try {
+          if (existingSourceId) {
+            await supabase.from('income_sources').update({ distribution_rules: rules, amount: val }).eq('id', existingSourceId);
+          } else {
+            await supabase.from('income_sources').insert({
+              user_id: session.user.id,
+              name: 'Ingreso Principal',
+              amount: val,
+              frequency: 'monthly',
+              next_date: new Date().toISOString().split('T')[0],
+              distribution_rules: rules,
+              is_active: true,
+              metadata: { income_type: 'fixed' }
+            });
+          }
+        } catch (syncErr) {
+          console.error('[AddIncome] income_sources sync error:', syncErr);
+        }
+      }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSaved(true);
@@ -319,238 +369,253 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
         <View style={{ width: 44 }} />
       </View>
 
-      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingTop: Math.max(insets.top, 20) + 104 }]}>
-        
-        {/* --- AMOUNT HERO --- */}
-        <View style={styles.premiumAmountBox}>
-          <Text style={styles.premiumAmountLabel}>¿Cuánto Entró?</Text>
-          <View style={styles.modernAmountInputRow}>
-            <Text style={styles.modernCurrencySymbol}>{symbol}</Text>
-            <TextInput
-              style={styles.modernAmountInput}
-              value={amount}
-              onChangeText={(t) => setAmount(formatCurrency(t))}
-              keyboardType="numeric"
-              placeholder="0"
-              placeholderTextColor={theme.colors.onSurfaceVariant + '40'}
-              autoFocus
-            />
-          </View>
+      {isLoading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
+      ) : (
+        <>
+          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingTop: Math.max(insets.top, 20) + 104 }]}>
+            
+            {/* --- AMOUNT HERO --- */}
+            <View style={styles.premiumAmountBox}>
+              <Text style={styles.premiumAmountLabel}>¿Cuánto Entró?</Text>
+              <View style={styles.modernAmountInputRow}>
+                <Text style={styles.modernCurrencySymbol}>{symbol}</Text>
+                <TextInput
+                  style={styles.modernAmountInput}
+                  value={amount}
+                  onChangeText={(t) => setAmount(formatCurrency(t))}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor={theme.colors.onSurfaceVariant + '40'}
+                  autoFocus
+                />
+              </View>
+            </View>
 
-        <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>¿De dónde viene?</Text>
-          <View style={[styles.segmentedControl, { marginBottom: 0 }]}>
-             {[
-               { id: 'Me pagaron', label: 'Sueldo', icon: Briefcase },
-               { id: 'Venta', label: 'Venta', icon: Tag },
-               { id: 'Ingreso Extra', label: 'Extra', icon: PlusCircle }
-             ].map(opt => {
-                const isActive = source === opt.id;
-                const Icon = opt.icon;
-                return (
-                  <TouchableOpacity 
-                    key={opt.id}
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionTitle}>¿De dónde viene?</Text>
+              <View style={[styles.segmentedControl, { marginBottom: 0 }]}>
+                {(['Sueldo', 'Venta', 'Extra'] as const).map(type => (
+                  <TouchableOpacity
+                    key={type}
                     activeOpacity={0.8}
-                    onPress={() => { setSource(opt.id); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-                    style={[styles.segmentBtn, isActive && styles.segmentBtnActive]}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSource(type); }}
+                    style={[styles.segmentBtn, source === type && styles.segmentBtnActive]}
                   >
-                    <Icon size={16} color={isActive ? theme.colors.primary : theme.colors.onSurfaceVariant} />
-                    <Text style={[styles.segmentText, isActive && styles.segmentTextActive]}>{opt.label}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {type === 'Sueldo' && <Briefcase size={16} color={source === type ? theme.colors.primary : theme.colors.onSurfaceVariant} />}
+                      {type === 'Venta' && <Tag size={16} color={source === type ? theme.colors.primary : theme.colors.onSurfaceVariant} />}
+                      {type === 'Extra' && <PlusCircle size={16} color={source === type ? theme.colors.primary : theme.colors.onSurfaceVariant} />}
+                      <Text style={[styles.segmentText, source === type && styles.segmentTextActive]}>{type}</Text>
+                    </View>
                   </TouchableOpacity>
-                );
-             })}
-          </View>
-        </View>
+                ))}
+              </View>
+            </View>
 
-         {!isEditing && (
-           <View style={styles.sectionContainer}>
-             <Text style={styles.sectionTitle}>¿A qué mes pertenece?</Text>
-             <View style={[styles.segmentedControl, { marginBottom: 0 }]}>
-               <TouchableOpacity 
-                 activeOpacity={0.8} 
-                 style={[styles.segmentBtn, cycleMode === 'accumulate' && styles.segmentBtnActive]} 
-                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCycleMode('accumulate'); }}
-               >
-                 <ArrowRight size={18} color={cycleMode === 'accumulate' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
-                 <Text style={[styles.segmentText, cycleMode === 'accumulate' && styles.segmentTextActive]}>Al mes actual</Text>
-               </TouchableOpacity>
-
-               <TouchableOpacity 
-                 activeOpacity={0.8} 
-                 style={[styles.segmentBtn, cycleMode === 'start_fresh' && styles.segmentBtnActive]} 
-                 onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCycleMode('start_fresh'); }}
-               >
-                 <Sparkles size={18} color={cycleMode === 'start_fresh' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
-                 <Text style={[styles.segmentText, cycleMode === 'start_fresh' && styles.segmentTextActive]}>A un mes nuevo</Text>
-               </TouchableOpacity>
-             </View>
-           </View>
-         )}
-
-        <View style={[styles.sectionContainer, { marginBottom: 0 }]}>
-          <Text style={styles.sectionTitle}>¿Cómo lo repartimos?</Text>
-        <View style={styles.segmentedControl}>
-          <TouchableOpacity 
-            activeOpacity={0.8} 
-            style={[styles.segmentBtn, distType === 'smart' && styles.segmentBtnActive]} 
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDistType('smart'); }}
-          >
-            <Sparkles size={18} color={distType === 'smart' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
-            <Text style={[styles.segmentText, distType === 'smart' && styles.segmentTextActive]}>Automático</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            activeOpacity={0.8} 
-            style={[styles.segmentBtn, distType === 'single' && styles.segmentBtnActive]} 
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDistType('single'); }}
-          >
-            <Wallet size={18} color={distType === 'single' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
-            <Text style={[styles.segmentText, distType === 'single' && styles.segmentTextActive]}>Elegir bolsillo</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.pocketsList}>
-          {distType === 'smart' ? (
-            <>
-              {[...rules].sort((a, b) => a.priority - b.priority).map((rule, index) => {
-                const p = pockets.find(p => p.id === rule.pocket_id);
-                if (!p) return null;
-                const addValue = preview[p.id] || 0;
-
-                return (
-                  <View key={rule.pocket_id} style={styles.ruleCard}>
-                    <View style={styles.ruleHeader}>
-                      <View style={[styles.priorityBadge, { backgroundColor: theme.colors.primaryContainer }]}>
-                        <Text style={{ color: theme.colors.onPrimaryContainer, fontSize: 10, fontWeight: '900' }}>{index + 1}</Text>
-                      </View>
-                      <Text style={styles.ruleTitle}>{p.name}</Text>
-
-                      <View style={styles.typeSwitch}>
-                        <TouchableOpacity 
-                          style={[styles.typeToggle, rule.type === 'fixed' && { backgroundColor: theme.colors.primary }]} 
-                          onPress={() => {
-                            const newRules = [...rules];
-                            const idx = newRules.findIndex(r => r.pocket_id === rule.pocket_id);
-                            newRules[idx] = { ...rule, type: 'fixed' };
-                            setRules(newRules);
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          }}
-                        >
-                          <DollarSign size={14} color={rule.type === 'fixed' ? theme.colors.onPrimary : theme.colors.onSurfaceVariant} />
-                        </TouchableOpacity>
-                        <TouchableOpacity 
-                          style={[styles.typeToggle, rule.type === 'percentage' && { backgroundColor: theme.colors.primary }]} 
-                          onPress={() => {
-                            const newRules = [...rules];
-                            const idx = newRules.findIndex(r => r.pocket_id === rule.pocket_id);
-                            newRules[idx] = { ...rule, type: 'percentage' };
-                            setRules(newRules);
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          }}
-                        >
-                          <Percent size={14} color={rule.type === 'percentage' ? theme.colors.onPrimary : theme.colors.onSurfaceVariant} />
-                        </TouchableOpacity>
-                      </View>
+            {!isEditing && (
+              <View style={styles.sectionContainer}>
+                <Text style={styles.sectionTitle}>¿A qué mes pertenece?</Text>
+                <View style={[styles.segmentedControl, { marginBottom: 0 }]}>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCycleMode('accumulate'); }}
+                    style={[styles.segmentBtn, cycleMode === 'accumulate' && styles.segmentBtnActive]}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <ArrowRight size={16} color={cycleMode === 'accumulate' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
+                      <Text style={[styles.segmentText, cycleMode === 'accumulate' && styles.segmentTextActive]}>Al mes actual</Text>
                     </View>
+                  </TouchableOpacity>
 
-                    <View style={styles.ruleInputRow}>
-                      <Text style={styles.rulePrefix}>{rule.type === 'fixed' ? '$' : '%'}</Text>
-                      <TextInput
-                        style={styles.ruleInput}
-                        value={rule.value > 0 ? (rule.type === 'fixed' ? formatMoneyDigits(String(rule.value)) : String(rule.value)) : ''}
-                        onChangeText={(t) => {
-                          const v = parseInt(t.replace(/\D/g, '')) || 0;
-                          const newRules = [...rules];
-                          const idx = newRules.findIndex(r => r.pocket_id === rule.pocket_id);
-                          newRules[idx] = { ...rule, value: v };
-                          setRules(newRules);
-                        }}
-                        placeholder="0"
-                        placeholderTextColor={theme.colors.onSurfaceVariant + '40'}
-                        keyboardType="numeric"
-                      />
-                      
-                      <View style={styles.previewResultTag}>
-                        <Text style={styles.previewResultTxt}>+ {formatMoney(addValue)}</Text>
-                      </View>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCycleMode('start_fresh'); }}
+                    style={[styles.segmentBtn, cycleMode === 'start_fresh' && styles.segmentBtnActive]}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Sparkles size={16} color={cycleMode === 'start_fresh' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
+                      <Text style={[styles.segmentText, cycleMode === 'start_fresh' && styles.segmentTextActive]}>A un mes nuevo</Text>
                     </View>
-                  </View>
-                );
-              })}
-
-              {variosPocket && remainingCascade > 0 && (
-                <View style={[styles.ruleCard, { opacity: 0.8 }]}>
-                    <View style={styles.ruleHeader}>
-                       <Text style={[styles.ruleTitle, { color: theme.colors.onSurfaceVariant }]}>{variosPocket.name} (Sobrante)</Text>
-                    </View>
-                    <View style={styles.ruleInputRow}>
-                        <View style={{ flex: 1 }} />
-                        <View style={[styles.previewResultTag, { backgroundColor: theme.colors.surface }]}>
-                          <Text style={[styles.previewResultTxt, { color: theme.colors.onSurfaceVariant }]}>+ {formatMoney(remainingCascade)}</Text>
-                        </View>
-                    </View>
+                  </TouchableOpacity>
                 </View>
-              )}
-            </>
-          ) : pockets.map((p, idx) => {
-              const isSingleSelected = distType === 'single' && singlePocketId === p.id;
-              const color = colorOf(p.category || p.name, idx);
-              return (
-                <TouchableOpacity
-                  key={p.id}
-                  activeOpacity={0.8}
-                  style={[styles.pocketItem, isSingleSelected ? {
-                    backgroundColor: theme.isDark ? color + '28' : color + '1A',
-                    borderColor: 'transparent',
-                    shadowColor: color,
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.22,
-                    shadowRadius: 14,
-                    elevation: 5,
-                  } : {
-                    backgroundColor: theme.colors.surfaceContainerLow,
-                    borderColor: 'transparent',
-                    shadowOpacity: 0,
-                    elevation: 0,
-                  }]}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setSinglePocketId(p.id);
-                  }}
-                >
-                  <View style={[{
-                    width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center'
-                  }, {
-                    backgroundColor: isSingleSelected ? color : theme.colors.surfaceContainerHighest,
-                  }]}>
-                    <CatIcon id={p.category || p.name} color={isSingleSelected ? '#FFF' : theme.colors.onSurfaceVariant} size={18} />
-                  </View>
-                  <Text style={[styles.pocketName, { flex: 1, marginLeft: 12, color: isSingleSelected ? theme.colors.onSurface : theme.colors.onSurfaceVariant, fontFamily: (theme.fonts as any).headline }]}>
-                    {p.name}
-                  </Text>
-                  {isSingleSelected
-                    ? <View style={[{ width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, { backgroundColor: color }]}><Check size={12} color="#FFF" strokeWidth={3} /></View>
-                    : <View style={[{ width: 20, height: 20, borderRadius: 10 }, { backgroundColor: theme.colors.surfaceContainerHighest }]} />}
-                </TouchableOpacity>
-              );
-            })}
-        </View>
-        </View>
-      </ScrollView>
-
-      <View style={[styles.footer, { flexDirection: 'row', gap: 12 }]}>
-        <TouchableOpacity activeOpacity={0.9} style={[styles.premiumConfirmBtn, { flex: 1 }, (!val || Object.keys(preview).length === 0) && styles.saveBtnDisabled]} onPress={handleSave} disabled={isSaving || !val || Object.keys(preview).length === 0}>
-          <View style={styles.btnInner}>
-            {isSaving ? <ActivityIndicator color={theme.colors.onPrimary} /> : (
-              <>
-                <Text style={styles.premiumConfirmBtnText}>{isEditing ? 'Guardar Cambios' : 'Guardar'}</Text>
-                <ArrowRight size={22} color={theme.colors.onPrimary} />
-              </>
+              </View>
             )}
+
+            <View style={[styles.sectionContainer, { marginBottom: 0 }]}>
+              <Text style={styles.sectionTitle}>¿Cómo lo repartimos?</Text>
+            <View style={styles.segmentedControl}>
+              <TouchableOpacity 
+                activeOpacity={0.8} 
+                style={[styles.segmentBtn, distType === 'smart' && styles.segmentBtnActive]} 
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDistType('smart'); }}
+              >
+                <Sparkles size={18} color={distType === 'smart' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
+                <Text style={[styles.segmentText, distType === 'smart' && styles.segmentTextActive]}>Automático</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                activeOpacity={0.8} 
+                style={[styles.segmentBtn, distType === 'single' && styles.segmentBtnActive]} 
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDistType('single'); }}
+              >
+                <Wallet size={18} color={distType === 'single' ? theme.colors.primary : theme.colors.onSurfaceVariant} />
+                <Text style={[styles.segmentText, distType === 'single' && styles.segmentTextActive]}>Elegir bolsillo</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.pocketsList}>
+              {distType === 'smart' ? (
+                <>
+                  {[...rules].sort((a, b) => a.priority - b.priority).map((rule, index) => {
+                    const p = pockets.find(p => p.id === rule.pocket_id);
+                    if (!p) return null;
+                    const pIndex = pockets.findIndex(pocket => pocket.id === p.id);
+                    const color = colorOf(p.category || p.name, pIndex !== -1 ? pIndex : index);
+                    const addValue = preview[p.id] || 0;
+
+                    return (
+                      <View key={rule.pocket_id} style={[styles.ruleCard, { backgroundColor: theme.isDark ? color + '28' : color + '1A' }]}>
+                        <View style={styles.ruleHeader}>
+                          <View style={[styles.priorityBadge, { backgroundColor: color, width: 28, height: 28, borderRadius: 10 }]}>
+                            <CatIcon id={p.category || p.name} color="#FFF" size={14} />
+                          </View>
+                          <Text style={styles.ruleTitle}>{p.name}</Text>
+
+                          <View style={styles.typeSwitch}>
+                            <TouchableOpacity 
+                              style={[styles.typeToggle, rule.type === 'fixed' && { backgroundColor: color }]} 
+                              onPress={() => {
+                                const newRules = [...rules];
+                                const idx = newRules.findIndex(r => r.pocket_id === rule.pocket_id);
+                                newRules[idx] = { ...rule, type: 'fixed' };
+                                setRules(newRules);
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              }}
+                            >
+                              <DollarSign size={14} color={rule.type === 'fixed' ? '#FFF' : theme.colors.onSurfaceVariant} />
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                              style={[styles.typeToggle, rule.type === 'percentage' && { backgroundColor: color }]} 
+                              onPress={() => {
+                                const newRules = [...rules];
+                                const idx = newRules.findIndex(r => r.pocket_id === rule.pocket_id);
+                                newRules[idx] = { ...rule, type: 'percentage' };
+                                setRules(newRules);
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              }}
+                            >
+                              <Percent size={14} color={rule.type === 'percentage' ? '#FFF' : theme.colors.onSurfaceVariant} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+
+                        <View style={styles.ruleInputRow}>
+                          <Text style={styles.rulePrefix}>{rule.type === 'fixed' ? '$' : '%'}</Text>
+                          <TextInput
+                            style={styles.ruleInput}
+                            value={rule.value > 0 ? (rule.type === 'fixed' ? formatMoneyDigits(String(rule.value)) : String(rule.value)) : ''}
+                            onChangeText={(t) => {
+                              const v = parseInt(t.replace(/\D/g, '')) || 0;
+                              const newRules = [...rules];
+                              const idx = newRules.findIndex(r => r.pocket_id === rule.pocket_id);
+                              newRules[idx] = { ...rule, value: v };
+                              setRules(newRules);
+                            }}
+                            placeholder="0"
+                            placeholderTextColor={theme.colors.onSurfaceVariant + '40'}
+                            keyboardType="numeric"
+                          />
+                          
+                          <View style={[styles.previewResultTag, { backgroundColor: theme.colors.surface }]}>
+                            <Text style={[styles.previewResultTxt, { color }]}>+ {formatMoney(addValue)}</Text>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
+
+                  {(() => {
+                    if (!variosPocket || remainingCascade <= 0) return null;
+                    const vIndex = pockets.findIndex(p => p.id === variosPocket.id);
+                    const vColor = colorOf(variosPocket.category || variosPocket.name, vIndex !== -1 ? vIndex : 0);
+                    return (
+                      <View style={[styles.ruleCard, { backgroundColor: theme.isDark ? vColor + '28' : vColor + '1A', opacity: 0.8 }]}>
+                        <View style={styles.ruleHeader}>
+                           <Text style={styles.ruleTitle}>{variosPocket.name} (Sobrante)</Text>
+                        </View>
+                        <View style={styles.ruleInputRow}>
+                            <View style={{ flex: 1 }} />
+                            <View style={[styles.previewResultTag, { backgroundColor: theme.colors.surface }]}>
+                              <Text style={[styles.previewResultTxt, { color: vColor }]}>+ {formatMoney(remainingCascade)}</Text>
+                            </View>
+                        </View>
+                      </View>
+                    );
+                  })()}
+                </>
+              ) : pockets.map((p, idx) => {
+                  const isSingleSelected = distType === 'single' && singlePocketId === p.id;
+                  const color = colorOf(p.category || p.name, idx);
+                  return (
+                    <TouchableOpacity
+                      key={p.id}
+                      activeOpacity={0.8}
+                      style={[styles.pocketItem, isSingleSelected ? {
+                        backgroundColor: theme.isDark ? color + '28' : color + '1A',
+                        borderColor: 'transparent',
+                        shadowColor: color,
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.22,
+                        shadowRadius: 14,
+                        elevation: 5,
+                      } : {
+                        backgroundColor: theme.colors.surfaceContainerLow,
+                        borderColor: 'transparent',
+                        shadowOpacity: 0,
+                        elevation: 0,
+                      }]}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        setSinglePocketId(p.id);
+                      }}
+                    >
+                      <View style={[{
+                        width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center'
+                      }, {
+                        backgroundColor: isSingleSelected ? color : theme.colors.surfaceContainerHighest,
+                      }]}>
+                        <CatIcon id={p.category || p.name} color={isSingleSelected ? '#FFF' : theme.colors.onSurfaceVariant} size={18} />
+                      </View>
+                      <Text style={[styles.pocketName, { flex: 1, marginLeft: 12, color: isSingleSelected ? theme.colors.onSurface : theme.colors.onSurfaceVariant, fontFamily: (theme.fonts as any).headline }]}>
+                        {p.name}
+                      </Text>
+                      {isSingleSelected
+                        ? <View style={[{ width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }, { backgroundColor: color }]}><Check size={12} color="#FFF" strokeWidth={3} /></View>
+                        : <View style={[{ width: 20, height: 20, borderRadius: 10 }, { backgroundColor: theme.colors.surfaceContainerHighest }]} />}
+                    </TouchableOpacity>
+                  );
+                })}
+            </View>
+            </View>
+          </ScrollView>
+
+          <View style={[styles.footer, { flexDirection: 'row', gap: 12 }]}>
+            <TouchableOpacity activeOpacity={0.9} style={[styles.premiumConfirmBtn, { flex: 1 }, (!val || Object.keys(preview).length === 0) && styles.saveBtnDisabled]} onPress={handleSave} disabled={isSaving || !val || Object.keys(preview).length === 0}>
+              <View style={styles.btnInner}>
+                {isSaving ? <ActivityIndicator color={theme.colors.onPrimary} /> : (
+                  <>
+                    <Text style={styles.premiumConfirmBtnText}>{isEditing ? 'Guardar Cambios' : 'Guardar'}</Text>
+                    <ArrowRight size={22} color={theme.colors.onPrimary} />
+                  </>
+                )}
+              </View>
+            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
-      </View>
+        </>
+      )}
     </KeyboardAvoidingView>
   );
 };

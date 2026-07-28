@@ -598,9 +598,17 @@ export const TopBar = ({
                     <Sparkles size={22} color={profileData.score >= 80 ? '#10B981' : profileData.score >= 50 ? '#F59E0B' : '#EF4444'} />
                   </View>
                   <View>
-                    <Text style={styles.chatTitle}>Tu asesor financiero</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                      <Text style={{ fontSize: 18, fontWeight: '900', color: theme.colors.primary, letterSpacing: 0.5 }}>S</Text>
+                      <Text style={{ fontSize: 18, fontWeight: '900', color: '#F0927B', letterSpacing: 0.5 }}>A</Text>
+                      <Text style={{ fontSize: 18, fontWeight: '900', color: '#8AD6CE', letterSpacing: 0.5 }}>V</Text>
+                      <Text style={{ fontSize: 18, fontWeight: '900', color: '#D2A9D1', letterSpacing: 0.5 }}>E</Text>
+                      <View style={{ backgroundColor: theme.colors.primary, borderRadius: 4, paddingHorizontal: 4, paddingVertical: 2, marginLeft: 6 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '900', color: theme.colors.onPrimary, letterSpacing: 1 }}>IA</Text>
+                      </View>
+                    </View>
                     <Text style={styles.chatSubtitle}>
-                      Analista de Datos Save
+                      Tu asistente financiero
                     </Text>
                   </View>
                 </View>

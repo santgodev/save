@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './supabase';
 
 export type CycleState = {
@@ -51,6 +51,17 @@ export function useCycleState(cycleId?: string, autoLoad: boolean = true) {
   const [state, setState] = useState<CycleState | null>(globalCycleStateCache[cacheKey] || null);
   const [loading, setLoading] = useState<boolean>(!globalCycleStateCache[cacheKey] && autoLoad);
   const [error, setError] = useState<string | null>(null);
+  const lastCacheKeyRef = useRef(cacheKey);
+
+  // Reset synchronously during render (not in an effect) when the cycle
+  // changes, so we never paint a frame with the previous cycle's numbers
+  // under the newly-selected cycle.
+  if (lastCacheKeyRef.current !== cacheKey) {
+    lastCacheKeyRef.current = cacheKey;
+    setState(globalCycleStateCache[cacheKey] || null);
+    setLoading(!globalCycleStateCache[cacheKey] && autoLoad);
+    setError(null);
+  }
 
   const refresh = useCallback(async (force: boolean = false) => {
     if (!cycleId) {

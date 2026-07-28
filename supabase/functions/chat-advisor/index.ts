@@ -15,6 +15,7 @@
 
 import { handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { authenticate } from "../_shared/auth.ts";
+import { checkEntitlement } from "../_shared/entitlement.ts";
 import { chatCompletion, OpenAIMessage } from "../_shared/openai.ts";
 import {
   ADVISOR_PROMPT_VERSION,
@@ -48,6 +49,23 @@ Deno.serve(async (req) => {
   }
 
   const { user, userClient, serviceClient } = auth;
+
+  // Chequeo de suscripción: por ahora solo OBSERVA, no bloquea (ver
+  // _shared/entitlement.ts para el porqué -- hay una ventana legítima
+  // justo después del onboarding donde un usuario nuevo aún sin pagar
+  // puede llegar hasta acá). Se espera el chequeo (tiene su propio
+  // timeout corto y falla abierto) para que el log quede confiable en
+  // vez de un fire-and-forget que el runtime podría cortar; el INSERT
+  // del evento sí es fire-and-forget porque es telemetría, no crítico.
+  const entitlementCheck = await checkEntitlement(user.id);
+  if (!entitlementCheck.active) {
+    await serviceClient.from("user_events").insert({
+      user_id: user.id,
+      event_type: "entitlement.unpaid_api_call",
+      event_data: { function: "chat-advisor", reason: entitlementCheck.reason },
+      source: "edge_fn",
+    }).catch(() => {});
+  }
 
   // ------------------------------------------------------------------
   // 1. Cargar contexto: estado del ciclo unificado + memoria + historial.

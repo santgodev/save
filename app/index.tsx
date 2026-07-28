@@ -372,6 +372,7 @@ function MainApp() {
     if (!userId) return;
     setIsFetchingData(true);
     clearCycleCaches();
+    DeviceEventEmitter.emit('force_dashboard_refresh');
     try {
       const activeAccessToken = session?.access_token || '';
       const strictClient = activeAccessToken ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -498,14 +499,13 @@ function MainApp() {
       case 'history': return <HistoryScreen />;
       case 'profile_details': return <Profile session={session} transactions={transactions} pockets={pockets} onRefresh={() => loadUserData(session!.user.id)} onBack={() => setCurrentScreen('dashboard')} />;
       case 'add_income':
-        return <AddIncome pockets={pockets} session={session} onCancel={() => setCurrentScreen('dashboard')} onSaveSuccess={() => { setCurrentScreen('dashboard'); loadUserData(session!.user.id); setEditIncomeTx(null); }} editTransaction={editIncomeTx} />;
-      case 'onboarding': return <Onboarding session={session} onComplete={() => loadUserData(session?.user?.id)} />;
+        return <AddIncome pockets={pockets} session={session} onCancel={() => setCurrentScreen('dashboard')} onSaveSuccess={async () => { await loadUserData(session!.user.id); setCurrentScreen('dashboard'); setEditIncomeTx(null); }} editTransaction={editIncomeTx} />;
       default: return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} />;
     }
   };
 
   // Pantallas a pantalla completa (Splash o Auth)
-  if (isInitializing || !minSplashTimeElapsed || (session && (!isDataReady || !currentScreen))) {
+  if (isInitializing || !minSplashTimeElapsed || (session && !isDataReady)) {
     return <SplashScreen />;
   }
 
@@ -513,11 +513,14 @@ function MainApp() {
     return <Auth onLoginSuccess={() => {}} />;
   }
 
-  // Paywall: Save no tiene versión gratis permanente. Se muestra una vez
-  // que el usuario terminó el onboarding y el tour de bienvenida, y se
-  // queda bloqueando el resto de la app hasta que activa la prueba
-  // gratis de 7 días o se suscribe.
-  if (pockets.length > 0 && !subLoading && !isSubscribed && !tourFlowPending && !tourActive && !devPaywallBypass) {
+  // 1. GATE DE ONBOARDING: Bloqueo absoluto si no hay bolsillos.
+  // El usuario no podrá ver nada más (ni deep links, ni dashboard, ni navbar)
+  if (pockets.length === 0) {
+    return <Onboarding session={session} onComplete={() => loadUserData(session?.user?.id)} />;
+  }
+
+  // 2. GATE DE PAYWALL: Aparece DESPUÉS del Onboarding y DESPUÉS del tutorial.
+  if (!subLoading && !isSubscribed && !devPaywallBypass && !tourFlowPending && !tourActive) {
     return (
       <Paywall
         onSubscribed={() => {}}
@@ -527,9 +530,14 @@ function MainApp() {
     );
   }
 
+  // Fallback si no hay currentScreen después de pasar todos los gates
+  if (!currentScreen) {
+    return <SplashScreen />;
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'demo_scanner' && currentScreen !== 'onboarding' && currentScreen !== 'add_income' && (
+      {currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'demo_scanner' && currentScreen !== 'add_income' && (
         <TopBar
           title={currentScreen === 'dashboard' ? 'Save' : currentScreen === 'expenses' ? 'Movimientos' : currentScreen === 'pockets' ? 'Bolsillos' : 'Perfil'}
           userName={session.user?.user_metadata?.full_name || session.user?.user_metadata?.name || session.user?.email?.split('@')[0]}
@@ -550,7 +558,7 @@ function MainApp() {
         {renderScreen()}
       </View>
 
-      {session && isDataReady && currentScreen && currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'onboarding' && currentScreen !== 'add_income' && (
+      {currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'add_income' && (
         <BottomNav activeScreen={currentScreen} setScreen={(s: any) => setCurrentScreen(s)} onAddPress={() => toggleActionMenu(true)} onAddLongPress={() => setCurrentScreen('scanner')} />
       )}
 

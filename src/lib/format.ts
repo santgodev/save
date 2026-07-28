@@ -25,8 +25,9 @@ export function formatMoney(n: number | null | undefined): string {
  * Solo el número, sin signo, para inputs de moneda.
  *   formatMoneyDigits("1250000") → "1.250.000"
  */
-export function formatMoneyDigits(value: string): string {
-  const numericValue = value.replace(/[^0-9]/g, '');
+export function formatMoneyDigits(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return '';
+  const numericValue = String(value).replace(/[^0-9]/g, '');
   if (!numericValue) return '';
   return parseInt(numericValue, 10).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 }

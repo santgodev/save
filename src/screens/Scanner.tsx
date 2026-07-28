@@ -18,7 +18,6 @@ import { useTour } from '../components/tour/TourContext';
 import { TourStep } from '../components/tour/TourStep';
 import type { TourStepType } from '../components/tour/TourContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Audio } from 'expo-av';
 import { supabase } from '../lib/supabase';
 import { normalizeMerchant } from '../utils/merchant';
 import { logEvent, EVENTS } from '../lib/events';
@@ -237,7 +236,6 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   const runDemoMode = () => {
     setIsManualMode(false);
     setProgress(0); // Show image without blur overlay first
-    AsyncStorage.removeItem('tour_dashboard_done'); // Reset dashboard tour for demo test
 
     try {
       const localImageUri = Image.resolveAssetSource(require('../../assets/images/factura.png')).uri;
@@ -300,7 +298,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
 
         // Start the specialized DEMO tour after a brief pause to let them see the results
         setTimeout(() => {
-          startTour(DEMO_TOUR_STEPS, undefined, { step: 1, total: 5 });
+          startTour(DEMO_TOUR_STEPS, undefined, { step: 1, total: 6 });
         }, 600);
 
       }, 2500);
@@ -353,27 +351,6 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
 
     setIsOpeningPicker(false);
 
-    if (!result.canceled) {
-      const base64Image = result.assets[0].base64;
-      setImage(result.assets[0].uri);
-      setVisionOutput(null);
-      setExtractedData(null);
-      if (base64Image) performTextDetection(base64Image);
-    } else if (initialMode === 'camera') {
-      onGoBack();
-    }
-  };
-
-  const pickImage = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setIsOpeningPicker(true);
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 0.8,
-      base64: true,
-    });
-    setIsOpeningPicker(false);
     if (!result.canceled) {
       const base64Image = result.assets[0].base64;
       setImage(result.assets[0].uri);

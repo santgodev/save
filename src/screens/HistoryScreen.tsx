@@ -49,7 +49,9 @@ const HistoryCard = ({ cycle, theme }: { cycle: any, theme: any }) => {
               
             setDetails(detailsArr);
           }
-        } catch(e) {}
+        } catch(e) {
+          console.error('Error cargando desglose del ciclo:', e);
+        }
         setLoadingDetails(false);
       }
     }
@@ -168,24 +170,27 @@ export const HistoryScreen = () => {
   const { theme } = useTheme();
   const [loading, setLoading] = useState(true);
   const [cycles, setCycles] = useState<any[]>([]);
+  const [totalAhorro, setTotalAhorro] = useState(0);
 
   useEffect(() => {
     loadHistory();
   }, []);
-
-  const totalAhorro = useMemo(() => {
-    return cycles.reduce((acc, cycle) => acc + (cycle.income - cycle.spent), 0);
-  }, [cycles]);
 
   const loadHistory = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase.rpc('get_history_cycles', { p_user_id: user.id });
+      const [historyRes, savingsRes] = await Promise.all([
+        supabase.rpc('get_history_cycles', { p_user_id: user.id }),
+        supabase.rpc('get_total_savings', { p_user_id: user.id })
+      ]);
       
-      if (error) throw error;
-      setCycles(data || []);
+      if (historyRes.error) throw historyRes.error;
+      if (savingsRes.error) throw savingsRes.error;
+
+      setCycles(historyRes.data || []);
+      setTotalAhorro(Number(savingsRes.data) || 0);
     } catch (e) {
       console.error('Error loading history:', e);
     } finally {

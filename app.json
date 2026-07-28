@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "co.save.app",
       "buildNumber": "5",
       "usesAppleSignIn": true,
@@ -27,25 +27,32 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/logo2.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/logo.png",
-          "imageWidth": 200,
+          "image": "./assets/images/splash.png",
+          "imageWidth": 300,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#F7F7F2",
           "dark": {
-            "backgroundColor": "#000000"
+            "backgroundColor": "#09090B"
           }
         }
       ],
       "expo-font",
       "expo-web-browser",
       "@react-native-google-signin/google-signin",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Save usa la cámara para escanear tus facturas y registrar gastos automáticamente.",
+          "photosPermission": "Save necesita acceso a tus fotos para que puedas escanear facturas guardadas en tu galería."
+        }
+      ],
       [
         "expo-build-properties",
         {

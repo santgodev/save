@@ -99,7 +99,9 @@ const ChatMockup = ({ theme }: any) => (
         <Text style={{ fontFamily: theme.fonts.body, fontSize: 13, color: theme.colors.onPrimary, fontWeight: '500' }}>¿Cuánto puedo gastar esta semana?</Text>
       </View>
       <View style={{ alignSelf: 'flex-start', backgroundColor: theme.colors.surface, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 18, borderBottomLeftRadius: 4, maxWidth: '90%', borderWidth: 1, borderColor: theme.colors.outlineVariant, ...theme.shadows.xs }}>
-        <Text style={{ fontFamily: theme.fonts.body, fontSize: 13, color: theme.colors.onSurface, lineHeight: 18 }}>Puedes gastar hasta $145.000 y seguir cumpliendo tu meta de ahorro.</Text>
+        <Text style={{ fontFamily: theme.fonts.body, fontSize: 13, color: theme.colors.onSurface, lineHeight: 18 }}>
+          Puedes gastar hasta <Text style={{ color: theme.colors.primary, fontWeight: '800' }}>$145.000</Text> y seguir cumpliendo tu meta de ahorro.
+        </Text>
       </View>
     </View>
   </View>
@@ -216,8 +218,8 @@ const ConscienceStep = ({
           <View style={S.grid}>
             <PocketCard icon={<Leaf size={22} color="#FFF" />} title="Fácil de usar" sub="Sin herramientas difíciles." bg="#8AD6CE" />
             <PocketCard icon={<Camera size={22} color="#FFF" />} title="Escanea facturas" sub="La IA clasifica todo por ti." bg="#F0927B" />
-            <PocketCard icon={<MessageSquare size={22} color="#FFF" />} title="Tu asistente" sub="Habla con tus finanzas." bg="#D2A9D1" />
-            <PocketCard icon={<Wallet size={22} color="#FFF" />} title="Cada peso en su lugar" sub="Controla lo que puedes gastar." bg="#B9E2A2" />
+            <PocketCard icon={<MessageSquare size={22} color="#FFF" />} title="Tu asistente IA" sub="Habla con tus finanzas." bg="#D2A9D1" />
+            <PocketCard icon={<Wallet size={22} color="#FFF" />} title="Tus bolsillos" sub="Organiza y controla tus gastos." bg="#B9E2A2" />
           </View>
         </View>
 
@@ -266,7 +268,9 @@ const BenefitsAndPlansStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallProp
 
   const monthlyPrice          = monthlyPkg?.product.priceString || formatCOP(FALLBACK_PRICING.monthly);
   const annualPrice           = annualPkg?.product.priceString  || formatCOP(FALLBACK_PRICING.annual);
-  const annualMonthlyEquivalent = formatCOP(Math.round(FALLBACK_PRICING.annual / 12));
+  const annualMonthlyEquivalent = formatCOP(
+    annualPkg ? Math.round(annualPkg.product.price / 12) : Math.round(FALLBACK_PRICING.annual / 12)
+  );
 
   const handlePurchase = async () => {
     const pkg = selected === 'annual' ? annualPkg : monthlyPkg;
@@ -350,8 +354,8 @@ const BenefitsAndPlansStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallProp
             bg="#D2A9D1" styles={styles} theme={theme}
           />
           <BenefitRow
-            title="Cada peso tiene un lugar"
-            sub="Siempre sabrás cuánto puedes gastar."
+            title="Tus bolsillos"
+            sub="Organiza y controla tus gastos fácilmente."
             icon={<Wallet size={20} color="#FFF" />}
             bg={theme.colors.primary} styles={styles} theme={theme} last
           />
@@ -366,7 +370,7 @@ const BenefitsAndPlansStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallProp
             <Star size={16} color="#FFB800" fill="#FFB800" />
           </View>
           <Text style={{ fontFamily: theme.fonts.body, fontSize: 14, color: theme.colors.onSurfaceVariant, textAlign: 'center', fontStyle: 'italic', lineHeight: 22 }}>
-            "Parce, qué aplicación tan sencilla de usar."
+            “Parce, qué aplicación tan sencilla de usar.”
           </Text>
           <Text style={{ fontFamily: theme.fonts.headline, fontSize: 13, color: theme.colors.onSurface, marginTop: 12, fontWeight: '700' }}>
             — Stiven Lopera
@@ -412,7 +416,7 @@ const BenefitsAndPlansStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallProp
             <View>
               <View style={styles.planNameRow}>
                 <Text style={styles.planName}>Anual</Text>
-                <View style={styles.badge}><Text style={styles.badgeText}>Ahorras 40%</Text></View>
+                <View style={styles.badge}><Text style={styles.badgeText}>Ahorras 44%</Text></View>
               </View>
               <Text style={styles.planDesc}>Pagas 1 vez al año</Text>
             </View>
@@ -464,6 +468,9 @@ const BenefitsAndPlansStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallProp
         <View style={styles.bottomLinks}>
           <TouchableOpacity onPress={() => Linking.openURL('https://eveenia.com/es/save/terms')}>
             <Text style={styles.link}>Términos</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => Linking.openURL('https://eveenia.com/es/save/privacy')}>
+            <Text style={styles.link}>Privacidad</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => restorePurchases()}>
             <Text style={styles.link}>Restaurar compra</Text>

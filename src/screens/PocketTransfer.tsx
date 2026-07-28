@@ -5,7 +5,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { X, ArrowRightLeft, ArrowRight, CheckCircle2, ChevronDown, Repeat, ArrowDown } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
-import { Audio } from 'expo-av';
 import { useTheme } from '../theme/ThemeContext';
 import { normalize } from '../theme/theme';
 import { supabase } from '../lib/supabase';

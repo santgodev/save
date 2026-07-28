@@ -180,6 +180,7 @@ export const getCategoryColorPair = (categoryName: string, isDark: boolean = fal
 };
 
 export const getDeterministicColor = (seedString: string, colorsArray: string[]) => {
+  if (!seedString) return colorsArray[0];
   let hash = 0;
   for (let i = 0; i < seedString.length; i++) {
     hash = seedString.charCodeAt(i) + ((hash << 5) - hash);

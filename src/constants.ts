@@ -10,10 +10,10 @@ export const INITIAL_TRANSACTIONS: Transaction[] = [
 ];
 
 export const INITIAL_POCKETS: Pocket[] = [
-  { id: '1', name: 'Comida y Súper', category: 'Comida', spent: 450, budget: 500, icon: 'Utensils' },
-  { id: '2', name: 'Tránsito Diario', category: 'Transporte', spent: 135, budget: 300, icon: 'Car' },
-  { id: '3', name: 'Ocio y Diversión', category: 'Ocio', spent: 220, budget: 200, icon: 'Theater' },
-  { id: '4', name: 'Fondo Futuro', category: 'Ahorros', spent: 600, budget: 1000, icon: 'PiggyBank' },
+  { id: '1', user_id: '', name: 'Comida y Súper', category: 'Comida', allocated_budget: 500, icon: 'Utensils' },
+  { id: '2', user_id: '', name: 'Tránsito Diario', category: 'Transporte', allocated_budget: 300, icon: 'Car' },
+  { id: '3', user_id: '', name: 'Ocio y Diversión', category: 'Ocio', allocated_budget: 200, icon: 'Theater' },
+  { id: '4', user_id: '', name: 'Fondo Futuro', category: 'Ahorros', allocated_budget: 1000, icon: 'PiggyBank' },
 ];
 
 // -----------------------------------------------------------------------------

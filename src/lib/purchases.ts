@@ -18,7 +18,7 @@ export const ENTITLEMENT_ID = 'premium';
 // grupo de suscripción (para que un usuario solo pueda tener un plan
 // activo a la vez).
 export const PRODUCT_IDS = {
-  monthly: 'save_premium_monthly',
+  monthly: 'save_pro_monthly',
   annual: 'save_premium_annual',
 } as const;
 
@@ -33,5 +33,5 @@ export const TRIAL_DAYS = 7;
 // viene directo de Apple (localizado), no de estas constantes.
 export const FALLBACK_PRICING = {
   monthly: 14900,
-  annual: 119900,
+  annual: 99900,
 };

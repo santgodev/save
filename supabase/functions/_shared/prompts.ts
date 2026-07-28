@@ -107,8 +107,10 @@ export function buildAdvisorSystemPrompt(input: {
         let status = "";
         if (p.allocated === 0 && p.spent_month > 0) {
           status = `gastaste $${fmtCop(p.spent_month)} — sin tope definido`;
-        } else if (p.pct_used !== null && p.pct_used >= 100) {
-          status = `SE TE ACABÓ — gastaste $${fmtCop(p.spent_month)} de $${fmtCop(p.allocated)} 🔴`;
+        } else if (p.pct_used !== null && p.pct_used > 100) {
+          status = `SOBREGIRADO — gastaste $${fmtCop(p.spent_month)} de $${fmtCop(p.allocated)} 🔴`;
+        } else if (p.pct_used !== null && p.pct_used === 100) {
+          status = `COMPLETADO (100%) — gastaste $${fmtCop(p.spent_month)} de $${fmtCop(p.allocated)} ✅ (Ideal para gastos fijos ya pagados)`;
         } else if (p.pct_used !== null && p.pct_used >= 80) {
           status = `casi agotado — gastaste $${fmtCop(p.spent_month)} de $${fmtCop(p.allocated)}, te quedan $${fmtCop(p.available)} ⚠`;
         } else {
@@ -164,9 +166,9 @@ export function buildAdvisorSystemPrompt(input: {
   if (pocketsNoBudget.length > 0) {
     urgentAlerts.push(`⚠ Sin tope en: ${pocketsNoBudget.map(p => `${p.name} ($${fmtCop(p.spent_month)} gastados)`).join(", ")}. Está gastando sin control ahí.`);
   }
-  const overBudget = state.pockets.filter(p => p.pct_used !== null && p.pct_used >= 100);
+  const overBudget = state.pockets.filter(p => p.pct_used !== null && p.pct_used > 100);
   if (overBudget.length > 0) {
-    urgentAlerts.push(`🔴 Bolsillos agotados este ciclo: ${overBudget.map(p => p.name).join(", ")}.`);
+    urgentAlerts.push(`🔴 Bolsillos SOBREGIRADOS este ciclo (gastaron más de lo asignado): ${overBudget.map(p => p.name).join(", ")}.`);
   }
   const urgentBlock = urgentAlerts.length
     ? `SITUACIONES IMPORTANTES (priorizar si la pregunta es abierta):\n${urgentAlerts.join("\n")}`
@@ -187,6 +189,7 @@ CÓMO HABLAS (muy importante, no negociable)
   "cuida ese bolsillo", "te quedan", "sin tope de gasto", "toca revisar eso", "vas bien".
 - BREVE: máximo 3-4 oraciones. Directo al punto. Sin frases de relleno.
 - Si la situación es buena, díselo claramente. Si es mala, también — pero sin alarmar.
+- IMPORTANTE: Si un bolsillo está exactamente al 100% ("COMPLETADO"), trátalo como algo normal (gastos fijos como arriendo o servicios ya pagados), NO lo menciones como una alerta ni le digas "ojo, ya gastaste el 100%". Solo alerta si están SOBREGIRADOS (>100%).
 
 LO QUE SÍ SABES (úsalo sin dudar)
 - Cuánto entró y cuánto se gastó este ciclo.

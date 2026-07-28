@@ -17,6 +17,7 @@ import { calculateFinancialProfile, ProfileData, CycleDates } from '../utils/pro
 import { useUserCycles } from '../lib/useCycleState';
 import type { Session } from '@supabase/supabase-js';
 import * as Haptics from 'expo-haptics';
+import Constants from 'expo-constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width } = Dimensions.get('window');
@@ -317,9 +318,11 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
                   <Text style={styles.pillHabitText}>{capitalize(habit)}</Text>
                </View>
             ))}
-            {(!profileData || profileData.topHabits.length === 0) && (
+            {!profileData ? (
               <Text style={{ fontStyle: 'italic', color: theme.colors.onSurfaceVariant, fontSize: 13 }}>Escaneando hábitos...</Text>
-            )}
+            ) : profileData.topHabits.length === 0 ? (
+              <Text style={{ fontStyle: 'italic', color: theme.colors.onSurfaceVariant, fontSize: 13 }}>Aún no hay suficientes datos.</Text>
+            ) : null}
          </View>
       </View>
 
@@ -406,7 +409,7 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
             <LogOut size={18} color={theme.colors.error} />
             <Text style={styles.dangerText}>Cerrar sesión</Text>
          </TouchableOpacity>
-         <Text style={styles.versionLabel}>SAVE v1.2.0 • PREMIUM EDITION</Text>
+         <Text style={styles.versionLabel}>SAVE v{Constants.expoConfig?.version ?? '—'} • PREMIUM EDITION</Text>
       </View>
     </ScrollView>
 
@@ -427,8 +430,20 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
           setIsDeleting(true);
           console.log('Borrar cuenta solicitado...');
           try {
-            const { error } = await supabase.functions.invoke('delete-account', { body: {} });
-            
+            // Pasar el access_token explícito: sin esto, si la sesión no
+            // terminó de cargar, supabase-js puede caer al anon key y la
+            // Edge Function responde 401 (mismo patrón que Scanner.tsx/TopBar.tsx).
+            const { data: sessionData } = await supabase.auth.getSession();
+            const accessToken = sessionData?.session?.access_token;
+            if (!accessToken) {
+              throw new Error('No hay sesión activa. Vuelve a iniciar sesión.');
+            }
+
+            const { error } = await supabase.functions.invoke('delete-account', {
+              body: {},
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+
             if (error) {
               console.error("Error al borrar cuenta:", error);
               notify.error("No se pudo eliminar la cuenta. Intenta nuevamente.");

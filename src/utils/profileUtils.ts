@@ -73,7 +73,7 @@ export const calculateFinancialProfile = (
 
   // 2. Budget Overflow
   // Usamos allocated_budget (el plan) para comparar contra el gasto total.
-  const totalBudget = budgets.reduce((acc, b) => acc + (b.allocated_budget ?? b.budget ?? 0), 0);
+  const totalBudget = budgets.reduce((acc, b) => acc + (b.allocated_budget ?? 0), 0);
   const budgetOverflow = totalSpent > totalBudget ? (totalSpent - totalBudget) / (totalBudget || 1) : 0;
 
   // 3. Consistencia (registros en los últimos 7 días dentro del ciclo)

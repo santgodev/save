@@ -14,6 +14,7 @@ import { normalize } from '../theme/theme';
 import { getDeterministicColor } from '../theme/theme';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { TransactionDetailModal } from '../components/TransactionDetailModal';
+import { CycleUndoModal } from '../components/CycleUndoModal';
 import { supabase } from '../lib/supabase';
 import { formatMoney } from '../lib/format';
 import { notify } from '../lib/notify';
@@ -34,7 +35,8 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
   const [deletingTx, setDeletingTx] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [selectedTx, setSelectedTx] = useState<any>(null);
-  const [showSuccess, setShowSuccess] = useState(false);
+  const [showUndoModal, setShowUndoModal] = useState(false);
+  const [undoWasReverted, setUndoWasReverted] = useState(true);
 
   const { cycles, activeCycle, loading: cyclesLoading } = useUserCycles();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
@@ -180,7 +182,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
     setIsDeleting(true);
 
     try {
-      const { error } = await supabase.rpc('delete_transaction_with_reversal', {
+      const { data, error } = await supabase.rpc('delete_transaction_with_reversal', {
         p_tx_id: deletingTx.id,
         p_user_id: session.user.id
       });
@@ -188,7 +190,12 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
       if (!error) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setDeletingTx(null);
-        if (onRefresh) onRefresh();
+        if (data && data.cycle_deleted) {
+          setUndoWasReverted(!!data.cycle_reverted);
+          setShowUndoModal(true);
+        } else {
+          if (onRefresh) onRefresh();
+        }
       } else {
         notify.error('No se pudo eliminar el movimiento.');
       }
@@ -374,6 +381,9 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
           handleDeleteTrigger(tx);
         }}
       />
+
+      <CycleUndoModal visible={showUndoModal} reverted={undoWasReverted} />
+
       </KeyboardAvoidingView>
     </TouchableWithoutFeedback>
   );

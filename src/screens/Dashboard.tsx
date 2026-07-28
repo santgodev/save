@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, Animated, Dimensions, TouchableOpacity, Platform, ActivityIndicator, RefreshControl, SafeAreaView, Modal
+  View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity, Platform, ActivityIndicator, RefreshControl, SafeAreaView, Modal, DeviceEventEmitter
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowUpRight, TrendingUp, Sparkles, Tag, ShoppingBag, ShieldCheck, Zap, PlusCircle, Activity, AlertTriangle, Coins, Plus, Wallet, Target, Flame, Clock, History, LayoutGrid, Briefcase, ChevronRight, Pointer, Lock, ArrowRight, Play, Map, Rocket } from 'lucide-react-native';
+import { ArrowUpRight, TrendingUp, Sparkles, Tag, ShoppingBag, ShieldCheck, Zap, PlusCircle, Activity, AlertTriangle, Coins, Plus, Wallet, Target, Flame, Clock, History, LayoutGrid, ChevronRight, Pointer, Lock, ArrowRight, Play, Map, Rocket } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
@@ -20,7 +20,6 @@ import type { TourStepType } from '../components/tour/TourContext';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { Transaction } from '../types';
 import { TransactionDetailModal } from '../components/TransactionDetailModal';
-import { MonthClosureModal } from '../components/MonthClosureModal';
 import { CycleNav } from '../components/CycleNav';
 import { MiniAnimatedSaveLogo } from '../components/TopBar';
 import type { Session } from '@supabase/supabase-js';
@@ -56,14 +55,8 @@ export const Dashboard = ({
 }: DashboardProps) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const [showGreeting, setShowGreeting] = useState(true);
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
-  const greetingAnim = useRef(new Animated.Value(1)).current;
-  const [greeting, setGreeting] = useState('Hola');
   const [selectedTx, setSelectedTx] = useState<any>(null);
-  const [pendingIncomes, setPendingIncomes] = useState<any[]>([]);
-  const [showClosureModal, setShowClosureModal] = useState(false); // set to true when unclosed cycle found
   const { startTour } = useTour();
 
   const isFocused = useIsFocused();
@@ -96,7 +89,7 @@ export const Dashboard = ({
       if (!isDataReady || !isFocused) return;
 
       const demoTxs = transactions.filter(t => (t as any).metadata?.is_demo);
-      const hasDemo = demoTxs.length > 0;
+      const hasDemo = demoTxs?.length > 0;
 
       // Prioridad 1: flujo demo del Scanner (ya tiene is_demo)
       // FIX: antes esto se disparaba en CADA visita al Dashboard mientras
@@ -116,7 +109,7 @@ export const Dashboard = ({
               description: 'Ve a la pestaña de Bolsillos para ver cómo la Inteligencia Artificial organizó tu primer gasto mágico.',
               iconName: 'Sparkles',
               order: 1
-            }], undefined, { step: 4, total: 5 });
+            }], undefined, { step: 5, total: 6 });
           }, 800);
         });
         return;
@@ -153,28 +146,6 @@ export const Dashboard = ({
     };
   }, [isDataReady, transactions, startTour, isFocused]);
 
-
-
-  useEffect(() => {
-    const hours = new Date().getHours();
-    if (hours < 12) setGreeting('Buenos días');
-    else if (hours < 18) setGreeting('Buenas tardes');
-    else setGreeting('Buenas noches');
-
-    Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
-
-    // Auto-hide greeting after 4 seconds
-    const timer = setTimeout(() => {
-      Animated.timing(greetingAnim, {
-        toValue: 0,
-        duration: 500,
-        useNativeDriver: false
-      }).start(() => setShowGreeting(false));
-    }, 4000);
-
-    return () => clearTimeout(timer);
-  }, []);
-
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
     scrollContent: { paddingHorizontal: 24, paddingTop: Math.max(insets.top, 16) + 104, paddingBottom: 150 },
@@ -202,7 +173,7 @@ export const Dashboard = ({
     txAmountUI: { ...theme.typography.bodyLarge, fontWeight: '900' }
   }), [theme, insets.top]);
 
-  const { cycles, activeCycle, loading: cyclesLoading } = useUserCycles();
+  const { cycles, activeCycle, loading: cyclesLoading, refetchCycles } = useUserCycles();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -213,43 +184,38 @@ export const Dashboard = ({
 
   const { state: monthState, loading: monthLoading, refresh: refreshMonthState } = useCycleState(selectedCycleId || undefined);
 
-  // Detect unclosed previous cycle: query user_budget_cycles for one that has
-  // end_date set (closed) but user_closed is false, meaning the user hasn't
-  // formally gone through the closure flow yet.
-  const [unclosedPrevCycle, setUnclosedPrevCycle] = useState<any>(null);
+  // Mientras se carga el ciclo recién seleccionado, seguimos mostrando los
+  // últimos números buenos (atenuados) en vez de blanquear toda la pantalla.
+  const lastGoodMonthStateRef = useRef<typeof monthState>(null);
+  if (monthState) lastGoodMonthStateRef.current = monthState;
+  const displayMonthState = monthState ?? lastGoodMonthStateRef.current;
+  const isBackgroundRefreshing = monthLoading && !!displayMonthState && !monthState;
 
   useEffect(() => {
-    if (!session?.user?.id) return;
-    supabase
-      .from('user_budget_cycles')
-      .select('id, name')
-      .eq('user_id', session.user.id)
-      .not('end_date', 'is', null)      // cycle has ended
-      .eq('user_closed', false)          // but user hasn't gone through closure flow
-      .order('end_date', { ascending: false })
-      .limit(1)
-      .then(({ data }) => {
-        const found = data && data.length > 0 ? data[0] : null;
-        setUnclosedPrevCycle(found);
-        if (found) setShowClosureModal(true);
-      });
-  }, [session?.user?.id, selectedCycleId]);
+    const sub = DeviceEventEmitter.addListener('force_dashboard_refresh', () => {
+      refetchCycles(true);
+      refreshMonthState(true);
+    });
+    return () => sub.remove();
+  }, [refetchCycles, refreshMonthState]);
 
-  const totalIncomeMonth = monthState?.income_month ?? 0;
-  const totalSpentMonth = monthState?.spent_month ?? 0;
-  const netFlowMonth = monthState?.net_month ?? 0;
+  const recentTransactions = useMemo(() => {
+    if (!transactions || !selectedCycleId) return [];
+    return transactions.filter(tx => tx.cycle_id === selectedCycleId).slice(0, 3);
+  }, [transactions, selectedCycleId]);
 
-  const mainDisplayAmount = monthState?.net_month ?? 0;
-  const saldoDisponible = monthState?.available_total ?? 0;
+  const totalIncomeMonth = displayMonthState?.income_month ?? 0;
+  const totalSpentMonth = displayMonthState?.spent_month ?? 0;
+  const netFlowMonth = displayMonthState?.net_month ?? 0;
 
   const cycleDays = useMemo(() => {
-    if (!monthState) return { current: 1, total: 30, progress: 0 };
-    const start = new Date(monthState.start_date);
+    if (!displayMonthState) return { current: 1, total: 30, progress: 0 };
+    const start = new Date(displayMonthState.start_date);
     start.setHours(0,0,0,0);
 
     let totalDays = 30;
-    if (monthState.end_date) {
-      const end = new Date(monthState.end_date);
+    if (displayMonthState.end_date) {
+      const end = new Date(displayMonthState.end_date);
       end.setHours(0,0,0,0);
       totalDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
     }
@@ -260,14 +226,14 @@ export const Dashboard = ({
     let currentDay = Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
     if (currentDay < 1) currentDay = 1;
-    if (!monthState.end_date && currentDay > totalDays) {
+    if (!displayMonthState.end_date && currentDay > totalDays) {
        totalDays = currentDay;
-    } else if (monthState.end_date && currentDay > totalDays) {
+    } else if (displayMonthState.end_date && currentDay > totalDays) {
        currentDay = totalDays;
     }
 
     return { current: currentDay, total: totalDays, progress: currentDay / totalDays };
-  }, [monthState]);
+  }, [displayMonthState]);
 
   const [aiInsight, setAiInsight] = useState<{ title: string; body: string } | null>(null);
 
@@ -287,74 +253,52 @@ export const Dashboard = ({
             setAiInsight(data[0]);
           }
         });
-
-      // Load pending incomes
-      const today = new Date().toISOString().split('T')[0];
-      supabase
-        .from('pending_income_events')
-        .select(`id, expected_amount, expected_date, status, income_sources(name)`)
-        .eq('user_id', session.user.id)
-        .eq('status', 'pending')
-        .lte('expected_date', today)
-        .then(({ data }) => {
-          if (data) setPendingIncomes(data);
-        });
     }
   }, [isDataReady, session?.user?.id]);
 
-  const confirmPending = async (eventId: string, amount: number) => {
-    try {
-      const { error } = await supabase.rpc('confirm_pending_income', {
-        p_event_id: eventId,
-        p_actual_amount: amount
-      });
-      if (error) throw error;
-      setPendingIncomes(prev => prev.filter(p => p.id !== eventId));
-      onRefresh?.();
-    } catch (e) {
-      console.error('Error confirming:', e);
-    }
-  };
-
-  const dismissPending = async (eventId: string) => {
-    try {
-      const { error } = await supabase.rpc('dismiss_pending_income', { p_event_id: eventId });
-      if (error) throw error;
-      setPendingIncomes(prev => prev.filter(p => p.id !== eventId));
-    } catch (e) {
-      console.error('Error dismissing:', e);
-    }
-  };
-
   const getFallbackInsight = () => {
-    // Todo viene del mismo monthState — sin recalcular desde transactions.
-    const meta = monthState?.allocated_total ?? 0;
+    // Todo viene del mismo displayMonthState — sin recalcular desde transactions.
+    const meta = displayMonthState?.allocated_total ?? 0;
     const consumptionRatio = meta > 0 ? totalSpentMonth / meta : 0;
 
-    const pocketStats = (monthState?.pockets ?? [])
+    const pocketStats = (displayMonthState?.pockets ?? [])
       .map(mp => ({ ...mp, ratio: mp.pct_used !== null ? mp.pct_used / 100 : 0 }))
       .sort((a, b) => b.ratio - a.ratio);
-    const mostCritical = pocketStats[0];
+      
+    // Buscamos alarmas reales: sobregirados (>1) o a punto de agotarse (0.8 - 0.99)
+    // Ignoramos los que están exactamente en 1, porque suelen ser gastos fijos (ej. arriendo) ya pagados.
+    const overdrawn = pocketStats.find(p => p.ratio > 1);
+    const almostEmpty = pocketStats.find(p => p.ratio >= 0.8 && p.ratio < 1);
 
-    if (mostCritical && mostCritical.ratio > 1) {
-      return `¡Ojo! Te pasaste en ${mostCritical.name} por ${formatMoney(mostCritical.spent_month - mostCritical.allocated)}. Toca aquí y revisemos cómo podemos cuadrarlo.`;
+    if (overdrawn) {
+      return `¡Ojo! Te pasaste en ${overdrawn.name} por ${formatMoney(overdrawn.spent_month - overdrawn.allocated)}. Toca aquí y revisemos cómo podemos cuadrarlo.`;
     }
-    if (mostCritical && mostCritical.ratio === 1) {
-      return `¡Alerta! Gastaste exactamente el 100% de ${mostCritical.name}. Ya no tienes saldo disponible ahí.`;
+    if (almostEmpty) {
+      return `Pilas, ya gastaste el ${Math.round(almostEmpty.ratio * 100)}% de ${almostEmpty.name}. Toca aquí y te digo cómo no pasarnos.`;
     }
-    if (consumptionRatio >= 1) {
-      return `¡Cuidado! Ya te gastaste el 100% de tu plan mensual. Toca aquí para que descubramos a dónde se fue la plata.`;
+    if (consumptionRatio > 1) {
+      return `¡Cuidado! Ya te gastaste más del 100% de tu plan mensual. Toca aquí para descubrir a dónde se fue la plata.`;
     }
     if (consumptionRatio >= 0.8) {
-      return `Pilas, ya gastaste el ${Math.round(consumptionRatio * 100)}% de tu plan mensual. Toca aquí y te digo cómo no pasarnos.`;
+      return `Llevas gastado el ${Math.round(consumptionRatio * 100)}% de tu presupuesto. Vamos a revisar que todo esté bajo control.`;
     }
     if (totalSpentMonth === 0) return 'Aún no hay gastos este mes. ¡Toca aquí cuando empieces a gastar y yo te ayudo a cuidarlos!';
-    return `Llevas ${formatMoney(totalSpentMonth)} gastados este mes. Toca aquí y te cuento un par de curiosidades sobre tus gastos.`;
+    return `Llevas ${formatMoney(totalSpentMonth)} gastados este mes. Toca aquí y te cuento curiosidades sobre tus gastos.`;
   };
+
+  // Solo bloqueamos toda la pantalla con un spinner cuando de verdad no hay
+  // nada que mostrar todavía (primera carga). Si ya mostramos el dashboard
+  // una vez, un cambio de ciclo NUNCA vuelve a blanquear la pantalla —
+  // ver isBackgroundRefreshing para la carga "de fondo".
+  const showFullScreenLoader = !displayMonthState && (
+    (!selectedCycleId && cycles?.length > 0) ||
+    monthLoading ||
+    (cycles?.length === 0 && cyclesLoading)
+  );
 
   return (
     <View style={styles.container}>
-      {((!selectedCycleId && cycles.length > 0) || monthLoading || cyclesLoading) ? (
+      {showFullScreenLoader ? (
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
@@ -365,7 +309,7 @@ export const Dashboard = ({
           refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
           keyboardShouldPersistTaps="handled"
         >
-          <Animated.View style={{ opacity: fadeAnim }}>
+          <View>
 
             {/* HEADER PREMIUM — BALANCE & BUDGET HEALTH */}
             <View style={[styles.headerSection, { paddingTop: 0 }]}>
@@ -375,7 +319,7 @@ export const Dashboard = ({
                 onChange={setSelectedCycleId}
               />
 
-            <View style={{ marginBottom: 20, marginTop: 12 }}>
+            <View style={{ marginBottom: 20, marginTop: 12, opacity: isBackgroundRefreshing ? 0.5 : 1 }}>
               <View style={{ flexDirection: 'column', gap: 6 }}>
                 <Text style={{ ...theme.typography.label, color: theme.colors.onSurfaceVariant, opacity: 0.8, letterSpacing: 1 }}>
                   DISPONIBLE DEL MES
@@ -387,7 +331,14 @@ export const Dashboard = ({
             </View>
 
             {/* BUDGET PROGRESS BAR — ELEGANT & FUNCTIONAL */}
-            <View style={{ backgroundColor: theme.colors.surface, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: theme.colors.divider, ...theme.shadows.sm }}>
+            <View style={{ backgroundColor: theme.colors.surface, padding: 20, borderRadius: 28, borderWidth: 1, borderColor: theme.colors.divider, opacity: isBackgroundRefreshing ? 0.5 : 1, ...theme.shadows.sm }}>
+              {isBackgroundRefreshing && (
+                <ActivityIndicator
+                  size="small"
+                  color={theme.colors.primary}
+                  style={{ position: 'absolute', top: 16, right: 16, zIndex: 1 }}
+                />
+              )}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
                 <View>
                   <Text style={{ ...theme.typography.label, color: theme.colors.onSurfaceVariant, marginBottom: 6 }}>GASTADO ESTE MES</Text>
@@ -495,56 +446,21 @@ export const Dashboard = ({
                 <Sparkles size={20} color={theme.colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                   <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.primary, letterSpacing: 1 }}>
-                     {aiInsight ? 'NUEVO INSIGHT' : 'ASISTENTE DE SAVE'}
-                   </Text>
-                </View>
+                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                   {aiInsight ? (
+                     <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.primary, letterSpacing: 1 }}>
+                       NUEVO INSIGHT
+                     </Text>
+                   ) : (
+                     <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.primary, letterSpacing: 1 }}>CHAT IA</Text>
+                   )}
+                 </View>
                 <Text style={{ fontSize: 13, fontWeight: '700', color: theme.colors.onSurface, lineHeight: 18 }}>
                   {aiInsight ? `${aiInsight.title}: ${aiInsight.body}` : getFallbackInsight()}
                 </Text>
               </View>
               <ChevronRight size={18} color={theme.colors.onSurfaceVariant} opacity={0.5} />
             </TouchableOpacity>
-          )}
-
-          {/* INGRESOS PENDIENTES */}
-          {pendingIncomes.length > 0 && (
-            <View style={{ marginBottom: 32 }}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitleOrganic}>Pagos Pendientes</Text>
-              </View>
-              {pendingIncomes.map(event => (
-                <View key={event.id} style={{ backgroundColor: theme.colors.primaryContainer + '20', borderRadius: theme.radius.xl, padding: 20, borderWidth: 1.5, borderColor: theme.colors.primary, marginBottom: 12 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-                    <View style={{ backgroundColor: theme.colors.primary, width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}>
-                      <Briefcase size={20} color={theme.colors.onPrimary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.onSurface }}>{event.income_sources?.name || 'Salario'}</Text>
-                      <Text style={{ fontSize: 11, color: theme.colors.primary, fontWeight: '800', letterSpacing: 1, marginTop: 2 }}>ESPERADO HOY</Text>
-                    </View>
-                    <Text style={{ fontSize: 20, fontWeight: '900', color: theme.colors.primary }}>{formatMoney(event.expected_amount)}</Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', gap: 12 }}>
-                     <TouchableOpacity
-                       activeOpacity={0.8}
-                       onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); confirmPending(event.id, event.expected_amount); }}
-                       style={{ flex: 1, backgroundColor: theme.colors.primary, paddingVertical: 14, borderRadius: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
-                     >
-                        <Text style={{ color: theme.colors.onPrimary, fontWeight: '900', fontSize: 15 }}>Confirmar</Text>
-                     </TouchableOpacity>
-                     <TouchableOpacity
-                       activeOpacity={0.8}
-                       onPress={() => dismissPending(event.id)}
-                       style={{ backgroundColor: theme.colors.surfaceContainerHigh, paddingVertical: 14, paddingHorizontal: 20, borderRadius: 16, alignItems: 'center' }}
-                     >
-                        <Text style={{ color: theme.colors.onSurfaceVariant, fontWeight: '800', fontSize: 15 }}>Aún no</Text>
-                     </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-            </View>
           )}
 
           {/* QUICK ADD GIGANTE */}
@@ -565,18 +481,18 @@ export const Dashboard = ({
           </View>
 
           {/* BOLSILLOS (Resumen Simple) */}
-          <View style={{ marginBottom: 32 }}>
+          <View style={{ marginBottom: 32, opacity: isBackgroundRefreshing ? 0.5 : 1 }}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitleOrganic}>Bolsillos</Text>
             </View>
             <View style={{ gap: 12 }}>
               {(() => {
-                const activePockets = (monthState?.pockets || [])
+                const activePockets = (displayMonthState?.pockets || [])
                   .filter(mp => mp.spent_month > 0)
                   .sort((a, b) => b.spent_month - a.spent_month)
                   .slice(0, 3);
 
-                if (activePockets.length === 0) {
+                if (!activePockets || activePockets.length === 0) {
                   return (
                     <Text style={{ textAlign: 'center', color: theme.colors.onSurfaceVariant, fontSize: 13, padding: 20, opacity: 0.6 }}>
                       Sin movimientos este mes
@@ -588,18 +504,9 @@ export const Dashboard = ({
                   const originalPocket = pockets.find(p => p.id === mp.id);
                   let planAlloc = mp.allocated;
 
-                  if (originalPocket?.is_default_free) {
-                    const monthIncome = monthState?.income_month ?? 0;
-                    const othersAlloc = pockets.filter(x => !x.is_default_free).reduce((acc, x) => {
-                      const m = (monthState?.pockets || []).find(p => p.id === x.id);
-                      return acc + (m?.allocated ?? (x as any).allocated_budget ?? x.budget ?? 0);
-                    }, 0);
-                    planAlloc = Math.max(0, monthIncome - othersAlloc);
-                  }
-
-                  const remaining = originalPocket?.is_default_free ? (planAlloc - mp.spent_month) : mp.available;
+                  const remaining = mp.available;
                   const isOver = remaining < 0 || (planAlloc > 0 && mp.spent_month > planAlloc);
-                  const catColor = getDeterministicColor(mp.name, theme.colors.pocketFlatColors as string[]);
+                  const catColor = getDeterministicColor(mp.name || '', theme.colors.pocketFlatColors as string[]);
 
                   return (
                     <View key={`sim-${mp.id || i}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: theme.colors.surface, borderRadius: theme.radius.lg, borderWidth: 1, borderColor: theme.colors.divider }}>
@@ -625,14 +532,14 @@ export const Dashboard = ({
             </TouchableOpacity>
           </View>
 
-          {transactions.slice(0, 3).length === 0 ? (
+          {(!recentTransactions || recentTransactions.length === 0) ? (
             <View style={{ padding: 40, alignItems: 'center', opacity: 0.3 }}>
               <History size={48} color={theme.colors.onSurfaceVariant} strokeWidth={1} />
               <Text style={{ marginTop: 12, fontWeight: '800', textAlign: 'center' }}>Sin movimientos este mes</Text>
             </View>
           ) : (
-              transactions.slice(0, 3).map((tx) => {
-              const catColor = getDeterministicColor(tx.category, theme.colors.pocketFlatColors as string[]);
+              recentTransactions.map((tx) => {
+              const catColor = getDeterministicColor(tx.category || '', theme.colors.pocketFlatColors as string[]);
               return (
                 <TouchableOpacity key={tx.id} style={styles.txItem} activeOpacity={0.7} onPress={() => setSelectedTx(tx)}>
                   <View style={[styles.txIconBoxUI, { backgroundColor: catColor + '15' }]}>
@@ -650,9 +557,9 @@ export const Dashboard = ({
             })
           )}
 
-        </Animated.View>
-      </ScrollView>
-      )}
+          </View>
+        </ScrollView>
+        )}
 
       <TransactionDetailModal
         visible={!!selectedTx}
@@ -704,18 +611,6 @@ export const Dashboard = ({
           </View>
         </BlurView>
       </Modal>
-
-      <MonthClosureModal
-        visible={showClosureModal}
-        cycleId={unclosedPrevCycle?.id ?? ''}
-        cycleName={unclosedPrevCycle?.name ?? 'Mes anterior'}
-        userId={session?.user?.id ?? ''}
-        onClosed={() => {
-          setShowClosureModal(false);
-          // Invalidate cycle cache so next fetch gets fresh data
-          onRefresh?.();
-        }}
-      />
     </View>
   );
 };

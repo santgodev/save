@@ -6,8 +6,15 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Platform } from 'react-native';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import Purchases, { CustomerInfo, PurchasesOffering, PurchasesPackage } from 'react-native-purchases';
 import { REVENUECAT_IOS_API_KEY, ENTITLEMENT_ID } from './purchases';
+
+// react-native-purchases necesita codigo nativo: en Expo Go el modulo no
+// existe y cualquier llamada al SDK revienta. Mismo patron que Auth.tsx usa
+// para Google Sign-In. En una build real (dev client, TestFlight o App Store)
+// esto es false y RevenueCat se configura normalmente.
+const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
 interface PurchaseResult {
   success: boolean;
@@ -53,29 +60,43 @@ export const SubscriptionProvider = ({
       return;
     }
 
+    if (isExpoGo) {
+      console.warn('[Subscription] Expo Go no soporta RevenueCat (requiere codigo nativo). Usa una dev build para probar compras.');
+      setIsLoading(false);
+      return;
+    }
+
     if (!REVENUECAT_IOS_API_KEY) {
       console.warn('[Subscription] Falta EXPO_PUBLIC_REVENUECAT_IOS_API_KEY -- el paywall no puede validar compras todavía.');
       setIsLoading(false);
       return;
     }
 
-    Purchases.configure({ apiKey: REVENUECAT_IOS_API_KEY });
-    setConfigured(true);
+    // Si configure() falla, la app NO debe quedarse en pantalla blanca:
+    // se degrada a "sin suscripcion" y sigue viva.
+    let listener: ((info: CustomerInfo) => void) | null = null;
+    try {
+      Purchases.configure({ apiKey: REVENUECAT_IOS_API_KEY });
+      setConfigured(true);
 
-    Purchases.getCustomerInfo()
-      .then(info => setCustomerInfo(info))
-      .catch(e => console.error('[Subscription] Error leyendo customerInfo:', e))
-      .finally(() => setIsLoading(false));
+      Purchases.getCustomerInfo()
+        .then(info => setCustomerInfo(info))
+        .catch(e => console.error('[Subscription] Error leyendo customerInfo:', e))
+        .finally(() => setIsLoading(false));
 
-    Purchases.getOfferings()
-      .then(res => setOffering(res.current))
-      .catch(e => console.error('[Subscription] Error leyendo offerings:', e));
+      Purchases.getOfferings()
+        .then(res => setOffering(res.current))
+        .catch(e => console.error('[Subscription] Error leyendo offerings:', e));
 
-    const listener = (info: CustomerInfo) => setCustomerInfo(info);
-    Purchases.addCustomerInfoUpdateListener(listener);
+      listener = (info: CustomerInfo) => setCustomerInfo(info);
+      Purchases.addCustomerInfoUpdateListener(listener);
+    } catch (e) {
+      console.error('[Subscription] No se pudo inicializar RevenueCat:', e);
+      setIsLoading(false);
+    }
 
     return () => {
-      Purchases.removeCustomerInfoUpdateListener(listener);
+      if (listener) Purchases.removeCustomerInfoUpdateListener(listener);
     };
   }, []);
 

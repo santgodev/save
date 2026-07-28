@@ -84,10 +84,10 @@ export const Onboarding = ({ session, onComplete }: { session: any; onComplete: 
       if (profileError) throw new Error('No se pudo inicializar tu perfil.');
 
       const pocketsToInsert = [
-        { user_id: session.user.id, name: 'Libre', category: 'Otros', budget: 0, allocated_budget: 0, icon: 'Wind', is_default_free: true },
+        { user_id: session.user.id, name: 'Libre', category: 'Otros', allocated_budget: 0, icon: 'Wind', is_default_free: true },
         ...selectedCats.map(id => {
           const cat = CATEGORIES.find(c => c.id === id);
-          return { user_id: session.user.id, name: id === 'Ahorros' ? 'Ahorro Seguro' : (cat?.name || id), category: id, budget: 0, allocated_budget: 0, icon: cat?.icon || 'Tag', is_default_free: false };
+          return { user_id: session.user.id, name: id === 'Ahorros' ? 'Ahorro Seguro' : (cat?.name || id), category: id, allocated_budget: 0, icon: cat?.icon || 'Tag', is_default_free: false };
         }),
       ];
 
@@ -296,25 +296,22 @@ export const Onboarding = ({ session, onComplete }: { session: any; onComplete: 
                 // Usamos la MISMA función colorOf que en el paso 1
                 const color = colorOf(id, index);
                 return (
-                  <View key={id} style={[S.ruleCard, { backgroundColor: theme.colors.surface, ...theme.shadows.sm }]}>
+                  <View key={id} style={[S.ruleCard, { backgroundColor: theme.isDark ? color + '28' : color + '1A', borderColor: 'transparent', shadowOpacity: 0, elevation: 0 }]}>
                     <View style={S.ruleHeader}>
-                      <View style={[S.priorityBadge, { backgroundColor: theme.colors.primaryContainer }]}>
-                        <Text style={{ color: theme.colors.primary, fontSize: 10, fontWeight: '900' }}>{index + 1}</Text>
-                      </View>
-                      <View style={[S.pocketColorDot, { backgroundColor: color, width: 34, height: 34, borderRadius: 10 }]}>
-                        <CatIcon id={id} color="#FFF" size={16} />
+                      <View style={[S.priorityBadge, { backgroundColor: color, width: 28, height: 28, borderRadius: 10 }]}>
+                        <CatIcon id={id} color="#FFF" size={14} />
                       </View>
                       <Text style={[S.ruleTitle, { color: theme.colors.onSurface }]}>{id === 'Ahorros' ? 'Ahorro Seguro' : id}</Text>
 
                       <View style={{ flexDirection: 'row', borderRadius: 12, padding: 4, backgroundColor: theme.colors.surfaceContainerLow }}>
                         <TouchableOpacity 
-                          style={[{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }, rule.type === 'fixed' && { backgroundColor: theme.colors.primary }]} 
+                          style={[{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }, rule.type === 'fixed' && { backgroundColor: color }]} 
                           onPress={() => setRules({...rules, [id]: { ...rule, type: 'fixed' }})}
                         >
                           <DollarSign size={14} color={rule.type === 'fixed' ? '#FFF' : theme.colors.onSurfaceVariant} />
                         </TouchableOpacity>
                         <TouchableOpacity 
-                          style={[{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }, rule.type === 'percentage' && { backgroundColor: theme.colors.primary }]} 
+                          style={[{ width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }, rule.type === 'percentage' && { backgroundColor: color }]} 
                           onPress={() => setRules({...rules, [id]: { ...rule, type: 'percentage' }})}
                         >
                           <Percent size={14} color={rule.type === 'percentage' ? '#FFF' : theme.colors.onSurfaceVariant} />
@@ -323,7 +320,7 @@ export const Onboarding = ({ session, onComplete }: { session: any; onComplete: 
                     </View>
 
                     <View style={S.ruleInputRow}>
-                      <Text style={[S.rulePrefix, { color: theme.colors.primary }]}>{rule.type === 'fixed' ? symbol : '%'}</Text>
+                      <Text style={[S.rulePrefix, { color: theme.colors.onSurfaceVariant }]}>{rule.type === 'fixed' ? symbol : '%'}</Text>
                       <TextInput
                         style={[S.ruleInput, { color: theme.colors.onSurface }]}
                         value={rule.value > 0 ? (rule.type === 'fixed' ? formatInput(String(rule.value)) : String(rule.value)) : ''}
@@ -332,12 +329,12 @@ export const Onboarding = ({ session, onComplete }: { session: any; onComplete: 
                           setRules({...rules, [id]: { ...rule, value: num }});
                         }}
                         placeholder="0"
-                        placeholderTextColor={theme.colors.onSurfaceVariant + '30'}
+                        placeholderTextColor={theme.colors.onSurfaceVariant + '40'}
                         keyboardType="numeric"
                       />
                       
-                      <View style={{ backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14 }}>
-                        <Text style={{ color: theme.colors.primary, fontSize: 14, fontWeight: '800' }}>+ {formatMoney(addValue)}</Text>
+                      <View style={{ backgroundColor: theme.colors.surface, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14 }}>
+                        <Text style={{ color, fontSize: 14, fontWeight: '800' }}>+ {formatMoney(addValue)}</Text>
                       </View>
                     </View>
                   </View>
@@ -362,7 +359,7 @@ export const Onboarding = ({ session, onComplete }: { session: any; onComplete: 
                   <Info size={16} color={theme.colors.primary} />
                 </View>
                 <Text style={{ flex: 1, fontSize: 13, color: theme.colors.onSurfaceVariant, fontWeight: '600', lineHeight: 20 }}>
-                  Puedes omitir este paso tocando <Text style={{ color: theme.colors.primary, fontWeight: '800' }}>"¡Listo, empezar!"</Text>
+                  Puedes omitir este paso tocando <Text style={{ color: theme.colors.primary, fontWeight: '800' }}>“¡Listo, empezar!”</Text>
                 </Text>
               </View>
             )}

@@ -23,6 +23,7 @@
 
 import { handlePreflight, jsonResponse, errorResponse } from "../_shared/cors.ts";
 import { authenticate } from "../_shared/auth.ts";
+import { checkEntitlement } from "../_shared/entitlement.ts";
 import { chatCompletion } from "../_shared/openai.ts";
 
 // Trazabilidad: si tocás el prompt, subí esta versión.
@@ -175,6 +176,19 @@ Deno.serve(async (req) => {
   }
 
   const { user, userClient, serviceClient } = auth;
+
+  // Chequeo de suscripción: solo OBSERVA, no bloquea todavía -- ver
+  // _shared/entitlement.ts para el porqué (ventana legítima post-onboarding
+  // antes del Paywall).
+  const entitlementCheck = await checkEntitlement(user.id);
+  if (!entitlementCheck.active) {
+    await serviceClient.from("user_events").insert({
+      user_id: user.id,
+      event_type: "entitlement.unpaid_api_call",
+      event_data: { function: "ocr-receipt", reason: entitlementCheck.reason },
+      source: "edge_fn",
+    }).catch(() => {});
+  }
 
   let parsed: StructuredReceipt & { category?: string };
   try {
