@@ -50,7 +50,9 @@ const SLOGANS = [
   "Gasta con conciencia.",
   "SAVE cuida tu futuro.",
   "“Los planes bien pensados traen prosperidad.” — Proverbios 21:5",
-  "“El sabio guarda sus provisiones.” — Proverbios 21:20"
+  "“El sabio guarda sus provisiones.” — Proverbios 21:20",
+  "Jesús guarda tu vida; nosotros, tu bolsillo.",
+  "Jesús guarda tu vida; nosotros, tu bolsillo."
 ];
 
 const SplashScreen = () => {

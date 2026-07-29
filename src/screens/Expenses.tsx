@@ -20,7 +20,7 @@ import { formatMoney } from '../lib/format';
 import { notify } from '../lib/notify';
 import { CycleNav } from '../components/CycleNav';
 import { useUserCycles } from '../lib/useCycleState';
-import { BottomSheet } from '../components/BottomSheet';
+import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import type { Session } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
@@ -154,15 +154,6 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
     modalContainer: { borderRadius: 36, padding: 32, paddingBottom: 24, borderWidth: 1, borderColor: theme.colors.divider, ...theme.shadows.premium },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
     modalTitle: { fontSize: 12, fontWeight: '900', color: theme.colors.primary, letterSpacing: 2, textTransform: 'uppercase' },
-    modalInfo: { alignItems: 'center', marginBottom: 32 },
-    modalIconCircle: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
-    modalMerchant: { fontSize: 20, fontWeight: '900', textAlign: 'center', color: theme.colors.onSurface },
-    modalAmt: { fontSize: 32, fontWeight: '900', marginVertical: 10, color: theme.colors.onSurface },
-    modalSub: { fontSize: 14, textAlign: 'center', lineHeight: 20, color: theme.colors.onSurfaceVariant, paddingHorizontal: 10 },
-    modalConfirmBtn: { paddingVertical: 18, borderRadius: theme.radius.lg, alignItems: 'center', marginBottom: 12, ...theme.shadows.soft },
-    modalConfirmTxt: { color: '#FFF', fontSize: 16, fontWeight: '900' },
-    modalCancelBtn: { paddingVertical: 14, alignItems: 'center' },
-    modalCancelTxt: { fontSize: 14, fontWeight: '800' },
     closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: theme.colors.surfaceContainerLow, alignItems: 'center', justifyContent: 'center' },
   }), [theme]);
 
@@ -376,33 +367,17 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
           </>
         )}
 
-      <BottomSheet visible={!!deletingTx} onClose={() => setDeletingTx(null)} title="Eliminar movimiento">
-        {deletingTx && (
-          <>
-            <View style={styles.modalInfo}>
-              <View style={[styles.modalIconCircle, { backgroundColor: theme.colors.error + '12' }]}>
-                <Trash2 size={28} color={theme.colors.error} />
-              </View>
-              <Text style={styles.modalMerchant}>{deletingTx.merchant}</Text>
-              <Text style={styles.modalAmt}>{formatMoney(Math.abs(deletingTx.amount))}</Text>
-              <Text style={styles.modalSub}>Al borrarlo, el presupuesto de tus bolsillos se ajustará automáticamente.</Text>
-            </View>
+      <ConfirmDeleteModal
+        visible={!!deletingTx}
+        confirmLabel="Eliminar movimiento"
+        merchant={deletingTx?.merchant}
+        amountLabel={deletingTx ? formatMoney(Math.abs(deletingTx.amount)) : undefined}
+        subtitle="Al borrarlo, el presupuesto de tus bolsillos se ajustará automáticamente."
+        isDeleting={isDeleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeletingTx(null)}
+      />
 
-            <TouchableOpacity
-              style={[styles.modalConfirmBtn, { backgroundColor: theme.colors.error }, isDeleting && { opacity: 0.7 }]}
-              onPress={handleConfirmDelete}
-              disabled={isDeleting}
-            >
-              {isDeleting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.modalConfirmTxt}>Eliminar movimiento</Text>}
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setDeletingTx(null)}>
-              <Text style={[styles.modalCancelTxt, { color: theme.colors.onSurfaceVariant }]}>No, mantener</Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </BottomSheet>
-      
       <TransactionDetailModal 
         visible={!!selectedTx}
         transaction={selectedTx}

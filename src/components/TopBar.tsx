@@ -632,13 +632,23 @@ export const TopBar = ({
     return parts[0][0]?.toUpperCase() || '?';
   };
 
+  // Las fotos de Google (googleusercontent.com) a veces vienen sin recorte
+  // forzado -- el círculo de la foto queda centrado en un lienzo cuadrado
+  // con esquinas transparentes, y como el contenedor tiene fondo de color
+  // detrás, ese relleno se nota como un marco vacío alrededor de la foto.
+  // Forzamos el sufijo de tamaño+recorte cuadrado que ya usa el CDN de
+  // Google para esto, en vez de confiar en el tamaño que venga.
+  const resolvedAvatarUri = userAvatar && userAvatar.includes('googleusercontent.com')
+    ? userAvatar.replace(/=s\d+-c$/, '') + '=s200-c'
+    : userAvatar;
+
   return (
     <>
       <BlurView intensity={Platform.OS === 'ios' ? 80 : 100} tint={theme.isDark ? 'dark' : 'light'} style={[styles.topBar, { paddingTop: Math.max(insets.top, 16) + 12 }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <TouchableOpacity activeOpacity={0.8} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); if (onAvatarPress) onAvatarPress(); }} style={styles.avatarContainer}>
-            {userAvatar ? (
-              <Image source={{ uri: userAvatar }} style={styles.avatarImage} />
+            {resolvedAvatarUri ? (
+              <Image source={{ uri: resolvedAvatarUri }} style={styles.avatarImage} resizeMode="cover" />
             ) : (
               <View style={styles.avatarFallback}>
                 <Text style={styles.avatarInitials}>{getInitials(userName)}</Text>

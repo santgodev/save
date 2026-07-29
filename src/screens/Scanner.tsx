@@ -71,6 +71,20 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
     },
     mainCameraButtonText: { color: theme.colors.onPrimary, fontSize: 17, fontWeight: '900', letterSpacing: -0.5 },
 
+    galleryButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      width: '100%',
+      paddingVertical: 18,
+      borderRadius: 24,
+      justifyContent: 'center',
+      backgroundColor: 'rgba(255,255,255,0.08)',
+      borderWidth: 1.5,
+      borderColor: theme.colors.divider,
+    },
+    galleryButtonText: { color: theme.colors.onSurface, fontSize: 16, fontWeight: '800' },
+
     scannerProgressContainer: { position: 'absolute', bottom: 0, width: '100%', paddingHorizontal: 16 },
     scannerProgressCard: {
       padding: 24,
@@ -146,7 +160,10 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   const [editableAmount, setEditableAmount] = useState<string>('');
   const [image, setImage] = useState<string | null>(null);
   const [visionOutput, setVisionOutput] = useState<string | null>(null);
-  const [isOpeningPicker, setIsOpeningPicker] = useState(initialMode === 'camera');
+  const [isOpeningPicker, setIsOpeningPicker] = useState(false);
+  // Antes se abría la cámara directo al entrar. Ahora se le pregunta primero
+  // a la persona si quiere tomar la foto o elegirla de la galería.
+  const [awaitingSourceChoice, setAwaitingSourceChoice] = useState(initialMode === 'camera');
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const scaleAnim = React.useRef(new Animated.Value(0.5)).current;
@@ -308,12 +325,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   };
 
   React.useEffect(() => {
-    if (initialMode === 'camera') {
-      // Esperar a que pase la animación de navegación y abrir cámara
-      setTimeout(() => {
-        takePhoto();
-      }, 300);
-    } else if (initialMode === 'demo') {
+    if (initialMode === 'demo') {
       setTimeout(() => {
         runDemoMode();
       }, 400);
@@ -335,13 +347,14 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   // del campo `needs_review` del Edge Function ocr-receipt v5.
 
   const takePhoto = async () => {
+    setAwaitingSourceChoice(false);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsOpeningPicker(true);
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
       setIsOpeningPicker(false);
       notify.error('Se necesita permiso para acceder a la cámara.');
-      if (initialMode === 'camera') onGoBack();
+      if (initialMode === 'camera') setAwaitingSourceChoice(true);
       return;
     }
 
@@ -360,7 +373,39 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       setExtractedData(null);
       if (base64Image) performTextDetection(base64Image);
     } else if (initialMode === 'camera') {
-      onGoBack();
+      // Cancelar vuelve a la pantalla de elegir, no saca del escáner de una.
+      setAwaitingSourceChoice(true);
+    }
+  };
+
+  const pickFromGallery = async () => {
+    setAwaitingSourceChoice(false);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsOpeningPicker(true);
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      setIsOpeningPicker(false);
+      notify.error('Se necesita permiso para acceder a tus fotos.');
+      if (initialMode === 'camera') setAwaitingSourceChoice(true);
+      return;
+    }
+
+    let result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      quality: 0.8,
+      base64: true,
+    });
+
+    setIsOpeningPicker(false);
+
+    if (!result.canceled) {
+      const base64Image = result.assets[0].base64;
+      setImage(result.assets[0].uri);
+      setVisionOutput(null);
+      setExtractedData(null);
+      if (base64Image) performTextDetection(base64Image);
+    } else if (initialMode === 'camera') {
+      setAwaitingSourceChoice(true);
     }
   };
 
@@ -549,6 +594,23 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
             <View style={{ paddingVertical: 100, alignItems: 'center', justifyContent: 'center' }}>
               <ActivityIndicator size="large" color={theme.colors.primary} />
               <Text style={{ marginTop: 16, color: theme.colors.primary, fontWeight: '800' }}>Abriendo cámara...</Text>
+            </View>
+           ) : awaitingSourceChoice ? (
+            <View style={styles.scannerInitialView}>
+              <View style={{ width: 96, height: 96, borderRadius: 32, backgroundColor: theme.colors.primaryContainer, alignItems: 'center', justifyContent: 'center' }}>
+                <ReceiptText size={40} color={theme.colors.primary} />
+              </View>
+              <Text style={styles.scannerInitialText}>Toma una foto de tu factura o elige una que ya tengas guardada.</Text>
+
+              <TouchableOpacity style={styles.mainCameraButton} onPress={takePhoto} activeOpacity={0.85}>
+                <CameraIcon size={22} color={theme.colors.onPrimary} />
+                <Text style={styles.mainCameraButtonText}>Tomar foto</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.galleryButton} onPress={pickFromGallery} activeOpacity={0.85}>
+                <ImagePlusIcon size={20} color={theme.colors.onSurface} />
+                <Text style={styles.galleryButtonText}>Elegir de galería</Text>
+              </TouchableOpacity>
             </View>
            ) : (initialMode === 'demo' && progress === 0) ? (
             <View />

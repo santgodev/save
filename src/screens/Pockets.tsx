@@ -24,6 +24,7 @@ import { notify } from '../lib/notify';
 import { CycleNav } from '../components/CycleNav';
 import { TransactionDetailModal } from '../components/TransactionDetailModal';
 import { CycleUndoModal } from '../components/CycleUndoModal';
+import { ConfirmDeleteModal } from '../components/ConfirmDeleteModal';
 import { MiniAnimatedSaveLogo } from '../components/TopBar';
 import { TourStep } from '../components/tour/TourStep';
 import { useTour } from '../components/tour/TourContext';
@@ -45,6 +46,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   const [selectedTx, setSelectedTx] = useState<any>(null);
   const [showUndoModal, setShowUndoModal] = useState(false);
   const [undoWasReverted, setUndoWasReverted] = useState(true);
+  const [deletingTx, setDeletingTx] = useState<any>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
@@ -200,29 +203,46 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     
     const cleanName = newName.trim();
     const capitalizedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
-    const allocated = parseInt(newBudget.replace(/\D/g, '')) || 0;
-    
-    // El bolsillo nace en 0: allocated_budget solo crece cuando un ingreso le
-    // reparte plata vía register_income. Sembrarlo con la cifra que el usuario
-    // escribe aquí inventaria dinero que ningún ingreso respalda.
-    //
-    // PENDIENTE: por eso `allocated` (arriba) queda sin usar y el campo
-    // "Presupuesto mensual" del modal no guarda nada. Falta decidir si se
-    // quita ese campo de la UI o si el "plan" vive en su propia columna,
-    // separada del dinero disponible.
-      await supabase.from('pockets').insert({
+    const planned = parseInt(newBudget.replace(/\D/g, '')) || 0;
+
+    // El bolsillo nace en 0 de dinero real. Si trae presupuesto de una, esa
+    // plata se traslada desde Libre (mismo RPC que la pantalla de traslados
+    // manuales) -- nunca se inventa dinero que ningún ingreso respalde.
+    try {
+      const { data: newPocket, error: insertError } = await supabase.from('pockets').insert({
         user_id: session.user.id,
         name: capitalizedName,
         category: capitalizedName,
         allocated_budget: 0,
+        planned_budget: planned > 0 ? planned : null,
         icon: newIcon || 'tag'
-      });
-    setNewName('');
-    setNewBudget('');
-    setNewIcon('tag');
-    setAddModalVisible(false);
-    onRefresh();
-    refreshMonthly();
+      }).select().single();
+
+      if (insertError) throw insertError;
+
+      if (planned > 0 && newPocket) {
+        const librePocket = pockets.find((p: any) => p.is_default_free);
+        if (librePocket) {
+          const { error: transferError } = await supabase.rpc('transfer_between_pockets', {
+            p_user_id: session.user.id,
+            p_from_id: librePocket.id,
+            p_to_id: newPocket.id,
+            p_amount: planned,
+          });
+          if (transferError) throw transferError;
+        }
+      }
+
+      setNewName('');
+      setNewBudget('');
+      setNewIcon('tag');
+      setAddModalVisible(false);
+      onRefresh();
+      refreshMonthly();
+    } catch (e) {
+      console.error(e);
+      notify.error('No se pudo crear el bolsillo.');
+    }
   };
 
   const saveEditPocket = async () => {
@@ -232,30 +252,55 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
       const cleanName = editName.trim();
       const capitalizedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
       
-      // Solo se editan nombre e icono. El monto del campo "Presupuesto (Plan)"
-      // se descarta a propósito: escribirlo en allocated_budget crearía plata
-      // sin ingreso que la respalde. Mismo pendiente que en syncPocketToCloud.
-      const updates: any = { name: capitalizedName, category: capitalizedName, icon: editIcon };
-      
-      await supabase.from('pockets').update(updates).eq('id', selectedPocket.id);
-      
+      const planned = parseInt(editBudgetValue.replace(/\D/g, '')) || 0;
+
+      // La diferencia se traslada desde/hacia Libre (mismo RPC que los
+      // traslados manuales) -- así el dinero real siempre sale de algún
+      // lado real. planned_budget guarda el mismo valor aparte porque
+      // allocated_budget se resetea a 0 en cada cierre de ciclo -- sin esa
+      // copia, AddIncome perdería la sugerencia apenas cerrara el mes.
+      const librePocket = pockets.find((p: any) => p.is_default_free);
+      const currentAllocated = selectedPocket.allocated_budget ?? 0;
+      const diff = planned - currentAllocated;
+
+      if (diff !== 0 && librePocket && librePocket.id !== selectedPocket.id) {
+        const { error: transferError } = await supabase.rpc('transfer_between_pockets', {
+          p_user_id: session.user.id,
+          p_from_id: diff > 0 ? librePocket.id : selectedPocket.id,
+          p_to_id: diff > 0 ? selectedPocket.id : librePocket.id,
+          p_amount: Math.abs(diff),
+        });
+        if (transferError) throw transferError;
+      }
+
+      const updates: any = {
+        name: capitalizedName,
+        category: capitalizedName,
+        icon: editIcon,
+        planned_budget: planned > 0 ? planned : null,
+      };
+
+      const { error: updateError } = await supabase.from('pockets').update(updates).eq('id', selectedPocket.id);
+      if (updateError) throw updateError;
+
       // Update local state immediately so UI reflects it before refetch
-      setSelectedPocket((prev: any) => prev ? { ...prev, ...updates } : null);
-      
+      setSelectedPocket((prev: any) => prev ? { ...prev, ...updates, allocated_budget: planned } : null);
+
       onRefresh();
       refreshMonthly();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSaveSuccess(true);
-      
+
       setTimeout(() => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setIsEditingPocket(false);
         setIsSavingPocket(false);
         setSaveSuccess(false);
       }, 700);
-      
-    } catch (e) {
+
+    } catch (e: any) {
       console.error(e);
+      notify.error(e?.message || 'No se pudo guardar el presupuesto.');
       setIsSavingPocket(false);
     }
   };
@@ -264,7 +309,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     if (!selectedPocket) return;
     setEditName(selectedPocket.name);
     setEditIcon(selectedPocket.icon || 'tag');
-    const plan = selectedPocket.allocated_budget ?? 0;
+    const plan = selectedPocket.planned_budget ?? 0;
     setEditBudgetValue(plan > 0 ? String(plan) : '');
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setIsEditingPocket(true);
@@ -467,6 +512,40 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     { key: 'Scissors', label: 'Peluquería' },
     { key: 'Wrench', label: 'Arreglos' },
   ];
+
+  // Mismo flujo de confirmación que Movimientos (Expenses.tsx) -- antes acá
+  // se borraba directo al tocar "Eliminar" en el detalle, sin preguntar.
+  const handleConfirmDelete = async () => {
+    if (!deletingTx || isDeleting) return;
+    setIsDeleting(true);
+    const tx = deletingTx;
+    try {
+      const { data, error } = await supabase.rpc('delete_transaction_with_reversal', {
+        p_tx_id: tx.id,
+        p_user_id: session.user.id
+      });
+
+      if (error) throw error;
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setDeletingTx(null);
+
+      if (data && data.cycle_deleted) {
+        setUndoWasReverted(!!data.cycle_reverted);
+        setShowUndoModal(true);
+      } else {
+        onRefresh();
+      }
+
+      if (tx.metadata?.is_demo) {
+        setShowDemoSuccess(true);
+      }
+    } catch (e) {
+      notify.error('Error al eliminar');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -1062,37 +1141,28 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
           </TouchableWithoutFeedback>
         </Modal>
 
-        <TransactionDetailModal 
+        <TransactionDetailModal
           visible={!!selectedTx}
           transaction={selectedTx}
           pockets={pockets}
           onClose={() => setSelectedTx(null)}
-          onDelete={async (tx) => {
+          onDelete={(tx) => {
             setSelectedTx(null);
-            try {
-              const { data, error } = await supabase.rpc('delete_transaction_with_reversal', { 
-                p_tx_id: tx.id, 
-                p_user_id: session.user.id 
-              });
-              
-              if (error) throw error;
-              
-              if (data && data.cycle_deleted) {
-                setUndoWasReverted(!!data.cycle_reverted);
-                setShowUndoModal(true);
-              } else {
-                onRefresh();
-              }
-              
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              
-              if (tx.metadata?.is_demo) {
-                setShowDemoSuccess(true);
-              }
-            } catch (e) {
-              notify.error('Error al eliminar');
-            }
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            setDeletingTx(tx);
           }}
+        />
+
+        <ConfirmDeleteModal
+          visible={!!deletingTx}
+          confirmLabel="Eliminar movimiento"
+          merchant={deletingTx?.merchant}
+          amountLabel={deletingTx ? formatMoney(Math.abs(deletingTx.amount)) : undefined}
+          subtitle="Al borrarlo, el presupuesto de tus bolsillos se ajustará automáticamente."
+          isDeleting={isDeleting}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setDeletingTx(null)}
+          blockCancel={!!deletingTx?.metadata?.is_demo}
         />
 
         <CycleUndoModal visible={showUndoModal} reverted={undoWasReverted} />

@@ -5,7 +5,7 @@
 // nunca la vuelve a ver.
 // =====================================================================
 
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated, Dimensions, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -20,14 +20,18 @@ interface PurchaseConfirmationProps {
 }
 
 // =====================================================================
-// CONFETTI — piezas de colores de la marca, caen desde arriba con una
-// rotación y una velocidad ligeramente distintas cada una para que no se
-// sientan sincronizadas ni artificiales.
+// CONFETTI — piezas de colores de la marca, en OLEADAS (no una sola
+// tanda) para que siga cayendo varios segundos seguidos en vez de
+// vaciarse a los 2 segundos -- así en cualquier instante que se vea la
+// pantalla, sigue habiendo fiesta.
 // =====================================================================
 const CONFETTI_COLORS = ['#47ADA2', '#F0927B', '#8AD6CE', '#D2A9D1', '#B9E2A2'];
-const CONFETTI_COUNT = 26;
+const PIECES_PER_WAVE = 22;
+const WAVE_COUNT = 4;
+const WAVE_INTERVAL_MS = 450;
 
 type ConfettiPiece = {
+  id: number;
   left: number;
   color: string;
   size: number;
@@ -38,23 +42,36 @@ type ConfettiPiece = {
   rotations: number;
 };
 
+let confettiIdSeq = 0;
+const makeWave = (): ConfettiPiece[] =>
+  Array.from({ length: PIECES_PER_WAVE }).map(() => ({
+    id: confettiIdSeq++,
+    left: Math.random() * width,
+    color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+    size: 6 + Math.random() * 7,
+    isCircle: Math.random() > 0.5,
+    delay: Math.random() * 300,
+    duration: 2600 + Math.random() * 1800,
+    drift: (Math.random() - 0.5) * 90,
+    rotations: 2 + Math.random() * 3,
+  }));
+
 const ConfettiLayer = () => {
-  const pieces = useMemo<ConfettiPiece[]>(() => (
-    Array.from({ length: CONFETTI_COUNT }).map(() => ({
-      left: Math.random() * width,
-      color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
-      size: 6 + Math.random() * 7,
-      isCircle: Math.random() > 0.5,
-      delay: Math.random() * 350,
-      duration: 2200 + Math.random() * 1400,
-      drift: (Math.random() - 0.5) * 80,
-      rotations: 2 + Math.random() * 3,
-    }))
-  ), []);
+  const [pieces, setPieces] = useState<ConfettiPiece[]>(() => makeWave());
+
+  useEffect(() => {
+    let wave = 1;
+    const interval = setInterval(() => {
+      if (wave >= WAVE_COUNT) { clearInterval(interval); return; }
+      setPieces(prev => [...prev, ...makeWave()]);
+      wave++;
+    }, WAVE_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-      {pieces.map((p, i) => <ConfettiPieceView key={i} piece={p} />)}
+      {pieces.map((p) => <ConfettiPieceView key={p.id} piece={p} />)}
     </View>
   );
 };
@@ -72,10 +89,10 @@ const ConfettiPieceView = ({ piece }: { piece: ConfettiPiece }) => {
     }).start();
   }, []);
 
-  const translateY = fall.interpolate({ inputRange: [0, 1], outputRange: [-40, height * 0.85] });
+  const translateY = fall.interpolate({ inputRange: [0, 1], outputRange: [-40, height + 60] });
   const translateX = fall.interpolate({ inputRange: [0, 1], outputRange: [0, piece.drift] });
   const rotate = fall.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${piece.rotations * 360}deg`] });
-  const opacity = fall.interpolate({ inputRange: [0, 0.8, 1], outputRange: [1, 1, 0] });
+  const opacity = fall.interpolate({ inputRange: [0, 0.9, 1], outputRange: [1, 1, 0] });
 
   return (
     <Animated.View
@@ -134,7 +151,7 @@ export const PurchaseConfirmation = ({ plan, onContinue }: PurchaseConfirmationP
       width: 92, height: 92, borderRadius: 46,
       backgroundColor: theme.colors.primary + '20',
       alignItems: 'center', justifyContent: 'center',
-      marginBottom: 24,
+      marginBottom: 22,
     },
     badgeInner: {
       width: 70, height: 70, borderRadius: 35,
@@ -147,7 +164,7 @@ export const PurchaseConfirmation = ({ plan, onContinue }: PurchaseConfirmationP
       borderRadius: 999,
       paddingHorizontal: 14,
       paddingVertical: 6,
-      marginBottom: 14,
+      marginBottom: 12,
     },
     planPillText: {
       fontSize: 11, fontWeight: '900', letterSpacing: 0.6,
@@ -156,17 +173,17 @@ export const PurchaseConfirmation = ({ plan, onContinue }: PurchaseConfirmationP
       fontFamily: theme.fonts.headline,
     },
     headlinePre: {
-      fontSize: 22, fontWeight: '800',
+      fontSize: 24, fontWeight: '800',
       fontFamily: theme.fonts.headline,
       color: theme.colors.onSurface,
     },
     wordmarkRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 14,
+      marginBottom: 12,
     },
     wordmarkLetter: {
-      fontSize: 22, fontWeight: '900',
+      fontSize: 24, fontWeight: '900',
       fontFamily: theme.fonts.headline,
     },
     proBadge: {
@@ -182,22 +199,26 @@ export const PurchaseConfirmation = ({ plan, onContinue }: PurchaseConfirmationP
       color: theme.colors.onPrimary,
     },
     subtitle: {
-      fontSize: 15, color: theme.colors.onSurfaceVariant,
-      textAlign: 'center', lineHeight: 22,
+      fontSize: 14.5, color: theme.colors.onSurfaceVariant,
+      textAlign: 'center', lineHeight: 20,
       fontFamily: theme.fonts.body,
-      marginBottom: 32,
+      marginBottom: 26,
       maxWidth: 300,
     },
-    list: { width: '100%', gap: 14, marginBottom: 40 },
+    list: { width: '100%', gap: 12 },
     listRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     listIconBg: {
-      width: 38, height: 38, borderRadius: 13,
+      width: 36, height: 36, borderRadius: 12,
       alignItems: 'center', justifyContent: 'center',
     },
     listText: {
-      flex: 1, fontSize: 14.5, fontWeight: '700',
+      flex: 1, fontSize: 14, fontWeight: '700',
       color: theme.colors.onSurface,
       fontFamily: theme.fonts.headline,
+    },
+    footer: {
+      paddingHorizontal: 28,
+      paddingTop: 12,
     },
     cta: {
       width: '100%',
@@ -215,17 +236,17 @@ export const PurchaseConfirmation = ({ plan, onContinue }: PurchaseConfirmationP
   });
 
   const FEATURES: Array<{ icon: React.ReactNode; label: string; bg: string }> = [
-    { icon: <Leaf size={18} color="#FFF" />, label: 'Sin complicaciones, hecha para vos', bg: '#8AD6CE' },
-    { icon: <Camera size={18} color="#FFF" />, label: 'Escaneo de recibos ilimitado', bg: '#F0927B' },
-    { icon: <MessageSquare size={18} color="#FFF" />, label: 'Save IA sin límites', bg: '#D2A9D1' },
-    { icon: <Wallet size={18} color="#FFF" />, label: 'Bolsillos y ciclos ilimitados', bg: theme.colors.primary },
+    { icon: <Leaf size={17} color="#FFF" />, label: 'Sin complicaciones, hecha para ti', bg: '#8AD6CE' },
+    { icon: <Camera size={17} color="#FFF" />, label: 'Escaneo de recibos ilimitado', bg: '#F0927B' },
+    { icon: <MessageSquare size={17} color="#FFF" />, label: 'Save IA sin límites', bg: '#D2A9D1' },
+    { icon: <Wallet size={17} color="#FFF" />, label: 'Bolsillos y ciclos ilimitados', bg: theme.colors.primary },
   ];
 
   return (
     <View style={styles.container}>
       <ConfettiLayer />
 
-      <View style={[styles.content, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+      <View style={[styles.content, { paddingTop: insets.top + 12 }]}>
         <Animated.View style={[styles.badgeOuter, { transform: [{ scale: badgeScale }] }]}>
           <View style={styles.badgeInner}>
             <Sparkles size={30} color={theme.colors.onPrimary} />
@@ -257,8 +278,10 @@ export const PurchaseConfirmation = ({ plan, onContinue }: PurchaseConfirmationP
             </View>
           ))}
         </Animated.View>
+      </View>
 
-        <Animated.View style={{ width: '100%', opacity: ctaOpacity, transform: [{ translateY: ctaY }] }}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+        <Animated.View style={{ opacity: ctaOpacity, transform: [{ translateY: ctaY }] }}>
           <TouchableOpacity
             activeOpacity={0.85}
             style={styles.cta}
