@@ -2,14 +2,13 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   View, Text, Image, TouchableOpacity, StyleSheet, Platform,
   Modal, ScrollView, ActivityIndicator, TextInput, KeyboardAvoidingView,
-  Keyboard, TouchableWithoutFeedback, PanResponder, LayoutAnimation, Animated
+  Keyboard, LayoutAnimation, Animated
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
-import { Bell, X, Sparkles, Send, Target, Trash2 } from 'lucide-react-native';
+import { Bell, X, Sparkles, Send, Target, Trash2, AlertTriangle, RotateCcw } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
-import { calculateFinancialProfile, CycleDates } from '../utils/profileUtils';
 import { supabase } from '../lib/supabase';
 import { logEvent, EVENTS } from '../lib/events';
 import { BottomSheet } from './BottomSheet';
@@ -32,16 +31,34 @@ interface TopBarProps {
   onAvatarPress?: () => void;
 }
 
-const QUICK_QUESTIONS = [
-  '¿En qué se me está yendo la plata?',
-  '¿Voy a alcanzar a llegar a fin de mes?',
-  'Dame un consejo para ahorrar hoy',
-];
-
 type Message = {
   role: 'user' | 'assistant';
   content: string;
+  isError?: boolean;
+  retryText?: string;
 };
+
+// Preguntas sugeridas: se elige un subconjunto al azar cada vez que se
+// muestran (saludo inicial y después de cada respuesta), para que no se
+// sientan siempre las mismas 2 opciones.
+const SUGGESTED_QUESTIONS = [
+  '¿Cómo voy este mes?',
+  '¿En qué se me va más la plata?',
+  '¿Voy a alcanzar a llegar a fin de mes?',
+  'Dame un consejo para ahorrar hoy',
+  '¿Cuánto llevo gastado esta semana?',
+  '¿Qué bolsillo tengo más apretado?',
+];
+
+function getRandomSuggestions(n: number, exclude?: string): string[] {
+  const pool = SUGGESTED_QUESTIONS.filter(q => q !== exclude);
+  const picked: string[] = [];
+  while (picked.length < n && pool.length > 0) {
+    const idx = Math.floor(Math.random() * pool.length);
+    picked.push(pool.splice(idx, 1)[0]);
+  }
+  return picked;
+}
 
 let hasShownGreeting = false;
 
@@ -94,8 +111,43 @@ export const MiniAnimatedSaveLogo = () => {
   );
 };
 
+// Puntos animados estilo iMessage para el indicador de "escribiendo...".
+// Cada punto sube y baja en cascada (0ms / 150ms / 300ms de diferencia).
+const TypingDots = ({ color }: { color: string }) => {
+  const dots = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
 
-export const TopBar = ({ 
+  useEffect(() => {
+    const loops = dots.map((dot, i) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * 150),
+          Animated.timing(dot, { toValue: 1, duration: 350, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0, duration: 350, useNativeDriver: true }),
+          Animated.delay((2 - i) * 150),
+        ])
+      )
+    );
+    loops.forEach(l => l.start());
+    return () => loops.forEach(l => l.stop());
+  }, []);
+
+  return (
+    <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center' }}>
+      {dots.map((dot, i) => (
+        <Animated.View
+          key={i}
+          style={{
+            width: 7, height: 7, borderRadius: 3.5, backgroundColor: color,
+            opacity: dot.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }),
+            transform: [{ translateY: dot.interpolate({ inputRange: [0, 1], outputRange: [0, -4] }) }],
+          }}
+        />
+      ))}
+    </View>
+  );
+};
+
+export const TopBar = ({
   title, userAvatar, userName, userId, transactions = [], pockets = [],
   showChat: propsShowChat, onShowChatChange, initialMessage,
   clearHistoryOnOpen, onHistoryCleared, onAvatarPress
@@ -106,22 +158,29 @@ export const TopBar = ({
   const [greetingTitle, setGreetingTitle] = useState('');
 
   useEffect(() => {
-    if (!hasShownGreeting && userName) {
-      hasShownGreeting = true;
+    if (hasShownGreeting) return;
+    hasShownGreeting = true;
+
+    // Sin nombre real (ej. login con Apple sin compartirlo) no inventamos
+    // uno -- ni el email, ni un "Amigo" genérico. Un saludo sin nombre en
+    // vez de uno con un nombre falso.
+    let text: string;
+    if (userName) {
       const hours = new Date().getHours();
       let g = 'Hola';
       if (hours < 12) g = 'Buenos días';
       else if (hours < 18) g = 'Buenas tardes';
       else g = 'Buenas noches';
-      
-      const shortName = userName.split(' ')[0];
-      setGreetingTitle(`${g}, ${shortName}`);
-      
-      setTimeout(() => {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setGreetingTitle('');
-      }, 3500);
+      text = `${g}, ${userName.split(' ')[0]}`;
+    } else {
+      text = 'Qué bueno tenerte en Save';
     }
+    setGreetingTitle(text);
+
+    setTimeout(() => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setGreetingTitle('');
+    }, 3500);
   }, [userName]);
 
   const [internalShowChat, setInternalShowChat] = useState(false);
@@ -135,7 +194,6 @@ export const TopBar = ({
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [hasNewInsights, setHasNewInsights] = useState(false);
-  const [isScoreMinimized, setIsScoreMinimized] = useState(false);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -277,13 +335,9 @@ export const TopBar = ({
 
     // Saludo coherente con el paradigma read-only del advisor (v6):
     // pregunta directa "qué quieres saber" en lugar de "cómo te ayudo".
-    return `Hola${userName ? ` ${userName.split(' ')[0]}` : ''}. ${insight}\n¿Qué quieres saber de tus números?\n\n[BOTON:¿Cómo voy este mes?][BOTON:¿En qué se me va más?]`;
+    const suggestions = getRandomSuggestions(2).map(q => `[BOTON:${q}]`).join('');
+    return `Hola${userName ? ` ${userName.split(' ')[0]}` : ''}. ${insight}\n¿Qué quieres saber de tus números?\n\n${suggestions}`;
   };
-
-  const cycleDates: CycleDates | undefined = monthState
-    ? { start: monthState.start_date, end: monthState.end_date ?? null }
-    : undefined;
-  const profileData = useMemo(() => calculateFinancialProfile(transactions, [], pockets, undefined, cycleDates), [transactions, pockets, cycleDates]);
 
   // ---------------------------------------------------------------------------
   // Persisted history: load from chat_messages on every chat open so that the
@@ -377,8 +431,15 @@ export const TopBar = ({
     if (!trimmed || isTyping) return;
 
     const userMsg: Message = { role: 'user', content: trimmed };
-    const newMessages: Message[] = [...messages, userMsg];
-    setMessages(newMessages);
+    // Forma funcional -- igual que las otras dos actualizaciones de este
+    // archivo. Con [...messages, userMsg] (la versión anterior) el mensaje
+    // del usuario se arma con la copia de `messages` que quedó cerrada en
+    // el render donde se creó este `onPress` -- si tocar un botón DENTRO
+    // de la lista de mensajes dispara cualquier otro re-render justo antes
+    // (por ejemplo el propio scroll, o el listener del teclado), esa copia
+    // puede quedar vieja y el mensaje nuevo se pierde en el aire. Con la
+    // forma funcional siempre se parte del estado real más reciente.
+    setMessages(prev => [...prev, userMsg]);
     setInputText('');
     setIsTyping(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -418,12 +479,19 @@ export const TopBar = ({
       }
 
       const reply = (data?.reply as string | undefined) ?? 'No pude procesar esa consulta. Intenta de nuevo.';
-      setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+      // Sugerencias después de cada respuesta, no solo en el saludo -- para
+      // que siempre haya un siguiente paso obvio sin tener que pensar qué
+      // preguntar. Al azar, para que no se sientan siempre las mismas 2.
+      const suggestions = getRandomSuggestions(2, trimmed).map(q => `[BOTON:${q}]`).join('');
+      setMessages(prev => [...prev, { role: 'assistant', content: `${reply}\n\n${suggestions}` }]);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
       console.warn('[chat] invoke failed', e);
       const errMsg = e instanceof Error ? e.message : 'No pude conectarme con Save. Revisa tu conexión e intenta de nuevo.';
-      setMessages(prev => [...prev, { role: 'assistant', content: errMsg }]);
+      // isError + retryText: para que la burbuja se vea distinta a una
+      // respuesta real de la IA, y para poder reintentar el mismo mensaje
+      // sin que la persona tenga que retipearlo.
+      setMessages(prev => [...prev, { role: 'assistant', content: errMsg, isError: true, retryText: trimmed }]);
     } finally {
       setIsTyping(false);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150);
@@ -508,6 +576,15 @@ export const TopBar = ({
     },
     bubbleUserText: { color: '#FFF', fontSize: 15, fontWeight: '600', lineHeight: 22 },
     bubbleAssistantText: { color: theme.colors.onSurface, fontSize: 15, fontWeight: '500', lineHeight: 22 },
+    // Burbuja de error: distinta a propósito de una respuesta real, para
+    // que no se confunda "Save contestó esto" con "algo se rompió".
+    bubbleErrorInner: {
+      backgroundColor: theme.colors.errorContainer + '40',
+      paddingHorizontal: 16, paddingVertical: 12,
+      borderRadius: 20, borderBottomLeftRadius: 6,
+      borderWidth: 1, borderColor: theme.colors.error + '50',
+    },
+    bubbleErrorText: { color: theme.colors.error, fontSize: 15, fontWeight: '500', lineHeight: 22 },
 
     // Typing indicator
     typingBubble: {
@@ -517,8 +594,6 @@ export const TopBar = ({
       borderWidth: 1, borderColor: theme.colors.divider,
       marginBottom: 12,
     },
-    typingDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: theme.colors.primary },
-
     // Quick chips
     chipsSection: { paddingBottom: 8, paddingHorizontal: 16 },
     chip: {
@@ -588,21 +663,17 @@ export const TopBar = ({
 
       <Modal visible={showChat} animationType="slide" transparent={false}>
         <KeyboardAvoidingView style={styles.chatContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={{ flex: 1 }}>
+          <View style={{ flex: 1 }}>
 
               {/* Header */}
               <View style={[styles.chatHeader, { paddingTop: Math.max(insets.top, 20) + 16 }]}>
                 <View style={styles.chatHeaderLeft}>
-                  <View style={[styles.sageAvatar, { backgroundColor: profileData.score >= 80 ? '#10B98120' : profileData.score >= 50 ? '#F59E0B20' : '#EF444420' }]}>
-                    <Sparkles size={22} color={profileData.score >= 80 ? '#10B981' : profileData.score >= 50 ? '#F59E0B' : '#EF4444'} />
+                  <View style={[styles.sageAvatar, { backgroundColor: theme.colors.primaryContainer }]}>
+                    <Sparkles size={22} color={theme.colors.primary} />
                   </View>
                   <View>
                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                      <Text style={{ fontSize: 18, fontWeight: '900', color: theme.colors.primary, letterSpacing: 0.5 }}>S</Text>
-                      <Text style={{ fontSize: 18, fontWeight: '900', color: '#F0927B', letterSpacing: 0.5 }}>A</Text>
-                      <Text style={{ fontSize: 18, fontWeight: '900', color: '#8AD6CE', letterSpacing: 0.5 }}>V</Text>
-                      <Text style={{ fontSize: 18, fontWeight: '900', color: '#D2A9D1', letterSpacing: 0.5 }}>E</Text>
+                      <Text style={{ fontSize: 18, fontWeight: '900', color: theme.colors.primary, letterSpacing: 0.5 }}>SAVE</Text>
                       <View style={{ backgroundColor: theme.colors.primary, borderRadius: 4, paddingHorizontal: 4, paddingVertical: 2, marginLeft: 6 }}>
                         <Text style={{ fontSize: 9, fontWeight: '900', color: theme.colors.onPrimary, letterSpacing: 1 }}>IA</Text>
                       </View>
@@ -630,7 +701,8 @@ export const TopBar = ({
                 contentContainerStyle={styles.messagesList}
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
-                onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+                keyboardDismissMode="on-drag"
+                onScrollBeginDrag={Keyboard.dismiss}
               >
                 {isHistoryLoading ? (
                   <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 40 }}>
@@ -643,14 +715,38 @@ export const TopBar = ({
                       <View key={idx} style={[styles.bubbleWrap, msg.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant]}>
                         {msg.role === 'assistant' && (
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                            <Sparkles size={12} color={theme.colors.primary} />
-                            <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.primary, letterSpacing: 0.8 }}>SAVE AI</Text>
+                            {msg.isError ? (
+                              <>
+                                <AlertTriangle size={12} color={theme.colors.error} />
+                                <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.error, letterSpacing: 0.8 }}>NO SE PUDO ENVIAR</Text>
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles size={12} color={theme.colors.primary} />
+                                <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.primary, letterSpacing: 0.8 }}>SAVE AI</Text>
+                              </>
+                            )}
                           </View>
                         )}
-                        <View style={msg.role === 'user' ? styles.bubbleUserInner : styles.bubbleAssistantInner}>
+                        <View style={
+                          msg.role === 'user' ? styles.bubbleUserInner
+                          : msg.isError ? styles.bubbleErrorInner
+                          : styles.bubbleAssistantInner
+                        }>
                           {renderMessageContent(
                             msg,
-                            msg.role === 'user' ? styles.bubbleUserText : styles.bubbleAssistantText
+                            msg.role === 'user' ? styles.bubbleUserText
+                            : msg.isError ? styles.bubbleErrorText
+                            : styles.bubbleAssistantText
+                          )}
+                          {msg.isError && msg.retryText && (
+                            <TouchableOpacity
+                              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, alignSelf: 'flex-start' }}
+                              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); sendMessage(msg.retryText!); }}
+                            >
+                              <RotateCcw size={13} color={theme.colors.error} />
+                              <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.error }}>Reintentar</Text>
+                            </TouchableOpacity>
                           )}
                         </View>
                       </View>
@@ -660,10 +756,7 @@ export const TopBar = ({
 
                 {isTyping && (
                   <View style={styles.typingBubble}>
-                    <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center' }}>
-                      <ActivityIndicator size="small" color={theme.colors.primary} />
-                      <Text style={{ fontSize: 13, color: theme.colors.onSurfaceVariant, fontWeight: '700' }}>Save está pensando...</Text>
-                    </View>
+                    <TypingDots color={theme.colors.primary} />
                   </View>
                 )}
 
@@ -692,44 +785,47 @@ export const TopBar = ({
               </View>
 
             </View>
-          </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
 
         <BottomSheet visible={showClearConfirm} onClose={() => setShowClearConfirm(false)} title="Nueva Conversación">
-          <View style={{ alignItems: 'center', marginBottom: 24 }}>
-            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.primaryContainer, alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-              <Sparkles size={32} color={theme.colors.primary} />
+          <View style={{ alignItems: 'center', marginBottom: 28 }}>
+            {/* Insignia de dos tonos -- mismo lenguaje que el modal de
+                bienvenida del tutorial y el de cierre de mes: anillo tenue
+                por fuera, círculo sólido adentro. */}
+            <View style={{ width: 76, height: 76, borderRadius: 38, backgroundColor: theme.colors.primary + '20', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+              <View style={{ width: 58, height: 58, borderRadius: 29, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', ...theme.shadows.md }}>
+                <Sparkles size={26} color="#FFF" />
+              </View>
             </View>
             <Text style={{ fontSize: 15, color: theme.colors.onSurfaceVariant, textAlign: 'center', lineHeight: 22, paddingHorizontal: 16 }}>
               Save olvidará el contexto de la conversación actual para empezar desde cero con un análisis fresco.
             </Text>
           </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
-            <TouchableOpacity 
-              style={{ width: '48%', paddingVertical: 14, borderRadius: 16, backgroundColor: theme.colors.surfaceContainerHighest, alignItems: 'center' }}
-              onPress={() => setShowClearConfirm(false)}
-            >
-              <Text style={{ color: theme.colors.onSurface, fontWeight: '700', fontSize: 15 }}>Cancelar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={{ width: '48%', paddingVertical: 14, borderRadius: 16, backgroundColor: theme.colors.primary, alignItems: 'center' }}
-              onPress={async () => {
-                setShowClearConfirm(false);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                if (userId) {
-                  try {
-                    await supabase.from('chat_messages').delete().eq('user_id', userId);
-                  } catch (e) {
-                    console.warn('[chat] error clearing history', e);
-                  }
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={{ width: '100%', backgroundColor: theme.colors.primary, paddingVertical: 20, borderRadius: 24, alignItems: 'center', ...theme.shadows.lg }}
+            onPress={async () => {
+              setShowClearConfirm(false);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              if (userId) {
+                try {
+                  await supabase.from('chat_messages').delete().eq('user_id', userId);
+                } catch (e) {
+                  console.warn('[chat] error clearing history', e);
                 }
-                sessionIdRef.current = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-                setMessages([{ role: 'assistant', content: getProactiveGreeting() }]);
-              }}
-            >
-              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 15 }}>Empezar</Text>
-            </TouchableOpacity>
-          </View>
+              }
+              sessionIdRef.current = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+              setMessages([{ role: 'assistant', content: getProactiveGreeting() }]);
+            }}
+          >
+            <Text style={{ fontFamily: theme.fonts.headline, color: '#FFFFFF', fontSize: 17, fontWeight: '900' }}>Empezar de nuevo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ paddingVertical: 16, alignItems: 'center' }}
+            onPress={() => setShowClearConfirm(false)}
+          >
+            <Text style={{ color: theme.colors.onSurfaceVariant, fontWeight: '700', fontSize: 15 }}>Cancelar</Text>
+          </TouchableOpacity>
         </BottomSheet>
       </Modal>
     </>

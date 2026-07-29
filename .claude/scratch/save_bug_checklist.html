@@ -1,0 +1,433 @@
+<title>Save — Checklist de lanzamiento</title>
+<style>
+  :root {
+    --bg: #F7F7F2;
+    --surface: #FFFFFF;
+    --surface-sunken: #F5F9F8;
+    --border: #E2EAE8;
+    --text: #1A1A1A;
+    --text-muted: #4A5557;
+    --text-faint: #70918E;
+    --accent: #47ADA2;
+    --accent-container: #DDF5F2;
+    --accent-ink: #13302D;
+    --salmon: #F0927B;
+    --salmon-container: #FCE5DE;
+    --salmon-ink: #7A3A28;
+    --lavender: #D2A9D1;
+    --shadow: 0 1px 2px rgba(26,26,26,0.04), 0 6px 16px -8px rgba(26,26,26,0.10);
+  }
+  :root[data-theme="dark"] {
+    --bg: #09090B;
+    --surface: #131417;
+    --surface-sunken: #1A1C20;
+    --border: #24262B;
+    --text: #F5F9F8;
+    --text-muted: #A9B4B2;
+    --text-faint: #6D7876;
+    --accent: #B9E2A2;
+    --accent-container: #1A241C;
+    --accent-ink: #B9E2A2;
+    --salmon: #F0927B;
+    --salmon-container: #2E1E19;
+    --salmon-ink: #F0B7A4;
+    --lavender: #D2A9D1;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 20px -8px rgba(0,0,0,0.5);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #09090B;
+      --surface: #131417;
+      --surface-sunken: #1A1C20;
+      --border: #24262B;
+      --text: #F5F9F8;
+      --text-muted: #A9B4B2;
+      --text-faint: #6D7876;
+      --accent: #B9E2A2;
+      --accent-container: #1A241C;
+      --accent-ink: #B9E2A2;
+      --salmon: #F0927B;
+      --salmon-container: #2E1E19;
+      --salmon-ink: #F0B7A4;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 20px -8px rgba(0,0,0,0.5);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, "SF Pro Text", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  .page {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 40px 20px 80px;
+  }
+
+  /* ---------- Header ---------- */
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    font-family: Georgia, "Iowan Old Style", serif;
+    font-weight: 900;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+  }
+  .brand b { color: var(--accent); }
+  .brand span:nth-of-type(1) { color: var(--salmon); }
+  .brand span:nth-of-type(2) { color: #8AD6CE; }
+  .brand span:nth-of-type(3) { color: var(--lavender); }
+  h1 {
+    font-family: Georgia, "Iowan Old Style", serif;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    margin: 14px 0 6px;
+    text-wrap: balance;
+  }
+  .subtitle {
+    color: var(--text-muted);
+    font-size: 14.5px;
+    line-height: 1.5;
+    margin: 0 0 28px;
+    max-width: 54ch;
+  }
+
+  /* ---------- Progress ---------- */
+  .progress-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px;
+    box-shadow: var(--shadow);
+    margin-bottom: 32px;
+  }
+  .progress-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+  }
+  .progress-label {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-faint);
+  }
+  .progress-count {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .progress-count em {
+    font-style: normal;
+    color: var(--accent-ink);
+    background: var(--accent-container);
+    padding: 1px 7px;
+    border-radius: 999px;
+    margin-right: 6px;
+  }
+  .bar-track {
+    display: flex;
+    gap: 3px;
+    height: 8px;
+  }
+  .bar-seg {
+    flex: 1;
+    border-radius: 3px;
+    background: var(--border);
+  }
+  .bar-seg.done { background: var(--accent); }
+
+  /* ---------- Group ---------- */
+  .group {
+    margin-bottom: 30px;
+  }
+  .group-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .group-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .group-dot.blocker { background: var(--salmon); }
+  .group-dot.bug { background: #E0B84A; }
+  .group-dot.polish { background: var(--lavender); }
+  .group-title {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-muted);
+  }
+  .group-sub {
+    font-size: 12px;
+    color: var(--text-faint);
+    margin-left: auto;
+  }
+
+  /* ---------- Item ---------- */
+  .item {
+    display: flex;
+    gap: 13px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: var(--shadow);
+    margin-bottom: 8px;
+  }
+  .item.done { opacity: 0.68; }
+  .mark {
+    width: 22px;
+    height: 22px;
+    border-radius: 7px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1px;
+  }
+  .mark.done { background: var(--accent); }
+  .mark.done svg { stroke: var(--bg); }
+  :root[data-theme="dark"] .mark.done svg,
+  @media (prefers-color-scheme: dark) { .mark.done svg { stroke: #09090B; } }
+  .mark.open { border: 2px solid var(--border); }
+  .mark.wait { border: 2px dashed var(--salmon); }
+
+  .item-body { flex: 1; min-width: 0; }
+  .item-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .item-title {
+    font-size: 14.5px;
+    font-weight: 650;
+    color: var(--text);
+  }
+  .item.done .item-title { text-decoration: line-through; text-decoration-color: var(--text-faint); }
+  .pill {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .pill.done { background: var(--accent-container); color: var(--accent-ink); }
+  .pill.wait { background: var(--salmon-container); color: var(--salmon-ink); }
+  .pill.todo { background: var(--surface-sunken); color: var(--text-faint); border: 1px solid var(--border); }
+  .item-note {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-top: 4px;
+  }
+  .item-note code {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    background: var(--surface-sunken);
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: 5px;
+  }
+
+  footer {
+    margin-top: 36px;
+    padding-top: 18px;
+    border-top: 1px solid var(--border);
+    font-size: 12.5px;
+    color: var(--text-faint);
+  }
+</style>
+
+<div class="page">
+
+  <div class="brand"><b>S</b><span>A</span><span>V</span><span>E</span></div>
+  <h1>Checklist antes de publicar</h1>
+  <p class="subtitle">Todo lo que reportaste probando el .ipa en TestFlight, agrupado por qué tan urgente es. Se actualiza a medida que avanzamos.</p>
+
+  <div class="progress-card">
+    <div class="progress-top">
+      <span class="progress-label">Avance</span>
+      <span class="progress-count"><em>9</em>de 11 resueltos</span>
+    </div>
+    <div class="bar-track">
+      <div class="bar-seg done"></div>
+      <div class="bar-seg done"></div>
+      <div class="bar-seg done"></div>
+      <div class="bar-seg done"></div>
+      <div class="bar-seg done"></div>
+      <div class="bar-seg done"></div>
+      <div class="bar-seg done"></div>
+      <div class="bar-seg done"></div>
+      <div class="bar-seg done"></div>
+      <div class="bar-seg"></div>
+      <div class="bar-seg"></div>
+    </div>
+  </div>
+
+  <!-- BLOQUEANTES -->
+  <div class="group">
+    <div class="group-head">
+      <span class="group-dot blocker"></span>
+      <span class="group-title">Bloqueantes para monetizar</span>
+      <span class="group-sub">0 / 2</span>
+    </div>
+
+    <div class="item">
+      <div class="mark wait"></div>
+      <div class="item-body">
+        <div class="item-top">
+          <span class="item-title">Precio del paywall no coincide con el real</span>
+          <span class="pill wait">Por probar de nuevo</span>
+        </div>
+        <div class="item-note">Mostró $5.99 USD en vez de $14.900 COP — probablemente offering viejo cacheado. Ya deberías poder repetir la prueba.</div>
+      </div>
+    </div>
+
+    <div class="item">
+      <div class="mark wait"></div>
+      <div class="item-body">
+        <div class="item-top">
+          <span class="item-title">Ícono ausente en el sheet de compra</span>
+          <span class="pill wait">Lado de Apple</span>
+        </div>
+        <div class="item-note">Probablemente se resuelve solo tras la primera aprobación de review — no depende del código.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BUGS -->
+  <div class="group">
+    <div class="group-head">
+      <span class="group-dot bug"></span>
+      <span class="group-title">Bugs</span>
+      <span class="group-sub">4 / 4</span>
+    </div>
+
+    <div class="item done">
+      <div class="mark done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+      <div class="item-body">
+        <div class="item-top">
+          <span class="item-title">Google Sign-In crashea al cancelar</span>
+          <span class="pill done">Arreglado — necesita build nuevo</span>
+        </div>
+        <div class="item-note">Encontrado sin el crash log: el plugin de Google Sign-In en <code>app.json</code> estaba sin configurar, así que asumía Firebase (que este proyecto no usa) y nunca registraba el URL scheme que el SDK nativo necesita para cerrar el flujo al cancelar. Ya tiene el <code>iosUrlScheme</code> correcto. Como esto toca el <code>Info.plist</code> nativo, solo se ve en el próximo build — no con hot reload.</div>
+      </div>
+    </div>
+
+    <div class="item done">
+      <div class="mark done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+      <div class="item-body">
+        <div class="item-top">
+          <span class="item-title">Saludo feo con Apple ("Buenas noches santy.29.2004")</span>
+          <span class="pill done">Arreglado</span>
+        </div>
+        <div class="item-note">La causa real: Apple sí entrega el nombre real, pero solo la primera vez que alguien autoriza — y el código lo recibía y lo descartaba. Revisé los 3 métodos de login: email ya guardaba el nombre, Apple y Google ahora también lo guardan explícito (Google no confía en el mapeo automático de Supabase). Si de verdad no hay nombre, el saludo dice "Qué bueno tenerte en Save" en vez de inventar uno.</div>
+      </div>
+    </div>
+
+    <div class="item done">
+      <div class="mark done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+      <div class="item-body">
+        <div class="item-top">
+          <span class="item-title">Ícono raro arriba a la derecha con Apple</span>
+          <span class="pill done">Arreglado</span>
+        </div>
+        <div class="item-note">Mismo origen que el punto anterior — al corregir el nombre, las iniciales del avatar también quedan bien.</div>
+      </div>
+    </div>
+
+    <div class="item done">
+      <div class="mark done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+      <div class="item-body">
+        <div class="item-top">
+          <span class="item-title">Paywall se mete en medio del tutorial</span>
+          <span class="pill done">Arreglado</span>
+        </div>
+        <div class="item-note">Había una ventana de carrera al terminar el onboarding donde el paywall se podía abrir antes de tiempo. Ahora se bloquea por defecto hasta confirmar que el tour ya no está pendiente.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PULIDO -->
+  <div class="group">
+    <div class="group-head">
+      <span class="group-dot polish"></span>
+      <span class="group-title">Pulido</span>
+      <span class="group-sub">5 / 5</span>
+    </div>
+
+    <div class="item done">
+      <div class="mark done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+      <div class="item-body">
+        <div class="item-top">
+          <span class="item-title">Splash: flash negro → blanco</span>
+          <span class="pill done">Arreglado</span>
+        </div>
+        <div class="item-note">El fondo del Stack usaba un theme estático que no sabía si el sistema estaba en oscuro. Ahora usa el mismo color que el splash nativo, según el modo.</div>
+      </div>
+    </div>
+
+    <div class="item done">
+      <div class="mark done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+      <div class="item-body">
+        <div class="item-top">
+          <span class="item-title">Animación + proverbio del splash</span>
+          <span class="pill done">Se queda igual</span>
+        </div>
+        <div class="item-note">Se probó quitando "AVE" y el proverbio, pero se decidió mantener la animación completa (S → AVE deslizándose + proverbio al azar) tal como estaba. Lo único que cambió es el splash nativo de abajo, para que no rompa el arranque de esta animación.</div>
+      </div>
+    </div>
+
+    <div class="item done">
+      <div class="mark done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+      <div class="item-body">
+        <div class="item-top">
+          <span class="item-title">Reemplazar imagen del splash nativo por splash2</span>
+          <span class="pill done">Arreglado</span>
+        </div>
+        <div class="item-note">La S en <code>splash2.png</code> ya está centrada en el lienzo (a diferencia de la vieja, pegada a la izquierda por compartir espacio con "AVE"), así que ahora cae en la misma posición donde arranca la S animada en JS.</div>
+      </div>
+    </div>
+
+    <div class="item done">
+      <div class="mark done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+      <div class="item-body">
+        <div class="item-top">
+          <span class="item-title">Quitar el tooltip "Tu Plata Libre"</span>
+          <span class="pill done">Arreglado</span>
+        </div>
+        <div class="item-note">Ya no se dispara en la primera visita a Bolsillos. El tour del demo del Scanner queda intacto, es distinto.</div>
+      </div>
+    </div>
+
+    <div class="item done">
+      <div class="mark done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></div>
+      <div class="item-body">
+        <div class="item-top">
+          <span class="item-title">Falta pantalla de confirmación de compra</span>
+          <span class="pill done">Construida</span>
+        </div>
+        <div class="item-note">Pantalla nueva <code>PurchaseConfirmation.tsx</code>: confeti con los colores de la marca, badge animado, "Ya eres Save PRO" con el plan activado, checklist de lo que se desbloqueó, y botón para entrar. Se dispara una sola vez justo después de pagar (o restaurar) -- en aperturas futuras ya no aparece. Necesita un build nuevo + una compra real para verla.</div>
+      </div>
+    </div>
+  </div>
+
+  <footer>9 de 11 resueltos en esta pasada · quedan los 2 bloqueantes, que necesitan que pruebes de nuevo con un build fresco.</footer>
+
+</div>

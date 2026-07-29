@@ -244,7 +244,9 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       setImage('https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=600');
     }
 
-    // Wait 1.5 seconds for the user to see the photo before starting the progress
+    // Dejar la foto a la vista, limpia y sin nada encima, un rato antes de
+    // que arranque la simulación de escaneo -- así se nota que hay una
+    // factura real detrás de la magia de la IA.
     setTimeout(() => {
       setProgress(10);
 
@@ -302,7 +304,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
         }, 600);
 
       }, 2500);
-    }, 1500);
+    }, 2800);
   };
 
   React.useEffect(() => {
@@ -522,7 +524,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
             </View>
           ) : (
             <View style={[styles.scannerBadge, { backgroundColor: theme.colors.primaryContainer, borderColor: theme.colors.primary + '30' }]}>
-              <Text style={[styles.scannerBadgeText, { color: theme.colors.primary }]}>{initialMode === 'manual' ? 'Gasto Rápido' : 'Ingresar Gasto'}</Text>
+              <Text style={[styles.scannerBadgeText, { color: theme.colors.primary }]}>{initialMode === 'manual' ? 'Registrar Gasto' : 'Ingresar Gasto'}</Text>
             </View>
           )}
         </View>

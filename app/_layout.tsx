@@ -1,15 +1,23 @@
 import "./global.css";
 import React, { useEffect } from 'react';
+import { useColorScheme } from 'react-native';
 import { Stack } from 'expo-router';
 import { useFonts, Inter_400Regular, Inter_700Bold, Inter_900Black } from '@expo-google-fonts/inter';
 import { Outfit_400Regular, Outfit_700Bold, Outfit_900Black } from '@expo-google-fonts/outfit';
 import * as SplashScreen from 'expo-splash-screen';
-import { theme } from '../src/theme/theme';
 import { StatusBar } from 'expo-status-bar';
+
+// Mismos colores que el splash nativo en app.json (plugin expo-splash-screen)
+// -- si este Stack usara un color distinto al del splash que se acaba de
+// ocultar, se ve un flash entre el splash nativo y el primer paint de JS.
+const SPLASH_BG_LIGHT = '#F7F7F2';
+const SPLASH_BG_DARK = '#09090B';
 
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  const colorScheme = useColorScheme();
+  const splashBg = colorScheme === 'dark' ? SPLASH_BG_DARK : SPLASH_BG_LIGHT;
   const [loaded] = useFonts({
     Inter: Inter_400Regular,
     'Inter-Bold': Inter_700Bold,
@@ -30,7 +38,7 @@ export default function RootLayout() {
   return (
     <>
       <StatusBar style="dark" />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.colors.background } }}>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: splashBg } }}>
         <Stack.Screen name="index" />
       </Stack>
     </>

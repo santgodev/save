@@ -34,7 +34,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash.png",
+          "image": "./assets/images/splash2.png",
           "imageWidth": 300,
           "resizeMode": "contain",
           "backgroundColor": "#F7F7F2",
@@ -45,7 +45,12 @@
       ],
       "expo-font",
       "expo-web-browser",
-      "@react-native-google-signin/google-signin",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.152635618917-oef2cql38uooj37afjiom24t695qiepm"
+        }
+      ],
       [
         "expo-image-picker",
         {

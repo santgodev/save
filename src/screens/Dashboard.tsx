@@ -38,6 +38,8 @@ interface DashboardProps {
   userProfile?: { full_name: string; streak?: number };
   onRefresh?: () => void;
   isLoading?: boolean;
+  /** Solo __DEV__ -- ver el botón "PROBAR CONFIRMACIÓN" más abajo. */
+  onDevPreviewPurchaseConfirmation?: () => void;
 }
 
 export const Dashboard = ({
@@ -51,7 +53,8 @@ export const Dashboard = ({
   onOpenChat,
   userProfile,
   onRefresh,
-  isLoading = false
+  isLoading = false,
+  onDevPreviewPurchaseConfirmation,
 }: DashboardProps) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
@@ -79,6 +82,13 @@ export const Dashboard = ({
       ),
       iconName: 'PlusCircle',
       order: 1
+    },
+    {
+      name: 'dashboard_quick_add',
+      title: 'Registrar debe ser fácil',
+      description: 'Cuanto menos esfuerzo te tome registrar un gasto, más constante será el hábito. Por eso en Save solo necesitas dos toques.',
+      iconName: 'Zap',
+      order: 2
     }
   ];
 
@@ -120,7 +130,13 @@ export const Dashboard = ({
       if (magicPending === 'true') {
         // No removemos el flag aquí para que app/index.tsx no dispare el Paywall
         // bloqueando el WelcomeModal. Se remueve al hacer click en el botón del modal.
-        await AsyncStorage.setItem('tour_dashboard_done', 'true');
+        //
+        // FIX: antes esto también marcaba tour_dashboard_done = true de una
+        // vez, antes de que el usuario nuevo llegara a ver TOUR_STEPS. Como
+        // el flujo mágico (demo + bolsillos) no explica el botón + ni el de
+        // "Registrar gasto", esa marca prematura dejaba a TODO usuario
+        // nuevo sin ver nunca esta explicación. Ya no se marca aquí --
+        // Prioridad 3 se encarga sola cuando corresponda, más adelante.
         setShowWelcomeModal(true);
         return;
       }
@@ -311,6 +327,12 @@ export const Dashboard = ({
         >
           <View>
 
+            {__DEV__ && onDevPreviewPurchaseConfirmation && (
+              <TouchableOpacity onPress={onDevPreviewPurchaseConfirmation} style={{ alignSelf: 'flex-end', marginBottom: 8, opacity: 0.5 }}>
+                <Text style={{ fontSize: 10, fontFamily: theme.fonts.headline, fontWeight: '800', color: theme.colors.warning }}>PROBAR CONFIRMACIÓN</Text>
+              </TouchableOpacity>
+            )}
+
             {/* HEADER PREMIUM — BALANCE & BUDGET HEALTH */}
             <View style={[styles.headerSection, { paddingTop: 0 }]}>
               <CycleNav
@@ -465,19 +487,21 @@ export const Dashboard = ({
 
           {/* QUICK ADD GIGANTE */}
           <View style={{ marginBottom: 32 }}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                onOpenScanner();
-              }}
-              style={{ backgroundColor: theme.colors.primary, borderRadius: theme.radius.xl, padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, ...theme.shadows.md }}
-            >
-              <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: theme.radius.full }}>
-                <Plus size={24} color={theme.colors.onPrimary} />
-              </View>
-              <Text style={{ ...theme.typography.h3, color: theme.colors.onPrimary }}>Registrar gasto</Text>
-            </TouchableOpacity>
+            <TourStep name="dashboard_quick_add">
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  onOpenScanner();
+                }}
+                style={{ backgroundColor: theme.colors.primary, borderRadius: theme.radius.xl, padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, ...theme.shadows.md }}
+              >
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: theme.radius.full }}>
+                  <Plus size={24} color={theme.colors.onPrimary} />
+                </View>
+                <Text style={{ ...theme.typography.h3, color: theme.colors.onPrimary }}>Registrar gasto</Text>
+              </TouchableOpacity>
+            </TourStep>
           </View>
 
           {/* BOLSILLOS (Resumen Simple) */}

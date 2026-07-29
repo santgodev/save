@@ -1,13 +1,17 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator, Switch } from 'react-native';
-import { X, CheckCircle2, Circle, ArrowRight, Sparkles, Wallet, DollarSign, Percent, Briefcase, Tag, PlusCircle, Check, Utensils, Car, Home, Zap, Heart, Gamepad, PiggyBank, GraduationCap, Info } from 'lucide-react-native';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator, Switch, Keyboard } from 'react-native';
+import { X, CheckCircle2, Circle, ArrowRight, Sparkles, Wallet, DollarSign, Percent, Briefcase, Tag, PlusCircle, Check, Utensils, Car, Home, Zap, Heart, Gamepad, PiggyBank, GraduationCap, Info, RotateCcw } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../theme/ThemeContext';
 import { supabase } from '../lib/supabase';
 import { formatMoney, formatMoneyDigits } from '../lib/format';
 import { useCurrency } from '../lib/CurrencyContext';
 import { notify } from '../lib/notify';
+import { TourStep } from '../components/tour/TourStep';
+import { useTour } from '../components/tour/TourContext';
+import type { TourStepType } from '../components/tour/TourContext';
 import type { Session } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
@@ -55,12 +59,87 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
         initialRules.push({ pocket_id: p.id, priority, type: 'fixed', value: p.allocated_budget });
       }
     });
+
+    // Primer ingreso de la persona (todavía no existe ninguna regla real):
+    // sugerimos un 10% al bolsillo de ahorro para empezar el hábito sin
+    // que se sienta una meta dura. Es solo una sugerencia precargada -- el
+    // usuario la puede cambiar o poner en 0 sin ninguna fricción. Solo
+    // aplica una vez: en cuanto exista una regla real, defaultRules ya no
+    // entra aquí.
+    if (initialRules.length === 0 && !isEditing) {
+      const ahorroPocket = pockets.find(p => p.category === 'Ahorros' && !p.is_default_free);
+      if (ahorroPocket) {
+        initialRules.push({ pocket_id: ahorroPocket.id, priority: 1, type: 'percentage', value: 10 });
+      }
+    }
+
     return initialRules;
-  }, [pockets]);
+  }, [pockets, isEditing]);
 
   const [rules, setRules] = useState<any[]>(defaultRules);
   const [existingSourceId, setExistingSourceId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Tutorial guiado: solo 1 tour real, que apunta a cualquier bolsillo que
+  // la persona toque primero (no solo al primero de la lista). El mensaje
+  // de "reparto automático" ya NO es un tour flotante -- ver el texto fijo
+  // arriba de la lista de bolsillos, más abajo en el render. Un tour
+  // apuntando ahí se veía roto cuando la lista estaba lejos de la pantalla
+  // visible: la flecha no alcanzaba a señalar nada con sentido.
+  const { startTour } = useTour();
+  const addIncomeToggleFiredRef = useRef(false);
+
+  // Antes esto revisaba el flag de AsyncStorage DESPUÉS del focus, y como
+  // esa consulta es async, el teclado alcanzaba a empezar a abrirse antes
+  // de que Keyboard.dismiss() lo cerrara -- se veía como un parpadeo feo
+  // de "abre y cierra de un golpe". Precargamos el flag UNA vez al montar
+  // la pantalla, para saber de entrada (sin esperar nada) si hay que
+  // evitar que el teclado se abra la primera vez.
+  const [toggleTourAlreadySeen, setToggleTourAlreadySeen] = useState<boolean | null>(null);
+  useEffect(() => {
+    AsyncStorage.getItem('tour_addincome_toggle_done').then(done => setToggleTourAlreadySeen(!!done));
+  }, []);
+
+  // true solo en la ventana exacta en la que el campo NO debe abrir
+  // teclado: no se ha visto el tour todavía y no se ha disparado en esta
+  // sesión. En cuanto se dispara, esto pasa a false y el campo vuelve a
+  // comportarse normal.
+  const suppressKeyboardForToggleTour = !isEditing && toggleTourAlreadySeen === false && !addIncomeToggleFiredRef.current;
+
+  // Aparece la primera vez que la persona toca CUALQUIER bolsillo -- ya sea
+  // el switch $/% o el campo del valor. No podíamos depender solo del
+  // switch: mucha gente nunca lo toca, simplemente escribe el monto y
+  // listo. Se dispara al FOCUS del campo (no al escribir ni al soltarlo),
+  // así que interrumpe lo menos posible -- pasa justo cuando recién entra,
+  // antes de que haya empezado a teclear nada. El campo ya trae
+  // showSoftInputOnFocus={false} mientras suppressKeyboardForToggleTour es
+  // true, así que el teclado nunca llega a abrirse -- no hace falta
+  // cerrarlo de un golpe.
+  const maybeShowToggleTour = (pocketId: string) => {
+    if (isEditing || addIncomeToggleFiredRef.current || toggleTourAlreadySeen !== false) return;
+    addIncomeToggleFiredRef.current = true;
+    AsyncStorage.setItem('tour_addincome_toggle_done', 'true');
+    // Por si el teclado de OTRO campo (como el del monto principal, que sí
+    // tiene autoFocus) seguía abierto -- ese no lo estamos suprimiendo.
+    Keyboard.dismiss();
+    setTimeout(() => {
+      startTour([{
+        // El nombre incluye el pocket_id porque CADA bolsillo de la lista
+        // registra su propio switch bajo su propio nombre (ver más abajo)
+        // -- así el tour apunta exactamente al que se tocó, sin importar
+        // cuál de la lista haya sido.
+        name: `addincome_toggle_${pocketId}`,
+        title: 'Monto fijo o porcentaje',
+        description: (
+          <Text style={{ fontSize: 16, lineHeight: 24, fontWeight: '600', color: theme.colors.onPrimary + 'B3' }}>
+            Usa <Text style={{ color: theme.colors.onPrimary, fontWeight: '900' }}>"$"</Text> si este bolsillo siempre recibirá la misma cantidad. Usa <Text style={{ color: theme.colors.onPrimary, fontWeight: '900' }}>"%"</Text> si prefieres que reciba un porcentaje de cada ingreso.
+          </Text>
+        ),
+        iconName: 'CreditCard',
+        order: 1
+      }]);
+    }, 450);
+  };
 
   const variosPocket = pockets.find(p => p.is_default_free) || pockets.find(p => p.name.toLowerCase() === 'libre') || pockets.find(p => p.name.toLowerCase() === 'varios') || pockets[0];
   const initialSinglePocket = (initialDistType === 'single' && editTransaction?.metadata?.distribution) 
@@ -366,7 +445,26 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
         <View style={styles.scannerBadge}>
            <Text style={styles.scannerBadgeText}>{isEditing ? 'Editar Ingreso' : 'Ingresar Plata'}</Text>
         </View>
-        <View style={{ width: 44 }} />
+        <View style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}>
+          {__DEV__ && (
+            // SOLO DESARROLLO -- resetea el anuncio del switch $/% para
+            // poder probarlo de nuevo sin desinstalar la app. No lo
+            // dispara directamente: limpia su bandera y su ref para que
+            // vuelva a aparecer al tocar el switch de cualquier bolsillo,
+            // igual que en producción. __DEV__ es false en cualquier build
+            // de producción (incluyendo TestFlight/App Store).
+            <TouchableOpacity
+              onPress={async () => {
+                await AsyncStorage.removeItem('tour_addincome_toggle_done');
+                addIncomeToggleFiredRef.current = false;
+                setToggleTourAlreadySeen(false);
+              }}
+              style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }}
+            >
+              <RotateCcw size={20} color={theme.colors.warning} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {isLoading ? (
@@ -445,7 +543,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
             )}
 
             <View style={[styles.sectionContainer, { marginBottom: 0 }]}>
-              <Text style={styles.sectionTitle}>¿Cómo lo repartimos?</Text>
+              <Text style={styles.sectionTitle}>¿Cómo quieres repartir este ingreso?</Text>
             <View style={styles.segmentedControl}>
               <TouchableOpacity 
                 activeOpacity={0.8} 
@@ -466,6 +564,16 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
               </TouchableOpacity>
             </View>
 
+            {distType === 'smart' && (
+              // Texto fijo, no un tour: cuando la lista de bolsillos queda
+              // lejos en pantallas chicas, un tour apuntando ahí no tenía a
+              // dónde señalar y se veía roto. Esto siempre está a la vista,
+              // justo donde hace falta, sin depender de que nada se mida.
+              <Text style={{ ...theme.typography.bodySmall, color: theme.colors.onSurfaceVariant, marginBottom: 14, lineHeight: 18 }}>
+                Save reparte esto automáticamente entre tus bolsillos, cada vez que registres un ingreso.
+              </Text>
+            )}
+
             <View style={styles.pocketsList}>
               {distType === 'smart' ? (
                 <>
@@ -476,18 +584,12 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
                     const color = colorOf(p.category || p.name, pIndex !== -1 ? pIndex : index);
                     const addValue = preview[p.id] || 0;
 
-                    return (
-                      <View key={rule.pocket_id} style={[styles.ruleCard, { backgroundColor: theme.isDark ? color + '28' : color + '1A' }]}>
-                        <View style={styles.ruleHeader}>
-                          <View style={[styles.priorityBadge, { backgroundColor: color, width: 28, height: 28, borderRadius: 10 }]}>
-                            <CatIcon id={p.category || p.name} color="#FFF" size={14} />
-                          </View>
-                          <Text style={styles.ruleTitle}>{p.name}</Text>
-
-                          <View style={styles.typeSwitch}>
-                            <TouchableOpacity 
-                              style={[styles.typeToggle, rule.type === 'fixed' && { backgroundColor: color }]} 
+                    const typeSwitchInner = (
+                      <View style={styles.typeSwitch}>
+                            <TouchableOpacity
+                              style={[styles.typeToggle, rule.type === 'fixed' && { backgroundColor: color }]}
                               onPress={() => {
+                                maybeShowToggleTour(rule.pocket_id);
                                 const newRules = [...rules];
                                 const idx = newRules.findIndex(r => r.pocket_id === rule.pocket_id);
                                 newRules[idx] = { ...rule, type: 'fixed' };
@@ -497,9 +599,10 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
                             >
                               <DollarSign size={14} color={rule.type === 'fixed' ? '#FFF' : theme.colors.onSurfaceVariant} />
                             </TouchableOpacity>
-                            <TouchableOpacity 
-                              style={[styles.typeToggle, rule.type === 'percentage' && { backgroundColor: color }]} 
+                            <TouchableOpacity
+                              style={[styles.typeToggle, rule.type === 'percentage' && { backgroundColor: color }]}
                               onPress={() => {
+                                maybeShowToggleTour(rule.pocket_id);
                                 const newRules = [...rules];
                                 const idx = newRules.findIndex(r => r.pocket_id === rule.pocket_id);
                                 newRules[idx] = { ...rule, type: 'percentage' };
@@ -510,6 +613,17 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
                               <Percent size={14} color={rule.type === 'percentage' ? '#FFF' : theme.colors.onSurfaceVariant} />
                             </TouchableOpacity>
                           </View>
+                    );
+
+                    return (
+                      <View key={rule.pocket_id} style={[styles.ruleCard, { backgroundColor: theme.isDark ? color + '28' : color + '1A' }]}>
+                        <View style={styles.ruleHeader}>
+                          <View style={[styles.priorityBadge, { backgroundColor: color, width: 28, height: 28, borderRadius: 10 }]}>
+                            <CatIcon id={p.category || p.name} color="#FFF" size={14} />
+                          </View>
+                          <Text style={styles.ruleTitle}>{p.name}</Text>
+
+                          <TourStep name={`addincome_toggle_${rule.pocket_id}`}>{typeSwitchInner}</TourStep>
                         </View>
 
                         <View style={styles.ruleInputRow}>
@@ -517,6 +631,8 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
                           <TextInput
                             style={styles.ruleInput}
                             value={rule.value > 0 ? (rule.type === 'fixed' ? formatMoneyDigits(String(rule.value)) : String(rule.value)) : ''}
+                            onFocus={() => maybeShowToggleTour(rule.pocket_id)}
+                            showSoftInputOnFocus={!suppressKeyboardForToggleTour}
                             onChangeText={(t) => {
                               const v = parseInt(t.replace(/\D/g, '')) || 0;
                               const newRules = [...rules];

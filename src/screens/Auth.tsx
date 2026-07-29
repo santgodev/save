@@ -325,6 +325,22 @@ export function Auth({ onLoginSuccess }: AuthProps) {
           token: userInfo.data.idToken,
         });
         if (error) throw error;
+
+        // A diferencia de Apple, Google entrega nombre y foto en CADA login,
+        // no solo el primero -- igual los guardamos explícitos en vez de
+        // confiar en que Supabase los haya mapeado solo, para no depender
+        // de un comportamiento no garantizado.
+        const googleUser = userInfo.data.user;
+        const fullName = googleUser?.name || [googleUser?.givenName, googleUser?.familyName].filter(Boolean).join(' ').trim();
+        if (fullName || googleUser?.photo) {
+          await supabase.auth.updateUser({
+            data: {
+              ...(fullName ? { full_name: fullName } : {}),
+              ...(googleUser?.photo ? { avatar_url: googleUser.photo } : {}),
+            },
+          }).catch(() => {});
+        }
+
         onLoginSuccess();
       } else {
         throw new Error('No se recibió el ID token de Google');
@@ -373,6 +389,18 @@ export function Auth({ onLoginSuccess }: AuthProps) {
         });
 
         if (error) throw error;
+
+        // Apple solo entrega el nombre la PRIMERA vez que alguien autoriza la
+        // app -- si no lo guardamos ahora en user_metadata, se pierde para
+        // siempre y en cada login futuro solo tenemos el identity token (sin
+        // nombre). Es opcional (el usuario puede negarse a compartirlo), así
+        // que esto no bloquea el login si falta.
+        const { givenName, familyName } = credential.fullName || {};
+        const fullName = [givenName, familyName].filter(Boolean).join(' ').trim();
+        if (fullName) {
+          await supabase.auth.updateUser({ data: { full_name: fullName } }).catch(() => {});
+        }
+
         onLoginSuccess();
       } else {
         throw new Error('No se recibió el Identity Token de Apple');

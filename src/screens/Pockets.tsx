@@ -26,7 +26,7 @@ import { TransactionDetailModal } from '../components/TransactionDetailModal';
 import { CycleUndoModal } from '../components/CycleUndoModal';
 import { MiniAnimatedSaveLogo } from '../components/TopBar';
 import { TourStep } from '../components/tour/TourStep';
-import { useTour, TourStepType } from '../components/tour/TourContext';
+import { useTour } from '../components/tour/TourContext';
 import type { Session } from '@supabase/supabase-js';
 
 export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferPress }: { pockets: any[], transactions: any[], session: Session, onRefresh: () => void, onTransferPress: (params: { fromId?: string, toId?: string, amount?: number }) => void }) => {
@@ -75,15 +75,6 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
   const { startTour, stopTour, isActive: isTourActive } = useTour();
   const [showDemoSuccess, setShowDemoSuccess] = useState(false);
-  const TOUR_STEPS: TourStepType[] = [
-    {
-      name: 'pockets_free',
-      title: 'Tu Plata Libre',
-      description: 'Este bolsillo es tu comodín. Todo el dinero que no asignes a los demás sobres, aterrizará aquí automáticamente como tu dinero libre para gastar.',
-      iconName: 'Unlock',
-      order: 1
-    }
-  ];
 
   const sheetAnim = useRef(new Animated.Value(height)).current;
   const bounceAnim = useRef(new Animated.Value(0)).current;
@@ -145,15 +136,6 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
           AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
         }, 500);
         return;
-      }
-
-      // --- PRIORIDAD 2: Tour básico de primera visita ---
-      const seen = await AsyncStorage.getItem('@save_tour_pockets_seen');
-      if (!seen) {
-        setTimeout(() => {
-          startTour(TOUR_STEPS);
-          AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
-        }, 600);
       }
     };
     checkDemoTour();

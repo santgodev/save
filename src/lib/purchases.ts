@@ -10,8 +10,11 @@
 export const REVENUECAT_IOS_API_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY || '';
 
 // El identificador del "entitlement" en RevenueCat (Project → Entitlements).
-// Todo lo premium de Save se controla con este único entitlement.
-export const ENTITLEMENT_ID = 'premium';
+// Todo lo premium de Save se controla con este único entitlement. Debe
+// coincidir EXACTO con el "Identifier" (no el Display Name) que aparece en
+// el dashboard de RevenueCat -- ahí quedó creado como "Save Pro", no como
+// "premium".
+export const ENTITLEMENT_ID = 'Save Pro';
 
 // Identificadores de producto -- se crean en App Store Connect dentro de
 // "In-App Purchases → Suscripciones auto-renovables", ambos en el MISMO

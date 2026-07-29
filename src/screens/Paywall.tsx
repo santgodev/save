@@ -25,7 +25,7 @@ import { notify } from '../lib/notify';
 const { height } = Dimensions.get('window');
 
 interface PaywallProps {
-  onSubscribed: () => void;
+  onSubscribed: (plan: 'annual' | 'monthly') => void;
   onLogout?: () => void;
   onDevSkip?: () => void;
 }
@@ -42,6 +42,64 @@ const SaveProLogo = ({ theme }: { theme: any }) => (
     <View style={{ backgroundColor: theme.colors.primary, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 8 }}>
       <Text style={{ fontSize: 10, fontWeight: '900', fontFamily: theme.fonts.headline, color: theme.colors.onPrimary, letterSpacing: 1 }}>PRO</Text>
     </View>
+  </View>
+);
+
+// =====================================================================
+// PIEZAS COMPARTIDAS ENTRE LOS DOS PASOS DEL PAYWALL
+// Mismo margen horizontal, mismo tamaño de título y misma forma de botón
+// en las dos pantallas -- se definen una sola vez aquí para que no puedan
+// volver a desalinearse entre sí.
+// =====================================================================
+const PAYWALL_HPADDING = 24;
+
+const PaywallHeadline = ({ eyebrow, children, theme }: { eyebrow?: string; children: React.ReactNode; theme: any }) => (
+  <View style={{ alignItems: 'center' }}>
+    {eyebrow ? (
+      <Text style={{ fontFamily: theme.fonts.headline, fontSize: 10, color: theme.colors.primary, fontWeight: '900', letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 12, textAlign: 'center' }}>
+        {eyebrow}
+      </Text>
+    ) : null}
+    <Text style={{ ...theme.typography.displaySmall, fontFamily: theme.fonts.headline, textAlign: 'center', color: theme.colors.onSurface, paddingHorizontal: 10 }}>
+      {children}
+    </Text>
+  </View>
+);
+
+const PaywallCTA = ({ label, onPress, icon, disabled, theme }: { label: string; onPress: () => void; icon?: React.ReactNode; disabled?: boolean; theme: any }) => (
+  <TouchableOpacity
+    activeOpacity={0.85}
+    onPress={onPress}
+    disabled={disabled}
+    style={{ backgroundColor: theme.colors.primary, borderRadius: 20, paddingVertical: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, opacity: disabled ? 0.7 : 1, ...theme.shadows.md }}
+  >
+    {disabled
+      ? <ActivityIndicator color={theme.colors.onPrimary} />
+      : <>
+          <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onPrimary, fontFamily: theme.fonts.headline }}>{label}</Text>
+          {icon}
+        </>
+    }
+  </TouchableOpacity>
+);
+
+const PaywallFooter = ({ children, theme, insets }: { children: React.ReactNode; theme: any; insets: any }) => (
+  <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: theme.colors.background, paddingHorizontal: PAYWALL_HPADDING, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 24), borderTopWidth: 1, borderTopColor: theme.colors.divider }}>
+    {children}
+  </View>
+);
+
+const Testimonial = ({ theme }: { theme: any }) => (
+  <View style={{ alignItems: 'center', paddingHorizontal: 20 }}>
+    <View style={{ flexDirection: 'row', gap: 4, marginBottom: 12 }}>
+      {[0, 1, 2, 3, 4].map(i => <Star key={i} size={16} color="#FFB800" fill="#FFB800" />)}
+    </View>
+    <Text style={{ fontFamily: theme.fonts.body, fontSize: 14, color: theme.colors.onSurfaceVariant, textAlign: 'center', fontStyle: 'italic', lineHeight: 22 }}>
+      “Parce, qué aplicación tan sencilla de usar.”
+    </Text>
+    <Text style={{ fontFamily: theme.fonts.headline, fontSize: 13, color: theme.colors.onSurface, marginTop: 12, fontWeight: '700' }}>
+      — Stiven Lopera
+    </Text>
   </View>
 );
 
@@ -115,124 +173,48 @@ const ConscienceStep = ({
 
   const S = StyleSheet.create({
     scroll: {
-      paddingHorizontal: 24,
+      paddingHorizontal: PAYWALL_HPADDING,
       paddingTop: 10,
-      paddingBottom: Math.max(insets.bottom, 24),
+      paddingBottom: 140,
       flexGrow: 1,
-      justifyContent: 'space-between',
     },
     topSection: {
       alignItems: 'center',
+      marginTop: 16,
     },
     midSection: {
       flex: 1,
       justifyContent: 'center',
-      paddingVertical: 10,
-    },
-    bottomSection: {
-      justifyContent: 'flex-end',
-    },
-
-    headline: {
-      ...theme.typography.displaySmall,
-      fontFamily: theme.fonts.headline,
-      textAlign: 'center',
-      color: theme.colors.onSurface,
-      lineHeight: 36, marginTop: 12,
-      paddingHorizontal: 10,
-    },
-
-    // ---- Beneficios Grid (Estilo Bolsillos) ----
-    grid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 12,
-      justifyContent: 'space-between',
-      marginTop: 8, marginBottom: 24,
-    },
-    pocketCard: {
-      width: '48%',
-      height: 175,
-      borderRadius: 20, padding: 16,
-      ...theme.shadows.xs,
-    },
-    pocketIconWrap: {
-      width: 44, height: 44, borderRadius: 14,
-      alignItems: 'center', justifyContent: 'center',
-      marginBottom: 12,
-    },
-    pocketTitle: {
-      ...theme.typography.bodyLarge, fontWeight: '800',
-      fontFamily: theme.fonts.headline, color: '#FFF',
-      marginBottom: 4,
-    },
-    pocketSub: {
-      ...theme.typography.bodySmall,
-      fontFamily: theme.fonts.body, color: '#FFF', fontWeight: '500',
-      lineHeight: 16,
-    },
-
-    // ---- CTA ----
-    cta: { 
-      backgroundColor: theme.colors.primary, 
-      borderRadius: 24, 
-      ...theme.shadows.md, 
-      marginTop: 20 
-    },
-    ctaInner: {
-      paddingVertical: 18,
-      flexDirection: 'row', alignItems: 'center',
-      justifyContent: 'center', gap: 10,
-    },
-    ctaTxt: {
-      ...theme.typography.bodyLarge, fontWeight: '800',
-      fontFamily: theme.fonts.headline, color: theme.colors.onPrimary,
+      gap: 32,
+      paddingVertical: 24,
     },
   });
-
-  const PocketCard = ({ icon, title, sub, bg }: any) => (
-    <View style={[S.pocketCard, { backgroundColor: bg }]}>
-      <View style={[S.pocketIconWrap, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
-        {icon}
-      </View>
-      <Text style={S.pocketTitle}>{title}</Text>
-      <Text style={S.pocketSub}>{sub}</Text>
-    </View>
-  );
 
   return (
     <View style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={S.scroll} showsVerticalScrollIndicator={false} bounces={false}>
-        
-        <View style={S.topSection}>
-          <Text style={{ fontFamily: theme.fonts.headline, fontSize: 10, color: theme.colors.primary, fontWeight: '900', letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 16 }}>
-            MENOS ESTRÉS • MÁS CLARIDAD • MÁS AHORRO
-          </Text>
 
-          <Text style={S.headline}>La forma más simple de organizar tu dinero.</Text>
+        <View style={S.topSection}>
+          <PaywallHeadline eyebrow="MENOS ESTRÉS • MÁS CLARIDAD • MÁS AHORRO" theme={theme}>
+            La forma más simple de organizar tu dinero.
+          </PaywallHeadline>
         </View>
 
         <View style={S.midSection}>
           <ChatMockup theme={theme} />
-
-          <View style={S.grid}>
-            <PocketCard icon={<Leaf size={22} color="#FFF" />} title="Fácil de usar" sub="Sin herramientas difíciles." bg="#8AD6CE" />
-            <PocketCard icon={<Camera size={22} color="#FFF" />} title="Escanea facturas" sub="La IA clasifica todo por ti." bg="#F0927B" />
-            <PocketCard icon={<MessageSquare size={22} color="#FFF" />} title="Tu asistente IA" sub="Habla con tus finanzas." bg="#D2A9D1" />
-            <PocketCard icon={<Wallet size={22} color="#FFF" />} title="Tus bolsillos" sub="Organiza y controla tus gastos." bg="#B9E2A2" />
-          </View>
-        </View>
-
-        <View style={S.bottomSection}>
-          <TouchableOpacity activeOpacity={0.85} style={S.cta} onPress={onNext}>
-            <View style={S.ctaInner}>
-              <Text style={S.ctaTxt}>Continuar</Text>
-              <ArrowRight size={20} color={theme.colors.onPrimary} />
-            </View>
-          </TouchableOpacity>
+          <Testimonial theme={theme} />
         </View>
 
       </ScrollView>
+
+      <PaywallFooter theme={theme} insets={insets}>
+        <PaywallCTA
+          label="Continuar"
+          onPress={onNext}
+          icon={<ArrowRight size={20} color={theme.colors.onPrimary} />}
+          theme={theme}
+        />
+      </PaywallFooter>
     </View>
   );
 };
@@ -261,7 +243,7 @@ const BenefitsAndPlansStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallProp
   const [selected, setSelected] = useState<'annual' | 'monthly'>('annual');
   const [isPurchasing, setIsPurchasing] = useState(false);
 
-  useEffect(() => { if (isSubscribed) onSubscribed(); }, [isSubscribed]);
+  useEffect(() => { if (isSubscribed) onSubscribed(selected); }, [isSubscribed]);
 
   const monthlyPkg = offering?.availablePackages.find(p => p.product.identifier === PRODUCT_IDS.monthly);
   const annualPkg  = offering?.availablePackages.find(p => p.product.identifier === PRODUCT_IDS.annual);
@@ -281,7 +263,7 @@ const BenefitsAndPlansStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallProp
     setIsPurchasing(false);
     if (result.success) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onSubscribed();
+      onSubscribed(selected);
     } else if (result.error) {
       notify.error(result.error);
     }
@@ -289,10 +271,9 @@ const BenefitsAndPlansStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallProp
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
-    scroll: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 140, flexGrow: 1 },
+    scroll: { paddingHorizontal: PAYWALL_HPADDING, paddingTop: 10, paddingBottom: 140, flexGrow: 1 },
 
-    title: { ...theme.typography.h2, textAlign: 'center', color: theme.colors.onSurface, fontFamily: theme.fonts.headline, marginBottom: 8, paddingHorizontal: 10 },
-    titleSub: { ...theme.typography.bodySmall, textAlign: 'center', color: theme.colors.onSurfaceVariant, fontFamily: theme.fonts.body, marginBottom: 26 },
+    titleSub: { ...theme.typography.bodySmall, textAlign: 'center', color: theme.colors.onSurfaceVariant, fontFamily: theme.fonts.body, marginTop: 12, marginBottom: 26 },
 
     benefitsCard: { backgroundColor: theme.colors.surface, borderRadius: 20, padding: 10, borderWidth: 1, borderColor: theme.colors.outlineVariant },
     benefitRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 18, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: theme.colors.divider },
@@ -301,9 +282,6 @@ const BenefitsAndPlansStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallProp
     benefitSub: { ...theme.typography.bodySmall, color: theme.colors.onSurfaceVariant, fontFamily: theme.fonts.body, lineHeight: 18 },
     benefitIconBg: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 
-    footer: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: theme.colors.background, paddingHorizontal: 20, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 24), borderTopWidth: 1, borderTopColor: theme.colors.divider },
-    ctaBtn: { backgroundColor: theme.colors.primary, borderRadius: 18, paddingVertical: 18, alignItems: 'center', justifyContent: 'center', ...theme.shadows.md },
-    ctaText: { fontSize: 16, fontWeight: '800', color: theme.colors.onPrimary, fontFamily: theme.fonts.headline },
     reassuranceRow: { flexDirection: 'row', justifyContent: 'center', gap: 6, marginTop: 12 },
     reassuranceText: { ...theme.typography.bodySmall, color: theme.colors.onSurfaceVariant, fontFamily: theme.fonts.body, fontWeight: '600' },
 
@@ -331,7 +309,9 @@ const BenefitsAndPlansStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallProp
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} bounces={false}>
-        <Text style={styles.title}>Las finanzas deberían{'\n'}sentirse así de simples</Text>
+        <PaywallHeadline theme={theme}>
+          Las finanzas deberían{'\n'}sentirse así de simples
+        </PaywallHeadline>
         <Text style={styles.titleSub}>Todo lo que necesitas para tomar el control de tu dinero.</Text>
 
         <View style={styles.benefitsCard}>
@@ -360,34 +340,16 @@ const BenefitsAndPlansStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallProp
             bg={theme.colors.primary} styles={styles} theme={theme} last
           />
         </View>
-
-        <View style={{ marginTop: 32, alignItems: 'center', paddingHorizontal: 20 }}>
-          <View style={{ flexDirection: 'row', gap: 4, marginBottom: 12 }}>
-            <Star size={16} color="#FFB800" fill="#FFB800" />
-            <Star size={16} color="#FFB800" fill="#FFB800" />
-            <Star size={16} color="#FFB800" fill="#FFB800" />
-            <Star size={16} color="#FFB800" fill="#FFB800" />
-            <Star size={16} color="#FFB800" fill="#FFB800" />
-          </View>
-          <Text style={{ fontFamily: theme.fonts.body, fontSize: 14, color: theme.colors.onSurfaceVariant, textAlign: 'center', fontStyle: 'italic', lineHeight: 22 }}>
-            “Parce, qué aplicación tan sencilla de usar.”
-          </Text>
-          <Text style={{ fontFamily: theme.fonts.headline, fontSize: 13, color: theme.colors.onSurface, marginTop: 12, fontWeight: '700' }}>
-            — Stiven Lopera
-          </Text>
-        </View>
       </ScrollView>
 
-      <View style={styles.footer}>
-        <TouchableOpacity activeOpacity={0.85} style={styles.ctaBtn} onPress={() => togglePlans(true)}>
-          <Text style={styles.ctaText}>Empieza gratis por 7 días</Text>
-        </TouchableOpacity>
+      <PaywallFooter theme={theme} insets={insets}>
+        <PaywallCTA label="Empieza gratis por 7 días" onPress={() => togglePlans(true)} theme={theme} />
         <View style={styles.reassuranceRow}>
           <Text style={styles.reassuranceText}>Sin compromiso</Text>
           <Text style={styles.reassuranceText}>·</Text>
           <Text style={styles.reassuranceText}>Cancela cuando quieras</Text>
         </View>
-      </View>
+      </PaywallFooter>
 
       <Animated.View style={[styles.overlay, { opacity: overlayAnim }]} pointerEvents={showPlans ? 'auto' : 'none'}>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => togglePlans(false)} />
@@ -453,17 +415,9 @@ const BenefitsAndPlansStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallProp
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          activeOpacity={0.85}
-          style={[styles.ctaBtn, { marginTop: 10 }]}
-          onPress={handlePurchase}
-          disabled={isPurchasing}
-        >
-          {isPurchasing
-            ? <ActivityIndicator color={theme.colors.onPrimary} />
-            : <Text style={styles.ctaText}>Empezar gratis</Text>
-          }
-        </TouchableOpacity>
+        <View style={{ marginTop: 10 }}>
+          <PaywallCTA label="Empezar gratis" onPress={handlePurchase} disabled={isPurchasing} theme={theme} />
+        </View>
 
         <View style={styles.bottomLinks}>
           <TouchableOpacity onPress={() => Linking.openURL('https://eveenia.com/es/save/terms')}>

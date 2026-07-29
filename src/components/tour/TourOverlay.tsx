@@ -140,7 +140,32 @@ export const TourOverlay = () => {
     };
   });
 
-  const isTargetInTopHalf = currentElementLayout ? (currentElementLayout.y < SCREEN_HEIGHT / 2) : true;
+  // Se "bloquea" la primera medición de cada paso y no se vuelve a
+  // recalcular hasta que cambie de paso. Sin esto, cada nueva medición del
+  // polling de TourStep (hasta 10 veces en 1.5s, mientras la pantalla
+  // sigue acomodándose por el teclado u otra animación) podía cruzar el
+  // punto medio de la pantalla y hacer que la tarjeta cambiara de "entra
+  // desde arriba" a "entra desde abajo" a mitad de la animación -- se veía
+  // como si lo intentara dos veces. Ahora la dirección se decide una sola
+  // vez por paso; después solo se permite un ajuste suave de posición
+  // (spring), nunca un cambio de lado.
+  const [lockedTopHalf, setLockedTopHalf] = React.useState(true);
+  const lockedStepNameRef = React.useRef<string | null>(null);
+  const hasLockedForStepRef = React.useRef(false);
+
+  useEffect(() => {
+    const stepName = currentStepData?.name ?? null;
+    if (stepName !== lockedStepNameRef.current) {
+      lockedStepNameRef.current = stepName;
+      hasLockedForStepRef.current = false;
+    }
+    if (!hasLockedForStepRef.current && currentElementLayout) {
+      hasLockedForStepRef.current = true;
+      setLockedTopHalf(currentElementLayout.y < SCREEN_HEIGHT / 2);
+    }
+  }, [currentStepData?.name, currentElementLayout]);
+
+  const isTargetInTopHalf = lockedTopHalf;
 
   const animatedTooltipStyle = useAnimatedStyle(() => {
     return {
@@ -251,7 +276,14 @@ export const TourOverlay = () => {
             {typeof currentStepData.description === 'string' ? (
               <Text style={[styles.description, { color: theme.colors.onPrimary, opacity: 0.85 }]}>{currentStepData.description}</Text>
             ) : (
-              <View style={[styles.description, { opacity: 0.85 }]}>
+              // Sin opacity forzado acá: un ReactNode custom (como el de
+              // AddIncome resaltando "$" y "%") necesita poder decidir su
+              // propio contraste por tramo de texto. El opacity de un
+              // padre se combina con el de cualquier hijo -- si lo
+              // dejábamos en 0.85 aquí, ningún hijo podía verse más
+              // brillante que el resto aunque pusiera su propio color a
+              // opacidad completa.
+              <View style={styles.description}>
                 {currentStepData.description}
               </View>
             )}

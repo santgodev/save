@@ -32,6 +32,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
   const [showFilter, setShowFilter] = useState(false);
+  const [showOnlyToday, setShowOnlyToday] = useState(false);
   const [deletingTx, setDeletingTx] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [selectedTx, setSelectedTx] = useState<any>(null);
@@ -80,18 +81,35 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
       ...theme.shadows.soft 
     },
     searchInput: { flex: 1, marginLeft: 12, fontSize: 15, fontWeight: '600', fontFamily: theme.fonts.body, letterSpacing: 0.3, color: theme.colors.onSurface },
-    filterBtn: { 
-      backgroundColor: theme.colors.glassWhite, 
-      width: 52, 
-      height: 52, 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      borderRadius: theme.radius.md, 
-      borderWidth: 1.5, 
+    filterBtn: {
+      backgroundColor: theme.colors.glassWhite,
+      width: 52,
+      height: 52,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: theme.radius.md,
+      borderWidth: 1.5,
       borderColor: theme.colors.divider,
-      ...theme.shadows.soft 
+      ...theme.shadows.soft
     },
-    
+    // Siempre visible, sin necesidad de abrir el panel de filtros primero:
+    // con 2 toques (entrar a Movimientos + tocar Hoy) ya se sabe cuánto se
+    // gastó en el día.
+    todayBtn: {
+      backgroundColor: theme.colors.glassWhite,
+      height: 52,
+      paddingHorizontal: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: theme.radius.md,
+      borderWidth: 1.5,
+      borderColor: theme.colors.divider,
+      ...theme.shadows.soft
+    },
+    todayBtnActive: { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary },
+    todayBtnText: { fontSize: 12, fontWeight: '900', color: theme.colors.primary, letterSpacing: 0.5 },
+    todayBtnTextActive: { color: theme.colors.onPrimary },
+
 
     navBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.glassWhite, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: theme.colors.divider, ...theme.shadows.soft },
   
@@ -157,13 +175,22 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
     return (transactions || []).filter(tx => tx.cycle_id === selectedCycleId);
   }, [transactions, selectedCycleId]);
 
+  // Fecha local (no UTC) -- igual que en Scanner.tsx. Con toISOString()
+  // alguien en Colombia (UTC-5) podría ver el filtro "Hoy" mostrando ayer
+  // pasada la medianoche hasta las 7pm UTC.
+  const todayString = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+
   const filteredTransactions = useMemo(() => {
     return cycleTransactions.filter(tx =>
       (tx.merchant.toLowerCase().includes(searchQuery.toLowerCase()) ||
        tx.category.toLowerCase().includes(searchQuery.toLowerCase())) &&
-      (!filterCategory || tx.category === filterCategory)
+      (!filterCategory || tx.category === filterCategory) &&
+      (!showOnlyToday || (tx.date_string || tx.created_at || '').split('T')[0] === todayString)
     ).sort((a, b) => new Date((b.date_string || b.created_at || '0').split('T')[0] + 'T12:00:00').getTime() - new Date((a.date_string || a.created_at || '0').split('T')[0] + 'T12:00:00').getTime());
-  }, [cycleTransactions, searchQuery, filterCategory]);
+  }, [cycleTransactions, searchQuery, filterCategory, showOnlyToday, todayString]);
 
   const totalSpent = useMemo(() => {
     return filteredTransactions
@@ -230,14 +257,14 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
             <View style={styles.overviewCard}>
                <View style={styles.overviewHeader}>
                   <View style={[styles.dotIndicator, { backgroundColor: theme.colors.error }]} />
-                  <Text style={[styles.overviewTitle, { color: theme.colors.primary }]}>TOTAL GASTADO</Text>
+                  <Text style={[styles.overviewTitle, { color: theme.colors.primary }]}>{showOnlyToday ? 'GASTADO HOY' : 'TOTAL GASTADO'}</Text>
                </View>
            <Text style={[styles.totalAmountText, { color: theme.colors.onSurface }]}>
               {formatMoney(totalSpent)}
            </Text>
            <View style={styles.trendRow}>
               <TrendingUp size={14} color={theme.colors.onSurfaceVariant} />
-              <Text style={styles.trendText}>Consumo en el periodo seleccionado</Text>
+              <Text style={styles.trendText}>{showOnlyToday ? 'Consumo de hoy' : 'Consumo en el periodo seleccionado'}</Text>
            </View>
         </View>
 
@@ -252,6 +279,12 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
                   placeholderTextColor={theme.colors.onSurfaceVariant + '80'}
                 />
               </View>
+              <TouchableOpacity
+                style={[styles.todayBtn, showOnlyToday && styles.todayBtnActive]}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowOnlyToday(v => !v); }}
+              >
+                <Text style={[styles.todayBtnText, showOnlyToday && styles.todayBtnTextActive]}>HOY</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.filterBtn, showFilter && { backgroundColor: theme.colors.primaryContainer, borderColor: theme.colors.primary }]}
                 onPress={() => { setShowFilter(v => !v); if (showFilter) setFilterCategory(null); }}

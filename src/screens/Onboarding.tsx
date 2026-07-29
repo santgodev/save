@@ -119,6 +119,12 @@ export const Onboarding = ({ session, onComplete }: { session: any; onComplete: 
       await AsyncStorage.setItem('@save_magic_tour_pending', 'true');
       await AsyncStorage.removeItem('tour_dashboard_done');
       await AsyncStorage.removeItem('@save_tour_pockets_seen');
+      // Mismo trato que los de arriba: sin esto, un tutorial "primera vez"
+      // solo se ve la primera vez EN ESTE TELÉFONO -- no por cuenta nueva --
+      // porque AsyncStorage no se borra al crear ni al eliminar una cuenta.
+      await AsyncStorage.removeItem('tour_action_menu_done');
+      await AsyncStorage.removeItem('tour_scanner_done');
+      await AsyncStorage.removeItem('tour_addincome_toggle_done');
       onComplete();
     } catch (e: any) {
       notify.error(e.message || 'Error al guardar.');

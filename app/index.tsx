@@ -33,6 +33,7 @@ import { TourOverlay } from '../src/components/tour/TourOverlay';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SubscriptionProvider, useSubscription } from '../src/lib/SubscriptionContext';
 import { Paywall } from '../src/screens/Paywall';
+import { PurchaseConfirmation } from '../src/screens/PurchaseConfirmation';
 
 const { width, height } = Dimensions.get('window');
 
@@ -213,12 +214,22 @@ function MainApp() {
   // (incluyendo TestFlight/App Store), así que esto nunca llega a un
   // usuario real.
   const [devPaywallBypass, setDevPaywallBypass] = useState(false);
+  // No null = se acaba de suscribir en ESTA sesión -- mostrar la pantalla
+  // de celebración una sola vez antes de entrar a la app. En aperturas
+  // futuras (ya suscrito) esto nunca se pone porque Paywall.onSubscribed
+  // solo se dispara al pasar por el gate de abajo.
+  const [justSubscribedPlan, setJustSubscribedPlan] = useState<'annual' | 'monthly' | null>(null);
 
   useEffect(() => {
     if (!session?.user?.id || pockets.length === 0) {
       setTourFlowPending(false);
       return;
     }
+    // Bloquea el paywall por defecto apenas hay bolsillos -- si no, queda
+    // en el valor (probablemente false) que tenía de la rama de arriba
+    // hasta que el check async de abajo resuelva, y en esa ventana el
+    // paywall se puede abrir de golpe encima del tutorial.
+    setTourFlowPending(true);
     let cancelled = false;
     const check = async () => {
       const [magicPending, demoInProgress] = await Promise.all([
@@ -270,7 +281,7 @@ function MainApp() {
             id: 'open_scanner'
           },
           {
-            title: 'Gasto Rápido',
+            title: 'Registrar gasto',
             subtitle: 'Ingresar gasto manualmente',
             icon: 'compose',
             id: 'quick_expense'
@@ -442,7 +453,7 @@ function MainApp() {
               },
               {
                 name: 'action_expense',
-                title: 'Gasto Rápido',
+                title: 'Registrar gasto',
                 description: 'Para esos pequeños gastos del día a día (un café, el bus, una propina). Simple y rápido.',
                 iconName: 'Zap',
                 order: 2
@@ -480,7 +491,7 @@ function MainApp() {
 
     const renderScreen = () => {
     switch (currentScreen) {
-      case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('quick_expense')} onOpenScannerDemo={() => setCurrentScreen('demo_scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} />;
+      case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('quick_expense')} onOpenScannerDemo={() => setCurrentScreen('demo_scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} onDevPreviewPurchaseConfirmation={__DEV__ ? () => setJustSubscribedPlan('annual') : undefined} />;
       case 'scanner': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="camera" />;
       case 'quick_expense': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="manual" />;
       case 'demo_scanner': return <Scanner onGoBack={async () => { await AsyncStorage.removeItem('@save_demo_in_progress'); setCurrentScreen('dashboard'); }} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('dashboard'); setTourFlowPending(false); }} initialMode="demo" />;
@@ -523,11 +534,16 @@ function MainApp() {
   if (!subLoading && !isSubscribed && !devPaywallBypass && !tourFlowPending && !tourActive) {
     return (
       <Paywall
-        onSubscribed={() => {}}
+        onSubscribed={(plan) => setJustSubscribedPlan(plan)}
         onLogout={async () => { await supabase.auth.signOut(); }}
         onDevSkip={__DEV__ ? () => setDevPaywallBypass(true) : undefined}
       />
     );
+  }
+
+  // 3. Celebración post-compra: una sola vez, justo al salir del gate de arriba.
+  if (justSubscribedPlan) {
+    return <PurchaseConfirmation plan={justSubscribedPlan} onContinue={() => setJustSubscribedPlan(null)} />;
   }
 
   // Fallback si no hay currentScreen después de pasar todos los gates
@@ -540,7 +556,7 @@ function MainApp() {
       {currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'demo_scanner' && currentScreen !== 'add_income' && (
         <TopBar
           title={currentScreen === 'dashboard' ? 'Save' : currentScreen === 'expenses' ? 'Movimientos' : currentScreen === 'pockets' ? 'Bolsillos' : 'Perfil'}
-          userName={session.user?.user_metadata?.full_name || session.user?.user_metadata?.name || session.user?.email?.split('@')[0]}
+          userName={session.user?.user_metadata?.full_name || session.user?.user_metadata?.name}
           userAvatar={session.user?.user_metadata?.avatar_url || session.user?.user_metadata?.picture}
           userId={session.user?.id}
           transactions={transactions}
@@ -580,7 +596,7 @@ function MainApp() {
                  <TourStep name="action_expense">
                    <TouchableOpacity activeOpacity={0.8} style={[styles.menuItem, { width: '45%', marginBottom: 16 }]} onPress={() => { toggleActionMenu(false); setCurrentScreen('quick_expense'); }}>
                       <View style={[styles.menuIcon, { backgroundColor: (theme.colors as any).pastel.salmon + '25' }]}><Zap size={28} color={(theme.colors as any).pastel.salmon} /></View>
-                      <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Gasto Rápido</Text>
+                      <Text style={[styles.menuLabel, { color: theme.colors.onSurface }]}>Registrar gasto</Text>
                    </TouchableOpacity>
                  </TourStep>
 
