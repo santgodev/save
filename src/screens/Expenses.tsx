@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
-  View, Text, TouchableOpacity, Animated, StyleSheet, Alert, ScrollView, TextInput, Dimensions, ActivityIndicator, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Platform, Pressable
+  View, Text, TouchableOpacity, Animated, StyleSheet, Alert, ScrollView, TextInput, Dimensions, ActivityIndicator, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Platform, Pressable, Modal
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import {
   Search, Filter, Trash2, ChevronRight, PieChart, ArrowDownRight, TrendingUp, ArrowRightLeft, X,
-  ShieldCheck, Eye, AlertTriangle, Tag, CheckCircle2
+  ShieldCheck, Eye, AlertTriangle, AlertCircle, Tag, CheckCircle2
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../theme/ThemeContext';
@@ -37,7 +37,9 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
   const [isDeleting, setIsDeleting] = useState(false);
   const [selectedTx, setSelectedTx] = useState<any>(null);
   const [showUndoModal, setShowUndoModal] = useState(false);
-  const [undoWasReverted, setUndoWasReverted] = useState(true);
+  const [undoWasReverted, setUndoWasReverted] = useState(false);
+  const [showIncomeErrorModal, setShowIncomeErrorModal] = useState(false);
+  const [incomeErrorDetails, setIncomeErrorDetails] = useState<string>('');
 
   const { cycles, activeCycle, loading: cyclesLoading } = useUserCycles();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
@@ -92,9 +94,6 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
       borderColor: theme.colors.divider,
       ...theme.shadows.soft
     },
-    // Siempre visible, sin necesidad de abrir el panel de filtros primero:
-    // con 2 toques (entrar a Movimientos + tocar Hoy) ya se sabe cuánto se
-    // gastó en el día.
     todayBtn: {
       backgroundColor: theme.colors.glassWhite,
       height: 52,
@@ -150,7 +149,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
     emptyStateTitle: { fontSize: normalize(18), color: theme.colors.onSurfaceVariant, fontWeight: '900', opacity: 0.4 },
     longPressHint: { fontSize: normalize(11), color: theme.colors.onSurfaceVariant, textAlign: 'center', marginTop: 20, marginBottom: 8, fontStyle: 'italic', opacity: 0.5 },
   
-    modalOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
+    modalOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
     modalContainer: { borderRadius: 36, padding: 32, paddingBottom: 24, borderWidth: 1, borderColor: theme.colors.divider, ...theme.shadows.premium },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
     modalTitle: { fontSize: 12, fontWeight: '900', color: theme.colors.primary, letterSpacing: 2, textTransform: 'uppercase' },
@@ -166,9 +165,6 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
     return (transactions || []).filter(tx => tx.cycle_id === selectedCycleId);
   }, [transactions, selectedCycleId]);
 
-  // Fecha local (no UTC) -- igual que en Scanner.tsx. Con toISOString()
-  // alguien en Colombia (UTC-5) podría ver el filtro "Hoy" mostrando ayer
-  // pasada la medianoche hasta las 7pm UTC.
   const todayString = useMemo(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -215,7 +211,14 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
           if (onRefresh) onRefresh();
         }
       } else {
-        notify.error('No se pudo eliminar el movimiento.');
+        console.log('SUPABASE DELETE ERROR:', JSON.stringify(error, null, 2));
+        if (deletingTx.category === 'Ingreso') {
+          setDeletingTx(null);
+          setIncomeErrorDetails(`[${error?.code || 'UNKNOWN'}] ${error?.message || 'Sin detalles'}`);
+          setShowIncomeErrorModal(true);
+        } else {
+          notify.error('No se pudo eliminar el movimiento.');
+        }
       }
     } catch (e) {
       console.error(e);
@@ -233,8 +236,9 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
   const availableCategories = [...new Set(transactions.map(tx => tx.category))].filter(Boolean) as string[];
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {(cyclesLoading || (!selectedCycleId && cycles.length > 0)) ? (
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
             <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -242,7 +246,6 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
         ) : (
           <>
             <Animated.View style={[styles.headerContainer, { opacity: fadeAnim, paddingTop: Math.max(insets.top, 16) + 104 }]}>
-              {/* Navegación de Ciclo — componente compartido */}
               <CycleNav cycles={cycles} activeCycleId={selectedCycleId} onChange={setSelectedCycleId} />
 
             <View style={styles.overviewCard}>
@@ -393,6 +396,40 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
       <CycleUndoModal visible={showUndoModal} reverted={undoWasReverted} />
 
       </KeyboardAvoidingView>
-    </TouchableWithoutFeedback>
+      </TouchableWithoutFeedback>
+
+      <Modal visible={showIncomeErrorModal} transparent animationType="fade" onRequestClose={() => setShowIncomeErrorModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContainer, { backgroundColor: theme.colors.surface, width: '85%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>ACCION BLOQUEADA</Text>
+              <TouchableOpacity onPress={() => setShowIncomeErrorModal(false)} style={styles.closeBtn}>
+                <X size={16} color={theme.colors.onSurfaceVariant} />
+              </TouchableOpacity>
+            </View>
+            <View style={{ alignItems: 'center', marginBottom: 24 }}>
+              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: theme.colors.error + '20', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                <AlertCircle size={32} color={theme.colors.error} />
+              </View>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: theme.colors.onSurface, textAlign: 'center', marginBottom: 12 }}>
+                No se puede borrar este Ingreso
+              </Text>
+              <Text style={{ fontSize: 14, color: theme.colors.onSurfaceVariant, textAlign: 'center', lineHeight: 22 }}>
+                Hay dinero de este ingreso amarrado a <Text style={{ fontWeight: '800', color: theme.colors.onSurface }}>movimientos posteriores</Text>. 
+                {'\n\n'}
+                Eliminarlo ahora dejaría tus bolsillos en negativo. Borra los gastos más recientes primero.
+              </Text>
+              
+            </View>
+            <TouchableOpacity 
+              style={{ backgroundColor: theme.colors.primary, padding: 16, borderRadius: 20, alignItems: 'center' }}
+              onPress={() => setShowIncomeErrorModal(false)}
+            >
+              <Text style={{ color: theme.colors.onPrimary, fontWeight: '900', fontSize: 15 }}>Entendido</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 };

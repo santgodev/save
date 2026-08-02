@@ -2,12 +2,13 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Animated, Dimensions, Image, Platform, ActivityIndicator, LayoutAnimation, UIManager, Linking
 } from 'react-native';
-import { 
-  Settings, LogOut, Trash2, Bell, ShieldCheck, 
+import {
+  Settings, LogOut, Trash2, Bell, ShieldCheck,
   TrendingUp, Target, Sparkles, ChevronRight, ChevronDown,
-  Shield, Eye, Octagon, Fingerprint, Info,
-  Palette, Heart, History
+  Shield, Eye, EyeOff, Octagon, Fingerprint, Info,
+  Palette, Heart, History, User, Check, Lock
 } from 'lucide-react-native';
+import { TextInput, KeyboardAvoidingView, Modal } from 'react-native';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { useTheme } from '../theme/ThemeContext';
 import { normalize } from '../theme/theme';
@@ -215,14 +216,32 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
       marginTop: 16
     },
     dangerText: { fontSize: 16, fontWeight: '900', color: theme.colors.error },
-    versionLabel: { alignSelf: 'center', marginTop: 32, fontSize: 11, fontWeight: '800', color: theme.colors.primary, opacity: 0.4 }
+    versionLabel: { alignSelf: 'center', marginTop: 32, fontSize: 11, fontWeight: '800', color: theme.colors.primary, opacity: 0.4 },
+
+    // --- MODALS ---
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 24 },
+    modalContent: { backgroundColor: theme.colors.surface, borderRadius: 28, padding: 24, ...theme.shadows.medium },
+    modalTitle: { fontSize: 20, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 16 },
+    modalInput: { backgroundColor: theme.colors.surfaceContainerLow, borderRadius: 16, padding: 16, fontSize: 16, color: theme.colors.onSurface, marginBottom: 24, borderWidth: 1, borderColor: theme.colors.outlineVariant },
+    modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12 },
+    modalBtnCancel: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 16 },
+    modalBtnSave: { backgroundColor: theme.colors.primary, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 16 },
+    modalBtnSaveTxt: { color: theme.colors.onPrimary, fontWeight: '800', fontSize: 15 },
   }), [theme, mode]);
 
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [rules, setRules] = useState<any[]>([]);
   const [notifs, setNotifs] = useState({ alerts_high: true, alerts_hormiga: true, daily_tips: true });
-  const [activeModal, setActiveModal] = useState<'delete' | 'logout' | null>(null);
+  const [activeModal, setActiveModal] = useState<'delete' | 'logout' | 'edit_name' | 'change_password' | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [editNameValue, setEditNameValue] = useState('');
+  const [isSavingName, setIsSavingName] = useState(false);
+
+  const MIN_PASSWORD_LENGTH = 8;
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   const { activeCycle } = useUserCycles();
 
@@ -249,6 +268,52 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
       fetchRules();
       onRefresh();
     } catch (e) { console.log(e); }
+  };
+
+  const handleSaveName = async () => {
+    const trimmed = editNameValue.trim();
+    if (!trimmed) return;
+    setIsSavingName(true);
+    try {
+      await supabase.auth.updateUser({ data: { full_name: trimmed, name: trimmed } });
+      setActiveModal(null);
+      // Wait a moment for session update propagation
+      setTimeout(() => onRefresh(), 500);
+    } catch (e) {
+      console.log(e);
+      notify.error("No se pudo actualizar el nombre");
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const handleSavePassword = async () => {
+    if (!newPassword || !confirmNewPassword) {
+      notify.error('Completa los dos campos.');
+      return;
+    }
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      notify.error(`Usa al menos ${MIN_PASSWORD_LENGTH} caracteres.`);
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      notify.error('Las contraseñas no coinciden.');
+      return;
+    }
+
+    setIsSavingPassword(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      notify.success('Listo', 'Tu contraseña se actualizó correctamente.');
+      setActiveModal(null);
+      setNewPassword('');
+      setConfirmNewPassword('');
+    } catch (e: any) {
+      notify.error(e.message, 'No pudimos actualizar tu contraseña');
+    } finally {
+      setIsSavingPassword(false);
+    }
   };
 
 
@@ -323,6 +388,55 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
             ) : profileData.topHabits.length === 0 ? (
               <Text style={{ fontStyle: 'italic', color: theme.colors.onSurfaceVariant, fontSize: 13 }}>Aún no hay suficientes datos.</Text>
             ) : null}
+         </View>
+      </View>
+
+      <View style={styles.section}>
+         <View style={styles.sectionHeader}>
+            <User size={18} color={theme.colors.primary} strokeWidth={2.5} />
+            <Text style={styles.sectionTitle}>Tu Cuenta</Text>
+         </View>
+         <View style={styles.settingsCard}>
+            <TouchableOpacity 
+              style={[styles.settingRow, { paddingVertical: 14 }]}
+              onPress={() => {
+                const currentName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || '';
+                setEditNameValue(currentName);
+                setActiveModal('edit_name');
+              }}
+            >
+               <View style={styles.settingTitleCol}>
+                  <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: theme.colors.surfaceContainerHighest, alignItems: 'center', justifyContent: 'center' }}>
+                     <User size={18} color={theme.colors.onSurfaceVariant} />
+                  </View>
+                  <View>
+                    <Text style={styles.settingText}>Nombre</Text>
+                    <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant, fontWeight: '600' }}>
+                      {session.user.user_metadata?.full_name || session.user.user_metadata?.name || 'Toca para agregar tu nombre'}
+                    </Text>
+                  </View>
+               </View>
+               <ChevronRight size={18} color={theme.colors.onSurfaceVariant} />
+            </TouchableOpacity>
+
+            <View style={{ height: 1, backgroundColor: theme.colors.divider, marginLeft: 52 }} />
+
+            <TouchableOpacity
+              style={[styles.settingRow, { paddingVertical: 14 }]}
+              onPress={() => {
+                setNewPassword('');
+                setConfirmNewPassword('');
+                setActiveModal('change_password');
+              }}
+            >
+               <View style={styles.settingTitleCol}>
+                  <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: theme.colors.surfaceContainerHighest, alignItems: 'center', justifyContent: 'center' }}>
+                     <Lock size={18} color={theme.colors.onSurfaceVariant} />
+                  </View>
+                  <Text style={styles.settingText}>Cambiar contraseña</Text>
+               </View>
+               <ChevronRight size={18} color={theme.colors.onSurfaceVariant} />
+            </TouchableOpacity>
          </View>
       </View>
 
@@ -472,10 +586,109 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
         isDestructive={true}
         onCancel={() => setActiveModal(null)}
         onConfirm={async () => {
-          setActiveModal(null);
           await supabase.auth.signOut();
         }}
-     />
+    />
+
+    <Modal visible={activeModal === 'edit_name'} transparent animationType="fade">
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Editar Nombre</Text>
+          <TextInput
+            style={styles.modalInput}
+            value={editNameValue}
+            onChangeText={setEditNameValue}
+            placeholder="Tu nombre"
+            placeholderTextColor={theme.colors.onSurfaceVariant}
+            autoFocus
+            autoCapitalize="words"
+            returnKeyType="done"
+            onSubmitEditing={handleSaveName}
+          />
+          <View style={styles.modalActions}>
+            <TouchableOpacity 
+              style={styles.modalBtnCancel} 
+              onPress={() => setActiveModal(null)}
+              disabled={isSavingName}
+            >
+              <Text style={{ color: theme.colors.onSurfaceVariant, fontWeight: '800' }}>Cancelar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.modalBtnSave, { opacity: (editNameValue.trim() && !isSavingName) ? 1 : 0.5 }]} 
+              onPress={handleSaveName}
+              disabled={!editNameValue.trim() || isSavingName}
+            >
+              {isSavingName ? (
+                <ActivityIndicator color={theme.colors.onPrimary} size="small" />
+              ) : (
+                <Text style={styles.modalBtnSaveTxt}>Guardar</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+
+    <Modal visible={activeModal === 'change_password'} transparent animationType="fade">
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Cambiar contraseña</Text>
+
+          <View style={{ position: 'relative', marginBottom: 16 }}>
+            <TextInput
+              style={[styles.modalInput, { marginBottom: 0, paddingRight: 48 }]}
+              value={newPassword}
+              onChangeText={setNewPassword}
+              placeholder="Nueva contraseña"
+              placeholderTextColor={theme.colors.onSurfaceVariant}
+              secureTextEntry={!showNewPassword}
+              autoFocus
+              returnKeyType="next"
+            />
+            <TouchableOpacity
+              onPress={() => setShowNewPassword(p => !p)}
+              style={{ position: 'absolute', right: 16, top: 0, bottom: 0, justifyContent: 'center' }}
+            >
+              {showNewPassword
+                ? <EyeOff size={20} color={theme.colors.onSurfaceVariant} />
+                : <Eye size={20} color={theme.colors.onSurfaceVariant} />}
+            </TouchableOpacity>
+          </View>
+
+          <TextInput
+            style={styles.modalInput}
+            value={confirmNewPassword}
+            onChangeText={setConfirmNewPassword}
+            placeholder="Confirmar contraseña"
+            placeholderTextColor={theme.colors.onSurfaceVariant}
+            secureTextEntry={!showNewPassword}
+            returnKeyType="done"
+            onSubmitEditing={handleSavePassword}
+          />
+
+          <View style={styles.modalActions}>
+            <TouchableOpacity
+              style={styles.modalBtnCancel}
+              onPress={() => setActiveModal(null)}
+              disabled={isSavingPassword}
+            >
+              <Text style={{ color: theme.colors.onSurfaceVariant, fontWeight: '800' }}>Cancelar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalBtnSave, { opacity: (newPassword && confirmNewPassword && !isSavingPassword) ? 1 : 0.5 }]}
+              onPress={handleSavePassword}
+              disabled={!newPassword || !confirmNewPassword || isSavingPassword}
+            >
+              {isSavingPassword ? (
+                <ActivityIndicator color={theme.colors.onPrimary} size="small" />
+              ) : (
+                <Text style={styles.modalBtnSaveTxt}>Guardar</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
 
     </View>
   );

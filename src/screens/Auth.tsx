@@ -231,17 +231,21 @@ export function Auth({ onLoginSuccess }: AuthProps) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       } else {
-        const { error } = await supabase.auth.signUp({ 
-            email, 
+        const { error } = await supabase.auth.signUp({
+            email,
             password,
             options: {
               data: {
                 full_name: fullName.trim(),
-              }
+              },
+              // Sin esto el link de confirmación caía al Site URL por
+              // defecto de Supabase en vez de volver a la app -- mismo
+              // esquema que ya usa el reset de contraseña más abajo.
+              emailRedirectTo: Linking.createURL('/auth/callback'),
             }
         });
         if (error) throw error;
-        notify.success('¡Cuenta creada!', 'Revisa tu correo para confirmar.');
+        notify.success('¡Cuenta creada!', 'Revisa tu correo y confirma para entrar automáticamente.');
         setMode('login');
       }
       if (mode === 'login') onLoginSuccess();
@@ -296,19 +300,20 @@ export function Auth({ onLoginSuccess }: AuthProps) {
       if (data.url) {
         const res = await WebBrowser.openAuthSessionAsync(data.url, Linking.createURL('/auth/callback'));
         if (res.type === 'success' && res.url) {
-          const params = res.url.split('#')[1];
-          if (params) {
-            const urlParams = params.split('&').reduce((acc: any, current) => {
+          // Flujo PKCE (ver src/lib/supabase.ts): vuelve como
+          // ?code=... en el query string, no como #access_token=... en
+          // el fragmento -- por eso se parsea después del '?', no del '#'.
+          const queryString = res.url.split('?')[1]?.split('#')[0];
+          if (queryString) {
+            const urlParams = queryString.split('&').reduce((acc: any, current) => {
               const [name, value] = current.split('=');
               acc[name] = value;
               return acc;
             }, {});
 
-            if (urlParams.access_token && urlParams.refresh_token) {
-              await supabase.auth.setSession({
-                access_token: urlParams.access_token,
-                refresh_token: urlParams.refresh_token,
-              });
+            if (urlParams.code) {
+              const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(urlParams.code);
+              if (exchangeError) throw exchangeError;
               onLoginSuccess();
             }
           }
@@ -396,7 +401,7 @@ export function Auth({ onLoginSuccess }: AuthProps) {
             <Text style={[styles.appNameChar, { color: (theme.colors as any).pastel?.lavender || '#D2A9D1' }]}>E</Text>
           </View>
           <Text style={styles.tagline}>
-            0 fricción. 100% control.
+            Save cuida tu bolsillo
           </Text>
         </Animated.View>
 

@@ -138,7 +138,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
         title: 'Monto fijo o porcentaje',
         description: (
           <Text style={{ fontSize: 16, lineHeight: 24, fontWeight: '600', color: theme.colors.onPrimary + 'B3' }}>
-            Usa <Text style={{ color: theme.colors.onPrimary, fontWeight: '900' }}>"$"</Text> si este bolsillo siempre recibirá la misma cantidad. Usa <Text style={{ color: theme.colors.onPrimary, fontWeight: '900' }}>"%"</Text> si prefieres que reciba un porcentaje de cada ingreso.
+            Usa <Text style={{ color: theme.colors.onPrimary, fontWeight: '900' }}>&quot;$&quot;</Text> si este bolsillo siempre recibirá la misma cantidad. Usa <Text style={{ color: theme.colors.onPrimary, fontWeight: '900' }}>&quot;%&quot;</Text> si prefieres que reciba un porcentaje de cada ingreso.
           </Text>
         ),
         iconName: 'CreditCard',

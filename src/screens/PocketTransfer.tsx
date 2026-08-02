@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Dimensions, KeyboardAvoidingView, Platform, ActivityIndicator, TouchableWithoutFeedback, Keyboard, Animated, Modal } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { X, ArrowRightLeft, ArrowRight, CheckCircle2, ChevronDown, Repeat, ArrowDown } from 'lucide-react-native';
+import { X, ArrowRightLeft, ArrowRight, CheckCircle2, ChevronDown, Repeat, ArrowDown, AlertTriangle } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
@@ -24,6 +24,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
   const [toPocketId, setToPocketId] = useState<string | null>(initialParams?.toId || null);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0)).current;
 
   const styles = useMemo(() => StyleSheet.create({
@@ -142,7 +143,9 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
       }, 150);
     } catch(e: any) {
       console.log('Transfer error:', e);
-      if (e?.message) {
+      if (e?.code === '23514' || e?.message?.includes('pockets_allocated_budget_non_negative')) {
+        setShowErrorModal(true);
+      } else if (e?.message) {
         notify.error(e.message);
       } else {
         notify.error('Error en el traspaso.');
@@ -267,6 +270,29 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
             </Animated.View>
           </View>
         )}
+
+        {showErrorModal && (
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, alignItems: 'center', justifyContent: 'center', padding: 24 }]}>
+            <Animated.View style={{ backgroundColor: theme.colors.surface, borderRadius: 32, padding: 32, width: '100%', alignItems: 'center', ...theme.shadows.premium, transform: [{ scale: 1 }] }}>
+              <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: theme.colors.errorContainer, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
+                <AlertTriangle size={40} color={theme.colors.error} strokeWidth={2} />
+              </View>
+              <Text style={{ fontSize: 24, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 12, textAlign: 'center', letterSpacing: -0.5 }}>
+                Fondos Insuficientes
+              </Text>
+              <Text style={{ fontSize: 16, color: theme.colors.onSurfaceVariant, textAlign: 'center', lineHeight: 24, marginBottom: 32 }}>
+                El bolsillo de origen no tiene suficiente dinero para realizar este traspaso.
+              </Text>
+              <TouchableOpacity 
+                style={{ backgroundColor: theme.colors.primary, paddingVertical: 18, paddingHorizontal: 32, borderRadius: 100, width: '100%', alignItems: 'center' }}
+                onPress={() => setShowErrorModal(false)}
+              >
+                <Text style={{ color: theme.colors.onPrimary, fontSize: 16, fontWeight: '800' }}>Entendido</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+        )}
+
         </KeyboardAvoidingView>
       </TouchableWithoutFeedback>
     </Modal>

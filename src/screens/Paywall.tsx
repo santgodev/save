@@ -122,7 +122,7 @@ const Testimonial = ({ theme }: { theme: any }) => (
 
     <View style={{ padding: 16 }}>
       <Text style={{ fontFamily: theme.fonts.body, fontSize: 15, color: theme.colors.onSurface, lineHeight: 22, marginBottom: 16, fontWeight: '500' }}>
-        "Parce, qué aplicación tan sencilla de usar."
+        &quot;Parce, qué aplicación tan sencilla de usar.&quot;
       </Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <View style={{ width: 32, height: 32, borderRadius: 11, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' }}>
@@ -230,7 +230,7 @@ const HookStep = ({
   const { theme } = useTheme();
 
   const S = StyleSheet.create({
-    scroll: { paddingHorizontal: PAYWALL_HPADDING, paddingTop: 10, paddingBottom: 140, flexGrow: 1 },
+    scroll: { paddingHorizontal: PAYWALL_HPADDING, paddingTop: 10, paddingBottom: 220, flexGrow: 1 },
     topSection: { alignItems: 'center', marginTop: 20, marginBottom: 36 },
     midSection: { gap: 20 },
   });
@@ -307,7 +307,7 @@ const BenefitsAndPricingStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallPr
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
-    scroll: { paddingHorizontal: PAYWALL_HPADDING, paddingTop: 8, paddingBottom: 150, flexGrow: 1 },
+    scroll: { paddingHorizontal: PAYWALL_HPADDING, paddingTop: 8, paddingBottom: 260, flexGrow: 1 },
 
 
     benefitsCard: { backgroundColor: theme.colors.surface, borderRadius: 20, padding: 8, borderWidth: 1, borderColor: theme.colors.outlineVariant, marginBottom: 16, marginTop: 20 },
@@ -331,6 +331,7 @@ const BenefitsAndPricingStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallPr
 
     bottomLinks: { flexDirection: 'row', justifyContent: 'center', gap: 24, marginTop: 12 },
     link: { ...theme.typography.bodySmall, color: theme.colors.onSurfaceVariant, fontFamily: theme.fonts.body, textDecorationLine: 'underline' },
+    renewalNote: { ...theme.typography.label, textTransform: 'none', letterSpacing: 0, fontSize: 10, lineHeight: 14, color: theme.colors.onSurfaceVariant, fontFamily: theme.fonts.body, textAlign: 'center', marginTop: 12, opacity: 0.55 },
   });
 
   return (
@@ -446,6 +447,9 @@ const BenefitsAndPricingStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallPr
 
       <PaywallFooter theme={theme} insets={insets}>
         <PaywallCTA label="Empezar gratis" onPress={handlePurchase} disabled={isPurchasing} theme={theme} />
+        <Text style={styles.renewalNote}>
+          Prueba gratis de {TRIAL_DAYS} días. Después, el plan {selected === 'annual' ? 'anual' : 'mensual'} se renueva automáticamente y se cobra a tu cuenta de Apple, a menos que canceles al menos 24 horas antes. Administra o cancela cuando quieras desde Ajustes de tu cuenta de Apple.
+        </Text>
         <View style={styles.bottomLinks}>
           <TouchableOpacity onPress={() => Linking.openURL('https://eveenia.com/es/save/terms')}>
             <Text style={styles.link}>Términos</Text>

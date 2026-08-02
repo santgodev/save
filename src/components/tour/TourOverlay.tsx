@@ -14,7 +14,7 @@ import Animated, {
   FadeInDown,
   FadeOut
 } from 'react-native-reanimated';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Rect } from 'react-native-svg';
 import { useTour } from './TourContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { ChevronRight, X, Sparkles, Zap, PlusCircle, PieChart, Clock, CreditCard, BarChart2, Unlock, ShoppingBag, CheckCircle, Trash2 } from 'lucide-react-native';
@@ -23,6 +23,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const AnimatedView = Animated.createAnimatedComponent(View);
 const AnimatedPath = Animated.createAnimatedComponent(Path);
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
 const PADDING = 8;
 
@@ -54,6 +55,7 @@ export const TourOverlay = () => {
   const opacity = useSharedValue(0);
   
   const pulseOpacity = useSharedValue(0.8);
+  const arrowBounce = useSharedValue(0);
 
   useEffect(() => {
     if (isActive && currentElementLayout) {
@@ -81,6 +83,13 @@ export const TourOverlay = () => {
         withSequence(
           withTiming(0.2, { duration: 600 }),
           withTiming(1, { duration: 600 })
+        ), -1, true
+      );
+
+      arrowBounce.value = withRepeat(
+        withSequence(
+          withTiming(-8, { duration: 350 }),
+          withTiming(0, { duration: 350 })
         ), -1, true
       );
     } else if (!isActive) {
@@ -126,17 +135,70 @@ export const TourOverlay = () => {
     opacity: opacity.value
   }));
 
-  const animatedPulseStyle = useAnimatedStyle(() => {
+  // Paneles invisibles que bloquean el toque en todo lo que NO es el hueco.
+  // Antes, `allowTouches: true` ponía el contenedor entero en
+  // pointerEvents="box-none", lo que dejaba pasar el toque a CUALQUIER
+  // parte de la pantalla (otra pestaña, otro bolsillo, el chat) -- el
+  // hueco oscuro del SVG es solo visual, nunca bloqueó nada. Estos 4
+  // paneles (arriba/abajo/izq/der) rodean el hueco exacto y sí bloquean
+  // -- el hueco en sí queda libre porque ningún panel lo cubre, así que
+  // el elemento real de abajo sigue recibiendo el toque normalmente.
+  const topPanelStyle = useAnimatedStyle(() => ({
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: SCREEN_WIDTH,
+    height: Math.max(0, holeY.value),
+    backgroundColor: 'transparent',
+  }));
+
+  const bottomPanelStyle = useAnimatedStyle(() => {
+    const top = holeY.value + holeHeight.value;
     return {
       position: 'absolute',
-      left: holeX.value - 2,
-      top: holeY.value - 2,
+      left: 0,
+      top,
+      width: SCREEN_WIDTH,
+      height: Math.max(0, SCREEN_HEIGHT - top),
+      backgroundColor: 'transparent',
+    };
+  });
+
+  const leftPanelStyle = useAnimatedStyle(() => ({
+    position: 'absolute',
+    left: 0,
+    top: holeY.value,
+    width: Math.max(0, holeX.value),
+    height: Math.max(0, holeHeight.value),
+    backgroundColor: 'transparent',
+  }));
+
+  const rightPanelStyle = useAnimatedStyle(() => {
+    const left = holeX.value + holeWidth.value;
+    return {
+      position: 'absolute',
+      left,
+      top: holeY.value,
+      width: Math.max(0, SCREEN_WIDTH - left),
+      height: Math.max(0, holeHeight.value),
+      backgroundColor: 'transparent',
+    };
+  });
+
+  // Props animadas para el rectángulo de borde SVG (reemplaza el AnimatedView
+  // que tenía backgroundColor blanco en iOS por defecto de Reanimated).
+  // Con SVG fill="none" + stroke no hay ningún interior que pintar.
+  const animatedRectProps = useAnimatedProps(() => {
+    const minDim = Math.min(holeWidth.value, holeHeight.value);
+    const r = Math.min(24, minDim / 2);
+    return {
+      x: holeX.value - 2,
+      y: holeY.value - 2,
       width: holeWidth.value + 4,
       height: holeHeight.value + 4,
-      borderWidth: 3,
-      borderColor: theme.colors.primary,
-      borderRadius: 26,
-      opacity: pulseOpacity.value * opacity.value,
+      rx: r,
+      ry: r,
+      opacity: holeWidth.value > 0 ? pulseOpacity.value * opacity.value : 0,
     };
   });
 
@@ -190,6 +252,11 @@ export const TourOverlay = () => {
     zIndex: 10
   }));
 
+  const arrowAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: arrowBounce.value }],
+    opacity: opacity.value,
+  }));
+
   if (!isRendered) return null;
 
   return (
@@ -201,9 +268,28 @@ export const TourOverlay = () => {
             fill="rgba(0,0,0,0.85)"
             fillRule="evenodd"
           />
+          {/* Borde SVG: fill=none garantiza que el interior sea 100% transparente */}
+          <AnimatedRect
+            animatedProps={animatedRectProps}
+            fill="none"
+            stroke={theme.colors.primary}
+            strokeWidth={3}
+          />
         </Svg>
       </AnimatedView>
-      
+
+      {/* Bloqueo real del toque fuera del hueco -- solo aplica cuando el
+          paso deja pasar el toque (allowTouches) y ya sabemos dónde está
+          el hueco. Sin esto, allowTouches dejaba tocar TODA la pantalla. */}
+      {currentStepData?.allowTouches && currentElementLayout && (
+        <>
+          <AnimatedView pointerEvents="auto" style={topPanelStyle} />
+          <AnimatedView pointerEvents="auto" style={bottomPanelStyle} />
+          <AnimatedView pointerEvents="auto" style={leftPanelStyle} />
+          <AnimatedView pointerEvents="auto" style={rightPanelStyle} />
+        </>
+      )}
+
       {currentStepData?.onTargetClick && currentElementLayout && (
         <TouchableOpacity
           style={{
@@ -218,8 +304,28 @@ export const TourOverlay = () => {
         />
       )}
       
-      {/* Marco brillante */}
-      <AnimatedView style={animatedPulseStyle} pointerEvents="none" />
+
+      {/* Flecha animada apuntando al elemento iluminado */}
+      {currentStepData?.showArrow && currentElementLayout && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            {
+              position: 'absolute',
+              alignItems: 'center',
+              left: currentElementLayout.x + currentElementLayout.width / 2 - 16,
+              top: isTargetInTopHalf
+                ? currentElementLayout.y - 44   // apunta arriba
+                : currentElementLayout.y - 48,  // apunta abajo
+            },
+            arrowAnimatedStyle,
+          ]}
+        >
+          <Text style={{ fontSize: 28, color: theme.colors.primary }}>
+            {isTargetInTopHalf ? '↑' : '↓'}
+          </Text>
+        </Animated.View>
+      )}
 
       {/* Botón de cerrar */}
       <AnimatedView style={closeButtonStyle}>
@@ -242,7 +348,7 @@ export const TourOverlay = () => {
         pointerEvents="box-none"
       >
         {currentStepData && (
-          <AnimatedView 
+          <Animated.View 
             style={[styles.tooltipCard, animatedTooltipStyle, { backgroundColor: theme.colors.primary }]}
           >
             <View style={styles.header}>
@@ -304,7 +410,7 @@ export const TourOverlay = () => {
                 </TouchableOpacity>
               )}
             </View>
-          </AnimatedView>
+          </Animated.View>
         )}
       </View>
     </AnimatedView>

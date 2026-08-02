@@ -180,7 +180,7 @@ export const TopBar = ({
     setTimeout(() => {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setGreetingTitle('');
-    }, 3500);
+    }, 5000);
   }, [userName]);
 
   const [internalShowChat, setInternalShowChat] = useState(false);
@@ -516,8 +516,8 @@ export const TopBar = ({
     // sobrante (overflow: hidden), así la foto se ve más "llena" sin
     // importar qué tan lejos/chico salga el sujeto en la foto original.
     avatarImage: { width: '100%', height: '100%', transform: [{ scale: 1.35 }] },
-    avatarFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary },
-    avatarInitials: { color: '#fff', fontSize: 14, fontWeight: '800' },
+    avatarFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary, transform: [{ scale: 1.35 }] },
+    avatarInitials: { color: '#fff', fontSize: 18, fontWeight: '800' },
     topBarTitle: { fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, letterSpacing: -0.2 },
     iconButton: {
       width: 40, height: 40, alignItems: 'center', justifyContent: 'center',

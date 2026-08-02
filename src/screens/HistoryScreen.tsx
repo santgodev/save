@@ -37,14 +37,33 @@ const HistoryCard = ({ cycle, theme }: { cycle: any, theme: any }) => {
           });
             
           if (!error && data && data.pockets) {
-            const detailsArr = (data.pockets as any[])
+            const allPockets = [...(data.pockets as any[])].sort((a, b) => {
+              if (a.is_default_free || a.name === 'Libre') return 1;
+              if (b.is_default_free || b.name === 'Libre') return -1;
+              
+              const allocA = a.allocated || 1;
+              const allocB = b.allocated || 1;
+              const pctA = (a.spent_month || 0) / allocA;
+              const pctB = (b.spent_month || 0) / allocB;
+              // To ensure stability matching Pockets.tsx, secondary sort by name
+              if (pctB === pctA) return a.name.localeCompare(b.name);
+              return pctB - pctA;
+            });
+            
+            const premiumColors = theme.colors.chartColors as string[];
+
+            const detailsArr = allPockets
               .filter((p: any) => p.spent_month > 0 || p.allocated > 0)
-              .map((p: any) => ({
-                category: p.name,
-                spent: p.spent_month,
-                allocated: p.allocated || 0,
-                color: getDeterministicColor(p.name, theme.colors.pocketFlatColors as string[])
-              }))
+              .map((p: any) => {
+                const i = allPockets.findIndex(ap => ap.name === p.name);
+                const color = (p.is_default_free || p.name === 'Libre') ? theme.colors.primary : premiumColors[i % premiumColors.length];
+                return {
+                  category: p.name,
+                  spent: p.spent_month,
+                  allocated: p.allocated || 0,
+                  color
+                };
+              })
               .sort((a: any, b: any) => b.spent - a.spent);
               
             setDetails(detailsArr);

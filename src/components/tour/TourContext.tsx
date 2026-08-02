@@ -11,6 +11,7 @@ export type TourStepType = {
   nextButtonText?: string;
   hideNextButton?: boolean;
   allowTouches?: boolean;
+  showArrow?: boolean;
 };
 
 export type LayoutRect = {

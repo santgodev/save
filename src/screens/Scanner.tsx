@@ -202,22 +202,22 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   const DEMO_TOUR_STEPS: TourStepType[] = useMemo(() => [
     {
       name: 'scanner_amount',
-      title: 'Magia de la IA',
+      title: 'Monto identificado',
       description: 'Save extrajo el total exacto de tu recibo en segundos sin que teclearas nada.',
       iconName: 'Sparkles',
       order: 1
     },
     {
       name: 'scanner_merchant',
-      title: 'Comercio Identificado',
+      title: 'Comercio identificado',
       description: 'Reconoció el lugar de tu compra automáticamente.',
       iconName: 'Store',
       order: 2
     },
     {
       name: 'scanner_pocket',
-      title: 'Categoría Inteligente',
-      description: 'También detectó que es una compra de comida y te sugiere descontarlo del bolsillo de Alimentación.',
+      title: 'Bolsillo identificado',
+      description: 'Detectó que es una compra de comida y te sugiere descontarlo del bolsillo correcto.',
       iconName: 'PieChart',
       order: 3
     },
@@ -238,17 +238,8 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   ], []);
 
   React.useEffect(() => {
-    if (!isOpeningPicker && initialMode !== 'demo' && initialMode !== 'manual') {
-      AsyncStorage.getItem('tour_scanner_done').then(done => {
-        if (!done) {
-          setTimeout(() => {
-            startTour(TOUR_STEPS);
-            AsyncStorage.setItem('tour_scanner_done', 'true');
-          }, 800);
-        }
-      });
-    }
-  }, [isOpeningPicker]);
+    // (Eliminado el useEffect del tour normal por petición del usuario)
+  }, []);
 
   const runDemoMode = () => {
     setIsManualMode(false);
@@ -488,6 +479,11 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
 
       const iconMap: Record<string, string> = { 'Comida': 'utensils', 'Transporte': 'car', 'Ocio': 'theater', 'Ahorros': 'piggy-bank' };
       const amountValue = parseInt(editableAmount.replace(/[^0-9]/g, ''), 10);
+      
+      if (!Number.isFinite(amountValue) || amountValue <= 0 || isNaN(amountValue)) {
+        throw new Error('El monto ingresado no es válido.');
+      }
+
       const d = new Date();
       const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 

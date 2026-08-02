@@ -354,6 +354,9 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   const openPocket = (pocket: any) => {
     setSelectedPocket(pocket);
     Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 50, friction: 8 }).start();
+    if (isTourActive) {
+      stopTour();
+    }
   };
 
   useEffect(() => {

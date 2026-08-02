@@ -188,6 +188,7 @@ Deno.serve(async (req) => {
       event_data: { function: "ocr-receipt", reason: entitlementCheck.reason },
       source: "edge_fn",
     }).catch(() => {});
+    return errorResponse(`Requiere suscripción activa. (Razón: ${entitlementCheck.reason})`, 403);
   }
 
   let parsed: StructuredReceipt & { category?: string };

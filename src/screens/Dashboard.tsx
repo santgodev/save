@@ -69,14 +69,26 @@ export const Dashboard = ({
       name: 'bottom_add',
       title: 'El botón que lo hace todo',
       description: (
-        <View style={{ gap: 12, marginTop: 4 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-            <Pointer size={18} color="#1A1A1A" style={{ marginTop: 2 }} />
-            <Text style={{ color: '#1A1A1A', flex: 1, fontSize: 14, fontWeight: '500' }}>Toca para ver opciones.</Text>
+        <View style={{ gap: 10, marginTop: 4 }}>
+          {/* Acción 1: Toca */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: 16, padding: 12 }}>
+            <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' }}>
+              <Pointer size={20} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '900', marginBottom: 2 }}>Toca</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '600' }}>Registra un gasto manualmente</Text>
+            </View>
           </View>
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
-            <Lock size={18} color="#1A1A1A" style={{ marginTop: 2 }} />
-            <Text style={{ color: '#1A1A1A', flex: 1, fontSize: 14, fontWeight: '500' }}>Mantén presionado para escanear.</Text>
+          {/* Acción 2: Mantén presionado */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: 16, padding: 12 }}>
+            <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.3)', alignItems: 'center', justifyContent: 'center' }}>
+              <Zap size={20} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '900', marginBottom: 2 }}>Mantén presionado</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '600' }}>Escanea un ticket con la IA</Text>
+            </View>
           </View>
         </View>
       ),
@@ -85,8 +97,8 @@ export const Dashboard = ({
     },
     {
       name: 'dashboard_quick_add',
-      title: 'Registrar debe ser fácil',
-      description: 'Cuanto menos esfuerzo te tome registrar un gasto, más constante será el hábito. Por eso en Save solo necesitas dos toques.',
+      title: 'Conviértelo en hábito',
+      description: 'Regístralos todos. Solo así verás a dónde va tu plata.',
       iconName: 'Zap',
       order: 2
     }
@@ -102,12 +114,13 @@ export const Dashboard = ({
       const hasDemo = demoTxs?.length > 0;
 
       // Prioridad 1: flujo demo del Scanner (ya tiene is_demo)
-      // FIX: antes esto se disparaba en CADA visita al Dashboard mientras
-      // existiera la transacción de prueba (no había flag de "ya lo vi"),
-      // así que la burbuja "ve a bolsillos" podía insistir para siempre.
-      // Ahora se guarda el id de la transacción de prueba ya mostrada,
-      // igual que ya se hacía en Pockets.tsx.
+      // GUARD: solo se dispara si @save_demo_in_progress === 'true', es decir,
+      // cuando el Scanner demo acaba de guardar el gasto en ESTA sesión.
+      // Sin este guard, cualquier transacción is_demo vieja en la DB activa
+      // el tour en cada visita al Dashboard (el bug de "se activa solo").
       if (hasDemo) {
+        const demoInProgress = await AsyncStorage.getItem('@save_demo_in_progress');
+        if (demoInProgress !== 'true') return; // flujo demo no activo → no disparar
         const firstDemoTx = demoTxs[0];
         AsyncStorage.getItem('@save_demo_dashboard_tour_seen').then(seenId => {
           if (seenId === firstDemoTx.id) return;
@@ -124,6 +137,7 @@ export const Dashboard = ({
               // Bolsillos. Ahora se obliga el toque real.
               allowTouches: true,
               hideNextButton: true,
+              showArrow: true,
             }], undefined, { step: 5, total: 6 });
           }, 800);
         });
@@ -335,6 +349,24 @@ export const Dashboard = ({
             {__DEV__ && onDevPreviewPurchaseConfirmation && (
               <TouchableOpacity onPress={onDevPreviewPurchaseConfirmation} style={{ alignSelf: 'flex-end', marginBottom: 8, opacity: 0.5 }}>
                 <Text style={{ fontSize: 10, fontFamily: theme.fonts.headline, fontWeight: '800', color: theme.colors.warning }}>PROBAR CONFIRMACIÓN</Text>
+              </TouchableOpacity>
+            )}
+
+            {__DEV__ && (
+              <TouchableOpacity
+                onPress={async () => {
+                  // Pone el flag de flujo activo ANTES de ir al scanner,
+                  // para que Dashboard sepa que debe disparar el tour al volver.
+                  await Promise.all([
+                    AsyncStorage.setItem('@save_demo_in_progress', 'true'),
+                    AsyncStorage.removeItem('@save_demo_dashboard_tour_seen'),
+                    AsyncStorage.removeItem('@save_demo_tour_triggered_id_v3'),
+                  ]);
+                  if (onOpenScannerDemo) onOpenScannerDemo();
+                }}
+                style={{ alignSelf: 'flex-end', marginBottom: 8, opacity: 0.5 }}
+              >
+                <Text style={{ fontSize: 10, fontFamily: theme.fonts.headline, fontWeight: '800', color: theme.colors.primary }}>▶ TUTORIAL</Text>
               </TouchableOpacity>
             )}
 

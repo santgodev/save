@@ -45,5 +45,13 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,
+        // PKCE en vez del 'implicit' de default: los links de correo
+        // (confirmación de signup, recuperación de contraseña) y el OAuth
+        // de Google vuelven con ?code=... en vez de #access_token=... en
+        // el fragmento. El fragmento resultó no ser confiable para pasar
+        // de un navegador a la app nativa vía deep link -- se perdía en
+        // el camino en pruebas reales (ver app/auth/callback.tsx). El
+        // query string sí lo lee expo-router de forma nativa y confiable.
+        flowType: 'pkce',
     },
 });

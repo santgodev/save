@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, ActivityIndicator, Text, StyleSheet, TouchableOpacity, Animated, Dimensions, Platform, Image } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { supabase } from '../src/lib/supabase';
 import { clearCycleCaches } from '../src/lib/useCycleState';
@@ -22,6 +23,7 @@ import { Pockets } from '../src/screens/Pockets';
 import { Profile } from '../src/screens/Profile';
 import { HistoryScreen } from '../src/screens/HistoryScreen';
 import { Auth } from '../src/screens/Auth';
+import { ResetPassword } from '../src/screens/ResetPassword';
 import { Onboarding } from '../src/screens/Onboarding';
 import { AddIncome } from '../src/screens/AddIncome';
 import { PocketTransfer } from '../src/screens/PocketTransfer';
@@ -32,6 +34,7 @@ import { DeviceEventEmitter } from 'react-native';
 import { TourOverlay } from '../src/components/tour/TourOverlay';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SubscriptionProvider, useSubscription } from '../src/lib/SubscriptionContext';
+import { ensureDailyReminders } from '../src/lib/notifications';
 import { Paywall } from '../src/screens/Paywall';
 import { PurchaseConfirmation } from '../src/screens/PurchaseConfirmation';
 
@@ -57,6 +60,12 @@ const SLOGANS = [
 
 const SplashScreen = () => {
   const { theme } = useTheme();
+  // Antes usaba useColorScheme() (modo del sistema) directo -- eso hacía
+  // que el splash siguiera el modo oscuro/claro del teléfono mientras el
+  // resto de la app sigue theme_preference del perfil (default 'sage'/
+  // claro en la base de datos para todo el mundo). Dos fuentes de verdad
+  // distintas. Ahora el splash usa la MISMA fuente que toda la app.
+  const splashBg = theme.colors.background;
 
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const textOpacity = useRef(new Animated.Value(0)).current;
@@ -116,7 +125,7 @@ const SplashScreen = () => {
   const fontSize = 56;
 
   return (
-    <View style={[styles.loadingContainer, { backgroundColor: theme.colors.background }]}>
+    <View style={[styles.loadingContainer, { backgroundColor: splashBg }]}>
       {/* SAVE animado — mismos colores que el TopBar */}
       <Animated.View style={{
         flexDirection: 'row',
@@ -175,6 +184,7 @@ const SplashScreen = () => {
 
 function MainApp() {
   const { theme } = useTheme();
+  
   // Changed initial state to null to prevent flashing Dashboard on slow loads/first login
   const [currentScreen, setCurrentScreen] = useState<Screen | null>(null);
   const [transferParams, setTransferParams] = useState<{ fromId?: string, toId?: string, amount?: number } | null>(null);
@@ -183,6 +193,11 @@ function MainApp() {
   const [pockets, setPockets] = useState<any[]>([]);
   const [isInitializing, setIsInitializing] = useState(true);
   const [session, setSession] = useState<any>(null);
+  // true mientras el usuario está a mitad del flujo de "olvidé mi
+  // contraseña" -- la bandera real la escribe app/auth/callback.tsx
+  // (ver el useEffect de abajo que la lee al montar). Bloquea el resto
+  // de los gates hasta que elija una contraseña nueva o cancele.
+  const [passwordRecoverySession, setPasswordRecoverySession] = useState(false);
   const [isDataReady, setIsDataReady] = useState(false);
   const [isFetchingData, setIsFetchingData] = useState(false);
   const [minSplashTimeElapsed, setMinSplashTimeElapsed] = useState(false);
@@ -330,10 +345,30 @@ function MainApp() {
     return () => sub?.remove();
   }, []);
 
+  // app/auth/callback.tsx procesa el link de recuperación y deja la
+  // bandera acá antes de hacer router.replace('/') -- ese replace
+  // desmonta la pantalla de callback (pierde su estado local) y vuelve
+  // a montar este componente desde cero, así que la única forma de que
+  // el gate de "elige tu nueva contraseña" sobreviva el salto es leerla
+  // de AsyncStorage al montar, no de un estado en memoria.
+  useEffect(() => {
+    AsyncStorage.getItem('@save_password_recovery_pending').then((pending) => {
+      if (pending === 'true') {
+        setPasswordRecoverySession(true);
+        AsyncStorage.removeItem('@save_password_recovery_pending');
+      }
+    });
+  }, []);
+
   // Nuevo bloque para manejar Deep Links (Para los Widgets de Apple Shortcuts)
+  // NOTA: "auth/callback" ya NO se maneja acá -- tiene su propia ruta de
+  // expo-router en app/auth/callback.tsx. Sin esa ruta, expo-router
+  // interceptaba el link antes que este listener y mostraba "Unmatched
+  // Route" (404) en vez de dejar procesar el link.
   useEffect(() => {
     const handleUrl = (url: string | null) => {
       if (!url) return;
+
       if (url.includes('scanner')) {
         setCurrentScreen('scanner');
       } else if (url.includes('quick_expense')) {
@@ -351,6 +386,16 @@ function MainApp() {
 
     return () => subscription.remove();
   }, []);
+
+  // Recordatorios locales (mañana + noche) -- se piden/programan una sola
+  // vez por instalación, apenas el usuario ya pasó el onboarding (tiene
+  // bolsillos). Pedir el permiso en frío antes de esto no tiene contexto;
+  // acá el usuario ya sabe qué es Save.
+  useEffect(() => {
+    if (session?.user?.id && pockets.length > 0) {
+      ensureDailyReminders().catch((e) => console.error('[notifications] setup error:', e));
+    }
+  }, [session?.user?.id, pockets.length]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
@@ -398,6 +443,35 @@ function MainApp() {
       ]);
 
       if (txRes.data) {
+        // Limpieza automática de gastos demo huérfanos: si el flujo demo
+        // no está activo (no hay @save_demo_in_progress) y quedan
+        // transacciones con is_demo:true, se revierten con la misma RPC
+        // que usa el cierre normal del tour (delete_transaction_with_reversal).
+        // Un DELETE crudo borra la fila pero deja el bolsillo con el
+        // presupuesto ya descontado para siempre, sin ninguna transacción
+        // que lo explique -- por eso NO se usa `.delete()` directo acá.
+        const demoInProgress = await AsyncStorage.getItem('@save_demo_in_progress');
+        if (demoInProgress !== 'true') {
+          const demoTxs = (txRes.data as any[]).filter((t: any) => t.metadata?.is_demo);
+          if (demoTxs.length > 0) {
+            const reversedIds = new Set<string>();
+            await Promise.all(demoTxs.map(async (t: any) => {
+              const { error } = await strictClient.rpc('delete_transaction_with_reversal', {
+                p_tx_id: t.id,
+                p_user_id: userId,
+              });
+              if (error) {
+                console.error('[loadUserData] No se pudo revertir gasto demo huérfano:', t.id, error);
+                return;
+              }
+              reversedIds.add(t.id);
+            }));
+            // Solo filtramos del array local lo que sí se revirtió en el
+            // servidor -- si la RPC falló para alguno, se queda visible
+            // hasta el próximo intento en vez de desaparecer sin revertir.
+            txRes.data = (txRes.data as any[]).filter((t: any) => !reversedIds.has(t.id));
+          }
+        }
         setTransactions(txRes.data);
       }
       if (pkRes.data) {
@@ -496,7 +570,7 @@ function MainApp() {
       case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('quick_expense')} onOpenScannerDemo={() => setCurrentScreen('demo_scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} onDevPreviewPurchaseConfirmation={__DEV__ ? () => setJustSubscribedPlan('annual') : undefined} />;
       case 'scanner': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="camera" />;
       case 'quick_expense': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="manual" />;
-      case 'demo_scanner': return <Scanner onGoBack={async () => { await AsyncStorage.removeItem('@save_demo_in_progress'); setCurrentScreen('dashboard'); }} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('dashboard'); setTourFlowPending(false); }} initialMode="demo" />;
+      case 'demo_scanner': return <Scanner onGoBack={async () => { await AsyncStorage.removeItem('@save_demo_in_progress'); setCurrentScreen('dashboard'); }} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('dashboard'); }} initialMode="demo" />;
       case 'expenses':
         return <Expenses
           transactions={transactions}
@@ -520,6 +594,14 @@ function MainApp() {
   // Pantallas a pantalla completa (Splash o Auth)
   if (isInitializing || !minSplashTimeElapsed || (session && !isDataReady)) {
     return <SplashScreen />;
+  }
+
+  // Gate de recuperación de contraseña: tiene prioridad sobre todo lo demás
+  // (incluso sobre una sesión ya válida -- setSession() de arriba deja una
+  // sesión activa con la contraseña VIEJA todavía vigente; no queremos que
+  // el usuario caiga directo al Dashboard sin haber elegido una nueva).
+  if (passwordRecoverySession) {
+    return <ResetPassword onDone={() => setPasswordRecoverySession(false)} />;
   }
 
   if (!session) {
@@ -555,6 +637,7 @@ function MainApp() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <StatusBar style={theme.isDark ? 'light' : 'dark'} />
       {currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'demo_scanner' && currentScreen !== 'add_income' && (
         <TopBar
           title={currentScreen === 'dashboard' ? 'Save' : currentScreen === 'expenses' ? 'Movimientos' : currentScreen === 'pockets' ? 'Bolsillos' : 'Perfil'}
