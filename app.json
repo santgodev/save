@@ -46,12 +46,6 @@
       "expo-font",
       "expo-web-browser",
       [
-        "@react-native-google-signin/google-signin",
-        {
-          "iosUrlScheme": "com.googleusercontent.apps.152635618917-oef2cql38uooj37afjiom24t695qiepm"
-        }
-      ],
-      [
         "expo-image-picker",
         {
           "cameraPermission": "Save usa la cámara para escanear tus facturas y registrar gastos automáticamente.",

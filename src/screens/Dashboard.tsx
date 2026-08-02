@@ -115,10 +115,15 @@ export const Dashboard = ({
           timeout = setTimeout(() => {
             startTour([{
               name: 'bottom_pockets',
-              title: 'Abre tus bolsillos',
-              description: 'Ve a la pestaña de Bolsillos para ver cómo la Inteligencia Artificial organizó tu primer gasto mágico.',
+              title: 'Toca "Bolsillos"',
+              description: 'Mira cómo la IA organizó tu primer gasto mágico.',
               iconName: 'Sparkles',
-              order: 1
+              order: 1,
+              // Antes se cerraba con "Entendido" sin tocar la pestaña real
+              // -- la gente le daba a "Entendido" y nunca llegaba a
+              // Bolsillos. Ahora se obliga el toque real.
+              allowTouches: true,
+              hideNextButton: true,
             }], undefined, { step: 5, total: 6 });
           }, 800);
         });

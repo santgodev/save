@@ -131,10 +131,14 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
         setTimeout(() => {
           startTour([{
             name: stepName,
-            title: '¡Tu primer gasto está aquí!',
-            description: 'Toca este bolsillo para ver el detalle y cuánto presupuesto te queda.',
+            title: 'Toca este bolsillo',
+            description: 'Mira el detalle y cuánto presupuesto te queda.',
             iconName: 'Sparkles',
-            order: 1
+            order: 1,
+            // Antes esto se cerraba con "Entendido" sin necesidad de tocar
+            // el bolsillo de verdad. Ahora se obliga el toque real.
+            allowTouches: true,
+            hideNextButton: true,
           }], undefined, { step: 6, total: 6 });
           AsyncStorage.setItem('@save_tour_pockets_seen', 'true');
         }, 500);

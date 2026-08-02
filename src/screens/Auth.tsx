@@ -24,22 +24,10 @@ import Animated, { FadeInDown, FadeInUp, Layout } from 'react-native-reanimated'
 import Svg, { Path } from 'react-native-svg';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
-import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
 
 WebBrowser.maybeCompleteAuthSession();
-
-const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
-let GoogleSignin: any = null;
-
-if (!isExpoGo) {
-  GoogleSignin = require('@react-native-google-signin/google-signin').GoogleSignin;
-  GoogleSignin.configure({
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || 'TU_WEB_CLIENT_ID.apps.googleusercontent.com',
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || 'TU_IOS_CLIENT_ID.apps.googleusercontent.com',
-  });
-}
 
 const { width, height } = Dimensions.get('window');
 
@@ -283,80 +271,51 @@ export function Auth({ onLoginSuccess }: AuthProps) {
     }
   };
 
+  // El SDK nativo de Google (@react-native-google-signin/google-signin,
+  // versión gratis) mete un `nonce` propio dentro del id_token que devuelve
+  // -- generado internamente, sin exponer ninguna forma de leerlo ni
+  // fijarlo desde acá antes de la llamada. Supabase exige poder verificar
+  // ese nonce (lo hashea y lo compara), y como no tenemos el valor crudo
+  // para dárselo, el login nativo SIEMPRE falla con "Passed nonce and
+  // nonce in id_token should either both exist or not". No es arreglable
+  // con parámetros -- por eso el login de Google usa siempre el flujo web
+  // (el mismo que antes solo era el respaldo para Expo Go), que no tiene
+  // este problema.
   const signInWithGoogle = async () => {
     setLoading(true);
     try {
-      if (isExpoGo || !GoogleSignin) {
-        // Fallback al método antiguo web para Expo Go
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: Linking.createURL('/auth/callback'),
-            skipBrowserRedirect: true,
-          },
-        });
-        if (error) throw error;
-        
-        if (data.url) {
-          const res = await WebBrowser.openAuthSessionAsync(data.url, Linking.createURL('/auth/callback'));
-          if (res.type === 'success' && res.url) {
-            const params = res.url.split('#')[1];
-            if (params) {
-              const urlParams = params.split('&').reduce((acc: any, current) => {
-                const [name, value] = current.split('=');
-                acc[name] = value;
-                return acc;
-              }, {});
-              
-              if (urlParams.access_token && urlParams.refresh_token) {
-                await supabase.auth.setSession({
-                  access_token: urlParams.access_token,
-                  refresh_token: urlParams.refresh_token,
-                });
-                onLoginSuccess();
-              }
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: Linking.createURL('/auth/callback'),
+          skipBrowserRedirect: true,
+        },
+      });
+      if (error) throw error;
+
+      if (data.url) {
+        const res = await WebBrowser.openAuthSessionAsync(data.url, Linking.createURL('/auth/callback'));
+        if (res.type === 'success' && res.url) {
+          const params = res.url.split('#')[1];
+          if (params) {
+            const urlParams = params.split('&').reduce((acc: any, current) => {
+              const [name, value] = current.split('=');
+              acc[name] = value;
+              return acc;
+            }, {});
+
+            if (urlParams.access_token && urlParams.refresh_token) {
+              await supabase.auth.setSession({
+                access_token: urlParams.access_token,
+                refresh_token: urlParams.refresh_token,
+              });
+              onLoginSuccess();
             }
           }
         }
-        return;
-      }
-
-      await GoogleSignin.hasPlayServices();
-      const userInfo = await GoogleSignin.signIn();
-      if (userInfo.data?.idToken) {
-        const { error } = await supabase.auth.signInWithIdToken({
-          provider: 'google',
-          token: userInfo.data.idToken,
-        });
-        if (error) throw error;
-
-        // A diferencia de Apple, Google entrega nombre y foto en CADA login,
-        // no solo el primero -- igual los guardamos explícitos en vez de
-        // confiar en que Supabase los haya mapeado solo, para no depender
-        // de un comportamiento no garantizado.
-        const googleUser = userInfo.data.user;
-        const fullName = googleUser?.name || [googleUser?.givenName, googleUser?.familyName].filter(Boolean).join(' ').trim();
-        if (fullName || googleUser?.photo) {
-          await supabase.auth.updateUser({
-            data: {
-              ...(fullName ? { full_name: fullName } : {}),
-              ...(googleUser?.photo ? { avatar_url: googleUser.photo } : {}),
-            },
-          }).catch(() => {});
-        }
-
-        onLoginSuccess();
-      } else {
-        throw new Error('No se recibió el ID token de Google');
       }
     } catch (error: any) {
-      if (error.code === 'SIGN_IN_CANCELLED') {
-        // Usuario canceló, no hacer nada
-      } else if (error.code === 'IN_PROGRESS') {
-        notify.error('Inicio de sesión en progreso');
-      } else {
-        notify.error(error.message || 'Error desconocido', 'Error de Google Sign-In');
-      }
+      notify.error(error.message || 'Error desconocido', 'Error de Google Sign-In');
     } finally {
       setLoading(false);
     }

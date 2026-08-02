@@ -512,7 +512,10 @@ export const TopBar = ({
       borderWidth: 1.5, borderColor: theme.colors.divider,
       backgroundColor: theme.colors.primaryContainer,
     },
-    avatarImage: { width: '100%', height: '100%' },
+    // Escala un poco más allá del marco -- avatarContainer recorta el
+    // sobrante (overflow: hidden), así la foto se ve más "llena" sin
+    // importar qué tan lejos/chico salga el sujeto en la foto original.
+    avatarImage: { width: '100%', height: '100%', transform: [{ scale: 1.35 }] },
     avatarFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary },
     avatarInitials: { color: '#fff', fontSize: 14, fontWeight: '800' },
     topBarTitle: { fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, letterSpacing: -0.2 },
