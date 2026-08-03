@@ -259,8 +259,7 @@ function MainApp() {
     };
     check();
     const interval = setInterval(async () => {
-      const pending = await check();
-      if (!pending) clearInterval(interval);
+      await check();
     }, 1500);
 
     const demoSub = DeviceEventEmitter.addListener('demo_completed', () => {
@@ -601,7 +600,18 @@ function MainApp() {
   // sesión activa con la contraseña VIEJA todavía vigente; no queremos que
   // el usuario caiga directo al Dashboard sin haber elegido una nueva).
   if (passwordRecoverySession) {
-    return <ResetPassword onDone={() => setPasswordRecoverySession(false)} />;
+    return (
+      <ResetPassword
+        onDone={() => {
+          // Después de cambiar la contraseña, entra directo a Perfil en
+          // vez del Dashboard por defecto -- así queda claro que el
+          // cambio se maneja ahí, reforzando el "Cambiar contraseña" que
+          // ya existe en esa pantalla para la próxima vez.
+          setCurrentScreen('profile_details');
+          setPasswordRecoverySession(false);
+        }}
+      />
+    );
   }
 
   if (!session) {

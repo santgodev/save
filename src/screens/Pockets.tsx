@@ -7,7 +7,8 @@ import { BlurView } from 'expo-blur';
 import Slider from '@react-native-community/slider';
 import {
   ChevronDown, Edit3,
-  Plus, X, Trash2, AlertCircle, Clock, ArrowRight, Check, Pencil, Info, Sparkles, CheckCircle2
+  Plus, X, Trash2, AlertCircle, Clock, ArrowRight, Check, Pencil, Info, Sparkles, CheckCircle2,
+  DollarSign, Percent
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../theme/ThemeContext';
@@ -59,6 +60,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   const [editName, setEditName] = useState('');
   const [editIcon, setEditIcon] = useState('tag');
   const [editBudgetValue, setEditBudgetValue] = useState('');
+  const [editBudgetType, setEditBudgetType] = useState<'fixed' | 'percentage'>('fixed');
   const [isSavingPocket, setIsSavingPocket] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showAllTxs, setShowAllTxs] = useState(false);
@@ -226,7 +228,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
       if (planned > 0 && newPocket) {
         const librePocket = pockets.find((p: any) => p.is_default_free);
-        if (librePocket) {
+        if (librePocket && monthIncome > 0) {
           const { error: transferError } = await supabase.rpc('transfer_between_pockets', {
             p_user_id: session.user.id,
             p_from_id: librePocket.id,
@@ -256,18 +258,25 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
       const cleanName = editName.trim();
       const capitalizedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
       
-      const planned = parseInt(editBudgetValue.replace(/\D/g, '')) || 0;
+      const planned = editBudgetType === 'percentage'
+        ? (monthIncome > 0 ? Math.round(monthIncome * (parseInt(editBudgetValue.replace(/\D/g, '')) || 0) / 100) : 0)
+        : (parseInt(editBudgetValue.replace(/\D/g, '')) || 0);
 
       // La diferencia se traslada desde/hacia Libre (mismo RPC que los
       // traslados manuales) -- así el dinero real siempre sale de algún
       // lado real. planned_budget guarda el mismo valor aparte porque
       // allocated_budget se resetea a 0 en cada cierre de ciclo -- sin esa
       // copia, AddIncome perdería la sugerencia apenas cerrara el mes.
+      //
+      // Si no hay ingresos registrados aún (monthIncome === 0), omitimos la
+      // transferencia para evitar el error del RPC (Libre tiene $0). Solo
+      // guardamos planned_budget como meta; se aplicará al registrar ingreso.
       const librePocket = pockets.find((p: any) => p.is_default_free);
       const currentAllocated = selectedPocket.allocated_budget ?? 0;
       const diff = planned - currentAllocated;
+      const hasIncome = monthIncome > 0;
 
-      if (diff !== 0 && librePocket && librePocket.id !== selectedPocket.id) {
+      if (hasIncome && diff !== 0 && librePocket && librePocket.id !== selectedPocket.id) {
         const { error: transferError } = await supabase.rpc('transfer_between_pockets', {
           p_user_id: session.user.id,
           p_from_id: diff > 0 ? librePocket.id : selectedPocket.id,
@@ -315,6 +324,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     setEditIcon(selectedPocket.icon || 'tag');
     const plan = selectedPocket.planned_budget ?? 0;
     setEditBudgetValue(plan > 0 ? String(plan) : '');
+    setEditBudgetType('fixed'); // siempre empieza en monto fijo
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setIsEditingPocket(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -879,14 +889,56 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                         {!selectedPocket.is_default_free && (
                           <>
                             <Text style={{ fontSize: 11, fontWeight: '800', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', marginBottom: 8 }}>Presupuesto (Plan)</Text>
+
+                            {/* Toggle $ / % — diseño del bloque de edición colored */}
+                            <View style={{ flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, padding: 3, marginBottom: 10 }}>
+                              <TouchableOpacity
+                                onPress={() => { setEditBudgetType('fixed'); setEditBudgetValue(''); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                                style={[
+                                  { flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
+                                  editBudgetType === 'fixed' && { backgroundColor: 'rgba(255,255,255,0.9)' }
+                                ]}
+                              >
+                                <DollarSign size={13} color={editBudgetType === 'fixed' ? pocketColor : '#FFF'} strokeWidth={2.5} />
+                                <Text style={{ fontSize: 13, fontWeight: '800', color: editBudgetType === 'fixed' ? pocketColor : '#FFF' }}>Monto fijo</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                onPress={() => { setEditBudgetType('percentage'); setEditBudgetValue(''); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                                style={[
+                                  { flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
+                                  editBudgetType === 'percentage' && { backgroundColor: 'rgba(255,255,255,0.9)' }
+                                ]}
+                              >
+                                <Percent size={13} color={editBudgetType === 'percentage' ? pocketColor : '#FFF'} strokeWidth={2.5} />
+                                <Text style={{ fontSize: 13, fontWeight: '800', color: editBudgetType === 'percentage' ? pocketColor : '#FFF' }}>% del ingreso</Text>
+                              </TouchableOpacity>
+                            </View>
+
                             <TextInput
-                              style={{ backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 20, fontWeight: '900', color: '#FFF', fontFamily: theme.fonts.headline, marginBottom: 8 }}
-                              value={editBudgetValue ? editBudgetValue.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''}
-                              onChangeText={v => setEditBudgetValue(v.replace(/\./g, '').replace(/\D/g, ''))}
+                              style={{ backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 20, fontWeight: '900', color: '#FFF', fontFamily: theme.fonts.headline, marginBottom: 4 }}
+                              value={
+                                editBudgetType === 'fixed'
+                                  ? (editBudgetValue ? editBudgetValue.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '')
+                                  : editBudgetValue
+                              }
+                              onChangeText={v => setEditBudgetValue(editBudgetType === 'fixed' ? v.replace(/\./g, '').replace(/\D/g, '') : v.replace(/\D/g, ''))}
                               keyboardType="numeric"
-                              placeholder="0"
+                              placeholder={editBudgetType === 'fixed' ? '0' : '0 – 100'}
                               placeholderTextColor="rgba(255,255,255,0.5)"
                             />
+
+                            {/* Preview en tiempo real para el modo porcentaje */}
+                            {editBudgetType === 'percentage' && editBudgetValue ? (
+                              monthIncome > 0 ? (
+                                <Text style={{ fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.8)', marginBottom: 8 }}>
+                                  ≈ {formatCOP(Math.round(monthIncome * (parseInt(editBudgetValue) || 0) / 100))} del ingreso actual
+                                </Text>
+                              ) : (
+                                <Text style={{ fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>
+                                  El monto se calculará con tu próximo ingreso
+                                </Text>
+                              )
+                            ) : <View style={{ marginBottom: 8 }} />}
                           </>
                         )}
                         

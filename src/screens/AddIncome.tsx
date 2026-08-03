@@ -86,6 +86,12 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
   const [existingSourceId, setExistingSourceId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Estado para creación de bolsillo inline (sin cerrar la pantalla)
+  const [showNewPocketInline, setShowNewPocketInline] = useState(false);
+  const [inlineName, setInlineName] = useState('');
+  const [inlineCreating, setInlineCreating] = useState(false);
+  const [localNewPockets, setLocalNewPockets] = useState<any[]>([]);
+
   // Tutorial guiado: solo 1 tour real, que apunta a cualquier bolsillo que
   // la persona toque primero (no solo al primero de la lista). El mensaje
   // de "reparto automático" ya NO es un tour flotante -- ver el texto fijo
@@ -147,7 +153,9 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
     }, 450);
   };
 
-  const variosPocket = pockets.find(p => p.is_default_free) || pockets.find(p => p.name.toLowerCase() === 'libre') || pockets.find(p => p.name.toLowerCase() === 'varios') || pockets[0];
+  // allPockets incluye bolsillos creados inline sin cerrar la pantalla
+  const allPockets = useMemo(() => [...pockets, ...localNewPockets], [pockets, localNewPockets]);
+  const variosPocket = allPockets.find(p => p.is_default_free) || allPockets.find(p => p.name.toLowerCase() === 'libre') || allPockets.find(p => p.name.toLowerCase() === 'varios') || allPockets[0];
   const initialSinglePocket = (initialDistType === 'single' && editTransaction?.metadata?.distribution) 
     ? Object.keys(editTransaction.metadata.distribution)[0] 
     : (variosPocket?.id || pockets[0]?.id);
@@ -316,7 +324,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
       let remaining = val;
       // Only include rules whose pocket still exists — rules referencing
       // deleted pockets are silently ignored (amount falls through to Libre).
-      const validPocketIds = new Set(pockets.map(p => p.id));
+      const validPocketIds = new Set(allPockets.map(p => p.id));
       const sortedRules = [...rules]
         .filter(r => r.pocket_id && validPocketIds.has(r.pocket_id))
         .sort((a, b) => a.priority - b.priority);
@@ -414,6 +422,35 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
       notify.error('Error guardando el ingreso.');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const createPocketInline = async () => {
+    if (!inlineName.trim()) return;
+    setInlineCreating(true);
+    try {
+      const cleanName = inlineName.trim();
+      const capitalizedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+      const { data: newPocket, error } = await supabase.from('pockets').insert({
+        user_id: session.user.id,
+        name: capitalizedName,
+        category: capitalizedName,
+        allocated_budget: 0,
+        planned_budget: null,
+        icon: 'tag'
+      }).select().single();
+      if (error) throw error;
+      // Agregar al estado local para que aparezca inmediatamente en la lista
+      setLocalNewPockets(prev => [...prev, newPocket]);
+      const maxPriority = rules.reduce((m: number, r: any) => Math.max(m, r.priority || 0), 0);
+      setRules(prev => [...prev, { pocket_id: newPocket.id, priority: maxPriority + 1, type: 'fixed', value: 0 }]);
+      setInlineName('');
+      setShowNewPocketInline(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      notify.error('No se pudo crear el bolsillo.');
+    } finally {
+      setInlineCreating(false);
     }
   };
 
@@ -584,9 +621,9 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
               {distType === 'smart' ? (
                 <>
                   {[...rules].sort((a, b) => a.priority - b.priority).map((rule, index) => {
-                    const p = pockets.find(p => p.id === rule.pocket_id);
+                    const p = allPockets.find(p => p.id === rule.pocket_id);
                     if (!p) return null;
-                    const pIndex = pockets.findIndex(pocket => pocket.id === p.id);
+                    const pIndex = allPockets.findIndex(pocket => pocket.id === p.id);
                     const color = colorOf(p.category || p.name, pIndex !== -1 ? pIndex : index);
                     const addValue = preview[p.id] || 0;
 
@@ -677,8 +714,52 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
                       </View>
                     );
                   })()}
+
+                  {/* ── Crear nuevo bolsillo inline ── */}
+                  {showNewPocketInline ? (
+                    <View style={[styles.ruleCard, { backgroundColor: theme.colors.surfaceContainerLow }]}>
+                      <Text style={[styles.sectionTitle, { fontSize: 14, marginBottom: 12 }]}>Nombre del bolsillo</Text>
+                      <View style={[styles.ruleInputRow, { backgroundColor: theme.colors.surface, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: theme.colors.outlineVariant, marginBottom: 14 }]}>
+                        <TextInput
+                          style={[styles.ruleInput, { flex: 1, fontSize: 16 }]}
+                          value={inlineName}
+                          onChangeText={setInlineName}
+                          placeholder="Ej: Mercado, Salidas, Viajes…"
+                          placeholderTextColor={theme.colors.onSurfaceVariant + '60'}
+                          autoFocus
+                          maxLength={30}
+                        />
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <TouchableOpacity
+                          onPress={() => { setShowNewPocketInline(false); setInlineName(''); }}
+                          style={{ flex: 1, paddingVertical: 13, borderRadius: 14, alignItems: 'center', backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.outlineVariant }}
+                        >
+                          <Text style={{ fontWeight: '800', color: theme.colors.onSurfaceVariant, fontSize: 14 }}>Cancelar</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={createPocketInline}
+                          disabled={inlineCreating || !inlineName.trim()}
+                          style={{ flex: 2, paddingVertical: 13, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.primary, opacity: (!inlineName.trim() && !inlineCreating) ? 0.5 : 1 }}
+                        >
+                          {inlineCreating
+                            ? <ActivityIndicator size="small" color="#FFF" />
+                            : <Text style={{ fontWeight: '900', color: '#FFF', fontSize: 14 }}>Crear bolsillo</Text>
+                          }
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => { setShowNewPocketInline(true); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+                      style={[styles.ruleCard, { borderWidth: 1.5, borderStyle: 'dashed', borderColor: theme.colors.primary + '55', backgroundColor: 'transparent', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 18 }]}
+                    >
+                      <PlusCircle size={16} color={theme.colors.primary} />
+                      <Text style={{ fontSize: 14, fontWeight: '800', color: theme.colors.primary }}>Nuevo bolsillo</Text>
+                    </TouchableOpacity>
+                  )}
                 </>
-              ) : pockets.map((p, idx) => {
+              ) : allPockets.map((p, idx) => {
                   const isSingleSelected = distType === 'single' && singlePocketId === p.id;
                   const color = colorOf(p.category || p.name, idx);
                   return (
