@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
-  View, Text, TouchableOpacity, Animated, StyleSheet, Alert, ScrollView, TextInput, Dimensions, ActivityIndicator, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Platform, Pressable, Modal
+  View, Text, TouchableOpacity, Animated, StyleSheet, Alert, ScrollView, TextInput, Dimensions, ActivityIndicator, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Platform, Pressable, Modal, RefreshControl
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
@@ -25,7 +25,7 @@ import type { Session } from '@supabase/supabase-js';
 
 const { width } = Dimensions.get('window');
 
-export const Expenses = ({ transactions, onRefresh, session, pockets, onEditIncome }: { transactions: any[], onRefresh?: () => void, session: Session, pockets: any[], onEditIncome?: (tx: any) => void }) => {
+export const Expenses = ({ transactions, onRefresh, isRefreshing = false, session, pockets, onEditIncome }: { transactions: any[], onRefresh?: () => void, isRefreshing?: boolean, session: Session, pockets: any[], onEditIncome?: (tx: any) => void }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -112,7 +112,7 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
 
     navBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.glassWhite, alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: theme.colors.divider, ...theme.shadows.soft },
   
-    scrollContent: { paddingHorizontal: normalize(24), paddingBottom: 120 },
+    scrollContent: { paddingHorizontal: normalize(24), paddingBottom: 120, paddingTop: 8 },
     txRow: { 
       flexDirection: 'row', 
       alignItems: 'center', 
@@ -234,17 +234,29 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
   };
 
   const availableCategories = [...new Set(transactions.map(tx => tx.category))].filter(Boolean) as string[];
-
   return (
     <>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {(cyclesLoading || (!selectedCycleId && cycles.length > 0)) ? (
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
             <ActivityIndicator size="large" color={theme.colors.primary} />
           </View>
         ) : (
-          <>
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={onRefresh}
+                tintColor={theme.colors.primary}
+                colors={[theme.colors.primary]}
+                progressBackgroundColor={theme.colors.surface}
+                progressViewOffset={Math.max(insets.top, 16) + 104}
+              />
+            }
+          >
+            {/* ── Header (CycleNav + tarjeta resumen + búsqueda) ── */}
             <Animated.View style={[styles.headerContainer, { opacity: fadeAnim, paddingTop: Math.max(insets.top, 16) + 104 }]}>
               <CycleNav cycles={cycles} activeCycleId={selectedCycleId} onChange={setSelectedCycleId} />
 
@@ -265,8 +277,8 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
            <View style={styles.searchRow}>
               <View style={styles.searchBar}>
                 <Search size={18} color={theme.colors.primary} strokeWidth={2.5} />
-                <TextInput 
-                  placeholder="Buscar movimientos..." 
+                <TextInput
+                  placeholder="Buscar movimientos..."
                   style={styles.searchInput}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
@@ -309,11 +321,8 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
            )}
       </Animated.View>
 
-      <ScrollView 
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.scrollContent} 
-        showsVerticalScrollIndicator={false}
-      >
+      {/* ── Lista de transacciones ── */}
+      <View style={styles.scrollContent}>
         {filteredTransactions.length === 0 ? (
           <View style={styles.emptyState}>
             <Search size={normalize(64)} color={theme.colors.outlineVariant} />
@@ -366,8 +375,8 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
             );
           })
         )}
-      </ScrollView>
-          </>
+      </View>
+          </ScrollView>
         )}
 
       <ConfirmDeleteModal
@@ -396,7 +405,6 @@ export const Expenses = ({ transactions, onRefresh, session, pockets, onEditInco
       <CycleUndoModal visible={showUndoModal} reverted={undoWasReverted} />
 
       </KeyboardAvoidingView>
-      </TouchableWithoutFeedback>
 
       <Modal visible={showIncomeErrorModal} transparent animationType="fade" onRequestClose={() => setShowIncomeErrorModal(false)}>
         <View style={styles.modalOverlay}>

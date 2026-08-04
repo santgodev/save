@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, LayoutAnimation, Platform, UIManager, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
 import { useTheme } from '../theme/ThemeContext';
@@ -10,6 +10,11 @@ import { getDeterministicColor } from '../theme/theme';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+interface HistoryScreenProps {
+  onRefresh?: () => Promise<void>;
+  isRefreshing?: boolean;
 }
 
 const HistoryCard = ({ cycle, theme }: { cycle: any, theme: any }) => {
@@ -184,9 +189,10 @@ const HistoryCard = ({ cycle, theme }: { cycle: any, theme: any }) => {
   );
 };
 
-export const HistoryScreen = () => {
-  const insets = useSafeAreaInsets();
+export const HistoryScreen = ({ onRefresh, isRefreshing = false }: HistoryScreenProps) => {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  
   const [loading, setLoading] = useState(true);
   const [cycles, setCycles] = useState<any[]>([]);
   const [totalAhorro, setTotalAhorro] = useState(0);
@@ -234,7 +240,23 @@ export const HistoryScreen = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing || loading}
+            onRefresh={async () => {
+              if (onRefresh) await onRefresh();
+              await loadHistory();
+            }}
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
+            progressBackgroundColor={theme.colors.surface}
+            progressViewOffset={Math.max(insets.top, 16) + 104}
+          />
+        }
+      >
         
         <View style={{ alignItems: 'center', marginBottom: 32 }}>
           <View style={{ alignItems: 'center', backgroundColor: theme.colors.glassWhite, paddingHorizontal: 32, paddingVertical: 24, borderRadius: 32, borderWidth: 1, borderColor: theme.colors.primary + '30', ...theme.shadows.md, width: '100%' }}>

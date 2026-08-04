@@ -206,6 +206,22 @@ function MainApp() {
   const [showChat, setShowChat] = useState(false);
   const [chatInitialMessage, setChatInitialMessage] = useState<string | undefined>(undefined);
   const [clearChatOnOpen, setClearChatOnOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Pull-to-refresh handler global — recarga datos y rastrea el spinner.
+  // Garantiza mínimo 600ms de visibilidad para evitar el parpadeo brusco.
+  const handleGlobalRefresh = async () => {
+    if (!session?.user?.id) return;
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        loadUserData(session.user.id),
+        new Promise(resolve => setTimeout(resolve, 600)),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     // Aumentamos a 3800ms para que el usuario pueda leer el slogan/proverbio completo
@@ -396,6 +412,22 @@ function MainApp() {
     }
   }, [session?.user?.id, pockets.length]);
 
+  // Optimistic update: cuando Pockets crea un nuevo bolsillo, lo agrega
+  // inmediatamente al array local para que se vea en pantalla sin reiniciar.
+  // onRefresh() luego confirmará/sobreescribirá con los datos reales del servidor.
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('pocket_created', (newPocket: any) => {
+      if (newPocket?.id) {
+        setPockets((prev: any[]) => {
+          // Evitar duplicados si onRefresh ya actualizó antes del evento
+          if (prev.some(p => p.id === newPocket.id)) return prev;
+          return [...prev, newPocket];
+        });
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
       setSession(currentSession);
@@ -566,7 +598,7 @@ function MainApp() {
 
     const renderScreen = () => {
     switch (currentScreen) {
-      case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('quick_expense')} onOpenScannerDemo={() => setCurrentScreen('demo_scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} onDevPreviewPurchaseConfirmation={__DEV__ ? () => setJustSubscribedPlan('annual') : undefined} />;
+      case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('quick_expense')} onOpenScannerDemo={() => setCurrentScreen('demo_scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} onDevPreviewPurchaseConfirmation={__DEV__ ? () => setJustSubscribedPlan('annual') : undefined} onRefresh={handleGlobalRefresh} isLoading={isRefreshing} />;
       case 'scanner': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="camera" />;
       case 'quick_expense': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="manual" />;
       case 'demo_scanner': return <Scanner onGoBack={async () => { await AsyncStorage.removeItem('@save_demo_in_progress'); setCurrentScreen('dashboard'); }} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('dashboard'); }} initialMode="demo" />;
@@ -575,18 +607,19 @@ function MainApp() {
           transactions={transactions}
           pockets={pockets}
           session={session}
-          onRefresh={() => loadUserData(session!.user.id)}
+          onRefresh={handleGlobalRefresh}
+          isRefreshing={isRefreshing}
           onEditIncome={(tx) => {
             setEditIncomeTx(tx);
             setCurrentScreen('add_income');
           }}
         />;
-      case 'pockets': return <Pockets session={session} pockets={pockets} transactions={transactions} onRefresh={() => loadUserData(session!.user.id)} onTransferPress={triggerTransfer} />;
-      case 'history': return <HistoryScreen />;
+      case 'pockets': return <Pockets session={session} pockets={pockets} transactions={transactions} onRefresh={handleGlobalRefresh} isRefreshing={isRefreshing} onTransferPress={triggerTransfer} />;
+      case 'history': return <HistoryScreen onRefresh={handleGlobalRefresh} isRefreshing={isRefreshing} />;
       case 'profile_details': return <Profile session={session} transactions={transactions} pockets={pockets} onRefresh={() => loadUserData(session!.user.id)} onBack={() => setCurrentScreen('dashboard')} />;
       case 'add_income':
         return <AddIncome pockets={pockets} session={session} onCancel={() => setCurrentScreen('dashboard')} onSaveSuccess={async () => { await loadUserData(session!.user.id); setCurrentScreen('dashboard'); setEditIncomeTx(null); }} editTransaction={editIncomeTx} />;
-      default: return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} />;
+      default: return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} onRefresh={handleGlobalRefresh} isLoading={isRefreshing} />;
     }
   };
 

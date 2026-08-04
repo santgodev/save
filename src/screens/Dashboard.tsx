@@ -341,7 +341,7 @@ export const Dashboard = ({
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} tintColor={theme.colors.primary} />}
+          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} tintColor={theme.colors.primary} progressViewOffset={Math.max(insets.top, 16) + 104} />}
           keyboardShouldPersistTaps="handled"
         >
           <View>

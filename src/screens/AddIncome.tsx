@@ -419,7 +419,10 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
       setTimeout(() => onSaveSuccess(), 1800);
     } catch (e: any) {
       console.error('[AddIncome] handleSave error:', e);
-      notify.error('Error guardando el ingreso.');
+      const isInsufficientFunds = e?.code === '23514' || String(e?.message || '').includes('pockets_allocated_budget_non_negative');
+      notify.error(isInsufficientFunds
+        ? 'Ya moviste esa plata a otro bolsillo. Ajusta el reparto.'
+        : 'Error guardando el ingreso.');
     } finally {
       setIsSaving(false);
     }

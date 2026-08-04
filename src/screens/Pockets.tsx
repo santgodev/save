@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, TouchableOpacity, Animated, StyleSheet, ScrollView, Dimensions, useWindowDimensions, Pressable, TextInput, Modal, ActivityIndicator, Platform, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, LayoutAnimation, DeviceEventEmitter
+  View, Text, TouchableOpacity, Animated, StyleSheet, ScrollView, Dimensions, useWindowDimensions, Pressable, TextInput, Modal, ActivityIndicator, Platform, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, LayoutAnimation, DeviceEventEmitter, RefreshControl
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
@@ -31,7 +31,7 @@ import { TourStep } from '../components/tour/TourStep';
 import { useTour } from '../components/tour/TourContext';
 import type { Session } from '@supabase/supabase-js';
 
-export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferPress }: { pockets: any[], transactions: any[], session: Session, onRefresh: () => void, onTransferPress: (params: { fromId?: string, toId?: string, amount?: number }) => void }) => {
+export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshing: isRefreshingProp = false, onTransferPress }: { pockets: any[], transactions: any[], session: Session, onRefresh: () => void, isRefreshing?: boolean, onTransferPress: (params: { fromId?: string, toId?: string, amount?: number }) => void }) => {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
@@ -40,9 +40,13 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
   const [selectedPocket, setSelectedPocket] = useState<any | null>(null);
   const [showIncomeSummary, setShowIncomeSummary] = useState(false);
+  // Overrides locales: guarda las ediciones de bolsillos de inmediato,
+  // antes de que onRefresh() complete el fetch del servidor.
+  const [localPocketOverrides, setLocalPocketOverrides] = useState<Record<string, any>>({});
 
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [selectedTx, setSelectedTx] = useState<any>(null);
   const [showUndoModal, setShowUndoModal] = useState(false);
@@ -67,6 +71,25 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   const [selectedSegmentId, setSelectedSegmentId] = useState<string | null>(null);
   const [showCycleInsight, setShowCycleInsight] = useState(false);
 
+  // Regla de reparto recurrente (income_sources.distribution_rules) -- ahí
+  // viven las metas en % ("Ahorro siempre el 10%"), no en pockets.planned_budget
+  // (que solo guarda pesos fijos). Mismo query que usa AddIncome.tsx.
+  const [incomeSource, setIncomeSource] = useState<{ id: string | null; rules: any[] }>({ id: null, rules: [] });
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase
+        .from('income_sources')
+        .select('id, distribution_rules')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (data && data[0]) {
+        setIncomeSource({ id: data[0].id, rules: data[0].distribution_rules || [] });
+      }
+    })();
+  }, [session.user.id]);
+
   useEffect(() => {
     AsyncStorage.getItem('@save_cycle_insight_dismissed').then(val => {
       if (val !== 'true') setShowCycleInsight(true);
@@ -83,6 +106,39 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
   const sheetAnim = useRef(new Animated.Value(height)).current;
   const bounceAnim = useRef(new Animated.Value(0)).current;
+  // Offset del teclado para el bottom sheet — sube el sheet suavemente
+  // cuando aparece el teclado, sin el salto brusco del KeyboardAvoidingView.
+  const keyboardOffset = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const onShow = (e: any) => {
+      // Solo subimos cuando hay un TextInput activo dentro del sheet (isEditingPocket)
+      const kbHeight = e.endCoordinates?.height ?? 0;
+      const safeBottom = insets.bottom;
+      // Subimos justo la altura del teclado menos el safe area (ya cubierto por padding)
+      const offset = Math.max(0, kbHeight - safeBottom - 24);
+      Animated.timing(keyboardOffset, {
+        toValue: -offset,
+        duration: e.duration || 250,
+        useNativeDriver: true,
+      }).start();
+    };
+    const onHide = (e: any) => {
+      Animated.timing(keyboardOffset, {
+        toValue: 0,
+        duration: e.duration || 200,
+        useNativeDriver: true,
+      }).start();
+    };
+
+    // iOS usa 'Will' para que la animación sea sincronizada con el teclado.
+    // Android usa 'Did' porque 'Will' no siempre dispara.
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const subShow = Keyboard.addListener(showEvent, onShow);
+    const subHide = Keyboard.addListener(hideEvent, onHide);
+    return () => { subShow.remove(); subHide.remove(); };
+  }, [keyboardOffset, insets.bottom]);
 
   useEffect(() => {
     Animated.loop(
@@ -110,6 +166,22 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   useEffect(() => {
     if (transactions) refreshMonthly(true);
   }, [transactions, refreshMonthly]);
+
+  // Limpiar overrides locales cuando el servidor confirma los datos frescos
+  // (los pockets prop se actualizan con los valores reales).
+  useEffect(() => {
+    if (Object.keys(localPocketOverrides).length === 0) return;
+    setLocalPocketOverrides(prev => {
+      const next = { ...prev };
+      pockets.forEach(p => {
+        // Si el servidor ya devolvió el planned_budget correcto, el override ya no hace falta
+        if (next[p.id] && next[p.id].planned_budget === p.planned_budget) {
+          delete next[p.id];
+        }
+      });
+      return next;
+    });
+  }, [pockets]);
 
   // Check and start tour when pockets load
   useEffect(() => {
@@ -204,6 +276,30 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     );
   };
 
+  // Pull-to-refresh handler — delega al padre (handleGlobalRefresh en index.tsx)
+  // que maneja el estado isRefreshing global. También fuerza el ciclo local.
+  const handlePullRefresh = async () => {
+    setIsRefreshing(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      onRefresh();
+      await refreshMonthly(true);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // Traduce el choque contra el CHECK pockets_allocated_budget_non_negative
+  // (RPC transfer_between_pockets) a un mensaje que la persona entienda --
+  // mismo criterio que PocketTransfer.tsx para "Fondos Insuficientes".
+  const isInsufficientFundsError = (e: any) =>
+    e?.code === '23514' || String(e?.message || '').includes('pockets_allocated_budget_non_negative');
+
+  // pockets tiene UNIQUE (user_id, category) y usamos el nombre como
+  // categoría -- ya existe un bolsillo con ese mismo nombre.
+  const isDuplicateNameError = (e: any) =>
+    e?.code === '23505' || String(e?.message || '').includes('pockets_user_id_category_key');
+
   const syncPocketToCloud = async () => {
     if (!newName.trim()) return;
     
@@ -243,37 +339,86 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
       setNewBudget('');
       setNewIcon('tag');
       setAddModalVisible(false);
+
+      // Optimistic update: el nuevo bolsillo aparece de inmediato en la lista
+      // sin esperar a que onRefresh() complete el fetch del servidor.
+      if (newPocket) {
+        DeviceEventEmitter.emit('pocket_created', newPocket);
+      }
+
+      // Refresca los datos reales del servidor en background
       onRefresh();
-      refreshMonthly();
-    } catch (e) {
+      refreshMonthly(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: any) {
       console.error(e);
-      notify.error('No se pudo crear el bolsillo.');
+      notify.error(isDuplicateNameError(e)
+        ? `Ya tienes un bolsillo "${capitalizedName}".`
+        : isInsufficientFundsError(e)
+          ? 'Te falta plata en Libre para eso.'
+          : 'No se pudo crear el bolsillo.');
     }
+  };
+
+  // La meta en % vive en income_sources.distribution_rules (no en
+  // pockets.planned_budget, que solo guarda pesos fijos) -- así
+  // AddIncome.tsx la recomienda solo, sin tocar ese archivo para nada.
+  const upsertPercentRule = async (pocketId: string, pct: number) => {
+    const rules = incomeSource.rules.filter((r: any) => r.pocket_id !== pocketId);
+    const maxPriority = rules.reduce((m: number, r: any) => Math.max(m, r.priority || 0), 0);
+    rules.push({ pocket_id: pocketId, type: 'percentage', value: pct, priority: maxPriority + 1 });
+
+    if (incomeSource.id) {
+      const { error } = await supabase.from('income_sources').update({ distribution_rules: rules }).eq('id', incomeSource.id);
+      if (error) throw error;
+    } else {
+      const { data, error } = await supabase.from('income_sources').insert({
+        user_id: session.user.id,
+        name: 'Ingreso Principal',
+        amount: monthIncome > 0 ? monthIncome : 0,
+        frequency: 'monthly',
+        next_date: new Date().toISOString().split('T')[0],
+        distribution_rules: rules,
+        is_active: true,
+        metadata: { income_type: 'fixed' },
+      }).select().single();
+      if (error) throw error;
+      setIncomeSource({ id: data.id, rules });
+      return;
+    }
+    setIncomeSource(prev => ({ ...prev, rules }));
+  };
+
+  // Si el bolsillo vuelve a modo fijo, limpiamos una regla en % vieja para
+  // que no reaparezca sola la próxima vez que se registre un ingreso.
+  const removePercentRule = async (pocketId: string) => {
+    if (!incomeSource.id) return;
+    if (!incomeSource.rules.some((r: any) => r.pocket_id === pocketId && r.type === 'percentage')) return;
+    const rules = incomeSource.rules.filter((r: any) => r.pocket_id !== pocketId);
+    const { error } = await supabase.from('income_sources').update({ distribution_rules: rules }).eq('id', incomeSource.id);
+    if (error) throw error;
+    setIncomeSource(prev => ({ ...prev, rules }));
   };
 
   const saveEditPocket = async () => {
     if (!editName.trim() || !editIcon) return;
+    const cleanName = editName.trim();
+    const capitalizedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
     try {
       setIsSavingPocket(true);
-      const cleanName = editName.trim();
-      const capitalizedName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
-      
-      const planned = editBudgetType === 'percentage'
-        ? (monthIncome > 0 ? Math.round(monthIncome * (parseInt(editBudgetValue.replace(/\D/g, '')) || 0) / 100) : 0)
-        : (parseInt(editBudgetValue.replace(/\D/g, '')) || 0);
 
-      // La diferencia se traslada desde/hacia Libre (mismo RPC que los
-      // traslados manuales) -- así el dinero real siempre sale de algún
-      // lado real. planned_budget guarda el mismo valor aparte porque
-      // allocated_budget se resetea a 0 en cada cierre de ciclo -- sin esa
-      // copia, AddIncome perdería la sugerencia apenas cerrara el mes.
-      //
-      // Si no hay ingresos registrados aún (monthIncome === 0), omitimos la
-      // transferencia para evitar el error del RPC (Libre tiene $0). Solo
-      // guardamos planned_budget como meta; se aplicará al registrar ingreso.
+      const isPercentMode = editBudgetType === 'percentage';
+      const pctValue = isPercentMode ? (parseInt(editBudgetValue.replace(/\D/g, '')) || 0) : 0;
+      const fixedValue = !isPercentMode ? (parseInt(editBudgetValue.replace(/\D/g, '')) || 0) : 0;
+      // Equivalente en pesos -- solo se usa para reconciliar la plata REAL
+      // ya asignada (transfer_between_pockets), nunca para decidir qué se guarda.
+      const targetPesos = isPercentMode
+        ? (monthIncome > 0 ? Math.round(monthIncome * pctValue / 100) : 0)
+        : fixedValue;
+
       const librePocket = pockets.find((p: any) => p.is_default_free);
       const currentAllocated = selectedPocket.allocated_budget ?? 0;
-      const diff = planned - currentAllocated;
+      const diff = targetPesos - currentAllocated;
       const hasIncome = monthIncome > 0;
 
       if (hasIncome && diff !== 0 && librePocket && librePocket.id !== selectedPocket.id) {
@@ -290,19 +435,32 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
         name: capitalizedName,
         category: capitalizedName,
         icon: editIcon,
-        planned_budget: planned > 0 ? planned : null,
+        planned_budget: isPercentMode ? null : (fixedValue > 0 ? fixedValue : null),
       };
 
       const { error: updateError } = await supabase.from('pockets').update(updates).eq('id', selectedPocket.id);
       if (updateError) throw updateError;
 
-      // Update local state immediately so UI reflects it before refetch
-      setSelectedPocket((prev: any) => prev ? { ...prev, ...updates, allocated_budget: planned } : null);
+      if (isPercentMode && pctValue > 0) {
+        await upsertPercentRule(selectedPocket.id, pctValue);
+      } else {
+        await removePercentRule(selectedPocket.id);
+      }
 
-      onRefresh();
-      refreshMonthly();
+      // Optimistic update: refleja el cambio de inmediato en la UI
+      // antes de que el refetch del servidor termine.
+      const optimisticPocket = { ...selectedPocket, ...updates, allocated_budget: targetPesos };
+      setSelectedPocket(optimisticPocket);
+      // Guardar override para cuando el usuario cierre y vuelva a abrir el bolsillo
+      setLocalPocketOverrides(prev => ({ ...prev, [selectedPocket.id]: optimisticPocket }));
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setSaveSuccess(true);
+
+      // Refresca datos en paralelo — ambos son fire-and-forget;
+      // el optimistic update ya mostró el valor correcto.
+      onRefresh();
+      refreshMonthly(true);
 
       setTimeout(() => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -313,7 +471,11 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
     } catch (e: any) {
       console.error(e);
-      notify.error(e?.message || 'No se pudo guardar el presupuesto.');
+      notify.error(isDuplicateNameError(e)
+        ? `Ya tienes un bolsillo "${capitalizedName}".`
+        : isInsufficientFundsError(e)
+          ? 'Te falta plata en Libre para eso.'
+          : (e?.message || 'No se pudo guardar el presupuesto.'));
       setIsSavingPocket(false);
     }
   };
@@ -322,9 +484,14 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     if (!selectedPocket) return;
     setEditName(selectedPocket.name);
     setEditIcon(selectedPocket.icon || 'tag');
-    const plan = selectedPocket.planned_budget ?? 0;
-    setEditBudgetValue(plan > 0 ? String(plan) : '');
-    setEditBudgetType('fixed'); // siempre empieza en monto fijo
+    const plan = getPocketPlan(selectedPocket);
+    if (plan?.type === 'percentage') {
+      setEditBudgetType('percentage');
+      setEditBudgetValue(String(plan.value));
+    } else {
+      setEditBudgetType('fixed');
+      setEditBudgetValue(plan ? String(plan.value) : '');
+    }
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setIsEditingPocket(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -362,7 +529,11 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   const freeAmountAvailable = freePocketData?.available ?? 0;
 
   const openPocket = (pocket: any) => {
-    setSelectedPocket(pocket);
+    // Fusionar con override local si existe (edición reciente antes de que el servidor responda)
+    const merged = localPocketOverrides[pocket.id]
+      ? { ...pocket, ...localPocketOverrides[pocket.id] }
+      : pocket;
+    setSelectedPocket(merged);
     Animated.spring(sheetAnim, { toValue: 0, useNativeDriver: true, tension: 50, friction: 8 }).start();
     if (isTourActive) {
       stopTour();
@@ -479,11 +650,30 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
     btnSave: { paddingVertical: 14, paddingHorizontal: 28, borderRadius: 18, backgroundColor: theme.colors.primary, ...theme.shadows.soft },
   }), [theme, width, height]);
 
-  // Centralized helper to get the precise allocated budget for this month
-  const getPocketAlloc = (p: any) => {
+  // Plata REAL asignada este mes -- nunca cae a planned_budget. Antes esta
+  // función sí caía a planned_budget cuando el valor real era 0 (0 es falsy
+  // en JS), lo que hacía que un bolsillo con solo una meta (sin ingreso
+  // todavía) se mostrara como si tuviera esa plata de verdad -- causando que
+  // la tarjeta dijera "Asignado: $X" y "EXCESO" al mismo tiempo apenas
+  // hubiera un gasto en esa categoría.
+  const getPocketReal = (p: any) => {
     const mp = getMonthlyPocket(p.id);
     return mp?.allocated ?? p.allocated_budget ?? 0;
   };
+
+  // Meta configurada por el usuario -- NO es plata real, solo referencia.
+  // Fija (pesos, en pockets.planned_budget) O porcentaje (en
+  // income_sources.distribution_rules) -- nunca las dos a la vez.
+  type PocketPlan = { type: 'fixed' | 'percentage'; value: number };
+  const getPocketPlan = (p: any): PocketPlan | null => {
+    if (p.planned_budget > 0) return { type: 'fixed', value: p.planned_budget };
+    const pct = incomeSource.rules.find((r: any) => r.pocket_id === p.id && r.type === 'percentage')?.value;
+    return pct > 0 ? { type: 'percentage', value: pct } : null;
+  };
+
+  const formatPlanValue = (plan: PocketPlan) => plan.type === 'fixed'
+    ? formatCOP(plan.value)
+    : `${plan.value}%${monthIncome > 0 ? ` (${formatCOP(Math.round(monthIncome * plan.value / 100))})` : ''}`;
 
   // Sort: libre siempre último, el resto por % gastado (más lleno primero)
   // IMPORTANTE: Se usa la asignación real de la BD para el orden, de forma que al 
@@ -565,7 +755,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={styles.container}>
         <View style={{ flex: 1 }}>
           {isMonthlyLoading && !monthState ? (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -577,6 +767,18 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing || isRefreshingProp}
+                  onRefresh={handlePullRefresh}
+                  tintColor={theme.colors.primary}
+                  colors={[theme.colors.primary]}
+                  progressBackgroundColor={theme.colors.surface}
+                  title="Actualizando..."
+                  titleColor={theme.colors.onSurfaceVariant}
+                  progressViewOffset={Math.max(insets.top, 16) + 104}
+                />
+              }
             >
               {/* Navegación de Ciclo — componente compartido */}
               <CycleNav cycles={cycles} activeCycleId={selectedCycleId} onChange={setSelectedCycleId} />
@@ -630,14 +832,14 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                   <View style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.surfaceContainerLow, borderRadius: 14, paddingVertical: 12 }}>
                     <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.onSurfaceVariant, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4 }}>Asignado</Text>
                     <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.onSurface, fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
-                      {formatCOP(pockets.filter(p => !p.is_default_free).reduce((acc, p) => acc + getPocketAlloc(p), 0))}
+                      {formatCOP(pockets.filter(p => !p.is_default_free).reduce((acc, p) => acc + getPocketReal(p), 0))}
                     </Text>
                   </View>
                   <TourStep name="pockets_free">
                     <View style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.primary + '12', borderRadius: 14, paddingVertical: 12 }}>
                       <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.primary, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4 }}>Libre</Text>
                       <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.primary, fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
-                        {formatCOP(pockets.find(p => p.is_default_free) ? getPocketAlloc(pockets.find(p => p.is_default_free)!) : 0)}
+                        {formatCOP(pockets.find(p => p.is_default_free) ? getPocketReal(pockets.find(p => p.is_default_free)!) : 0)}
                       </Text>
                     </View>
                   </TourStep>
@@ -655,12 +857,12 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
                   <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>Distribución del presupuesto</Text>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
-                    {formatCOP(sorted.filter(p => !p.is_default_free).reduce((acc, p) => acc + getPocketAlloc(p), 0))} asignados
+                    {formatCOP(sorted.filter(p => !p.is_default_free).reduce((acc, p) => acc + getPocketReal(p), 0))} asignados
                   </Text>
                 </View>
               <View style={{ height: 14, backgroundColor: theme.colors.surfaceContainerHighest, borderRadius: 7, flexDirection: 'row', overflow: 'hidden' }}>
                 {sorted.map((p, i) => {
-                  const alloc = getPocketAlloc(p);
+                  const alloc = getPocketReal(p);
                   if (alloc <= 0) return null;
                   const pct = Math.min((alloc / totalInvoicedIncome) * 100, 100);
                   
@@ -676,8 +878,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                 })}
               </View>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
-                {sorted.filter(p => getPocketAlloc(p) > 0).map((p) => {
-                  const alloc = getPocketAlloc(p);
+                {sorted.filter(p => getPocketReal(p) > 0).map((p) => {
+                  const alloc = getPocketReal(p);
                   const i = sorted.indexOf(p);
                   const premiumColors = theme.colors.chartColors as string[];
                   const color = p.is_default_free ? theme.colors.primary : premiumColors[i % premiumColors.length];
@@ -715,12 +917,17 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
               // Plan y disponible vienen del RPC get_cycle_state.
               // NO restamos gasto otra vez — el RPC ya lo hizo.
               const mp = getMonthlyPocket(p.id);
-              const allocated = getPocketAlloc(p);
+              const allocated = getPocketReal(p);
+              const plan = getPocketPlan(p);
               const spent = mp?.spent_month ?? 0;
               const available = mp?.available ?? 0;
               const remaining = available;             // ← lo que queda hoy, directo de la DB
               const isOver = remaining < 0 || (allocated > 0 && spent > allocated);
               const pctUsed = allocated > 0 ? Math.min((spent / allocated) * 100, 100) : 0;
+              // Bolsillo con meta puesta pero todavía sin plata real detrás
+              // (típico: la persona presupuestó antes de registrar ingreso).
+              // No es "Libre" -- Libre siempre es plata real por definición.
+              const isPlanOnly = !p.is_default_free && allocated <= 0 && !!plan;
               const premiumColors = theme.colors.chartColors as string[];
               const flatColor = p.is_default_free ? theme.colors.primary : premiumColors[i % premiumColors.length];
               const cardBg = isOver ? theme.colors.error : flatColor + 'E6';
@@ -764,23 +971,44 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                       activeOpacity={0.88}
                       onPress={() => openPocket(p)}
                     >
-                      <View style={[styles.card, { backgroundColor: cardBg, padding: 18, paddingTop: 20, paddingBottom: 22, minHeight: 150 }]}>
+                      <View style={[styles.card, { backgroundColor: cardBg, padding: 18, paddingTop: 20, paddingBottom: 22, minHeight: 150, opacity: isPlanOnly ? 0.6 : 1 }]}>
                         <View style={{ marginBottom: 20 }}>
                           <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}>
                             <CategoryIcon iconName={p.icon} size={16} color="#FFF" />
                           </View>
                         </View>
                         <Text style={{ fontSize: 18, fontWeight: '900', color: '#FFF', marginBottom: 4 }} numberOfLines={1}>{p.name}</Text>
-                        <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 20 }}>
-                          Asignado: {allocated > 0 ? formatCOP(allocated) : '$0'}
-                        </Text>
-                        <View style={{ marginTop: 'auto' }}>
-                          <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={8} />
-                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
-                            <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>{remaining < 0 ? 'EXCESO' : 'TE QUEDA'}</Text>
-                            <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }} numberOfLines={1} adjustsFontSizeToFit>{formatCOP(Math.abs(remaining))}</Text>
-                          </View>
-                        </View>
+                        {isPlanOnly ? (
+                          <>
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 20 }} numberOfLines={1}>
+                              Meta: {plan && formatPlanValue(plan)}
+                            </Text>
+                            {/* Misma estructura (barra + fila) que el estado fondeado, para que la tarjeta mida exactamente lo mismo */}
+                            <View style={{ marginTop: 'auto' }}>
+                              <AnimatedProgressBar percent={0} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={8} />
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
+                                <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>ESPERANDO</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                  <Clock size={13} color="#FFF" strokeWidth={2.5} />
+                                  <Text style={{ fontSize: 13, fontWeight: '900', color: '#FFF' }} numberOfLines={1}>tu ingreso</Text>
+                                </View>
+                              </View>
+                            </View>
+                          </>
+                        ) : (
+                          <>
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 20 }}>
+                              Asignado: {allocated > 0 ? formatCOP(allocated) : '$0'}
+                            </Text>
+                            <View style={{ marginTop: 'auto' }}>
+                              <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={8} />
+                              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
+                                <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>{remaining < 0 ? 'EXCESO' : 'TE QUEDA'}</Text>
+                                <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }} numberOfLines={1} adjustsFontSizeToFit>{formatCOP(Math.abs(remaining))}</Text>
+                              </View>
+                            </View>
+                          </>
+                        )}
                       </View>
                     </TouchableOpacity>
                   </TourStep>
@@ -804,24 +1032,34 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
           <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
             <Pressable style={styles.backdrop} onPress={isTourActive ? undefined : () => closePocket()} />
             <Animated.View style={[styles.backdropTint, { opacity: sheetAnim.interpolate({ inputRange: [0, height], outputRange: [1, 0] }) }]} pointerEvents="none" />
-            <Animated.View style={[styles.sheet, { paddingHorizontal: 0, paddingTop: 0, transform: [{ translateY: sheetAnim }] }]}>
+            <Animated.View style={[styles.sheet, { paddingHorizontal: 0, paddingTop: 0, transform: [{ translateY: Animated.add(sheetAnim, keyboardOffset) }] }]}>
               {/* Colored top strip matching the pocket's card color */}
               {(() => {
                 const i = sorted.findIndex(p => p.id === selectedPocket.id);
                 const premiumColors = theme.colors.chartColors as string[];
                 const flatColor = selectedPocket.is_default_free ? theme.colors.primary : premiumColors[i % premiumColors.length];
                 const mp = getMonthlyPocket(selectedPocket.id);
-                const planAlloc = getPocketAlloc(selectedPocket);
+                const planAlloc = getPocketReal(selectedPocket);
+                const planVal = getPocketPlan(selectedPocket);
                 const spent = mp?.spent_month ?? 0;
                 const available = selectedPocket.is_default_free ? (planAlloc - spent) : (mp?.available ?? 0);
                 const isOver = available < 0;
                 const pctUsed = planAlloc > 0 ? Math.min((spent / planAlloc) * 100, 100) : 0;
                 const pocketColor = isOver ? theme.colors.error : flatColor;
+                // Sin plata real todavía pero con una meta puesta -- se lo
+                // decimos claro en vez de mostrar "$0" o mezclar los dos.
+                const headerSubtitle = selectedPocket.is_default_free
+                  ? `Disponible sin asignar: ${formatCOP(planAlloc)}`
+                  : planAlloc > 0
+                    ? `Tienes: ${formatCOP(planAlloc)}`
+                    : planVal
+                      ? `Meta: ${formatPlanValue(planVal)} · sin fondear`
+                      : 'Sin presupuesto';
 
                 return (
                   <>
                     <View style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 200, backgroundColor: pocketColor, borderTopLeftRadius: 36, borderTopRightRadius: 36 }} />
-                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+                    <View style={{ flex: 1 }}>
                       <ScrollView 
                         style={{ flex: 1 }} 
                         contentContainerStyle={{ flexGrow: 1, paddingBottom: Math.max(insets.bottom, 24) + 100 }}
@@ -845,7 +1083,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                           {isEditingPocket ? 'Editar Bolsillo' : selectedPocket.name}
                         </Text>
                         <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: '600', marginTop: 2 }}>
-                          {selectedPocket.is_default_free ? 'Disponible sin asignar: ' : 'Plan mensual: '}{formatCOP(planAlloc)}
+                          {headerSubtitle}
                         </Text>
                       </View>
 
@@ -890,27 +1128,25 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                           <>
                             <Text style={{ fontSize: 11, fontWeight: '800', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', marginBottom: 8 }}>Presupuesto (Plan)</Text>
 
-                            {/* Toggle $ / % — diseño del bloque de edición colored */}
-                            <View style={{ flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, padding: 3, marginBottom: 10 }}>
+                            {/* Toggle $ / % — mismo estilo compacto que AddIncome */}
+                            <View style={{ flexDirection: 'row', borderRadius: 12, padding: 4, backgroundColor: 'rgba(255,255,255,0.18)', marginBottom: 10, alignSelf: 'flex-start' }}>
                               <TouchableOpacity
                                 onPress={() => { setEditBudgetType('fixed'); setEditBudgetValue(''); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
                                 style={[
-                                  { flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
-                                  editBudgetType === 'fixed' && { backgroundColor: 'rgba(255,255,255,0.9)' }
+                                  { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+                                  editBudgetType === 'fixed' && { backgroundColor: pocketColor }
                                 ]}
                               >
-                                <DollarSign size={13} color={editBudgetType === 'fixed' ? pocketColor : '#FFF'} strokeWidth={2.5} />
-                                <Text style={{ fontSize: 13, fontWeight: '800', color: editBudgetType === 'fixed' ? pocketColor : '#FFF' }}>Monto fijo</Text>
+                                <DollarSign size={16} color={editBudgetType === 'fixed' ? '#FFF' : 'rgba(255,255,255,0.7)'} strokeWidth={2.5} />
                               </TouchableOpacity>
                               <TouchableOpacity
                                 onPress={() => { setEditBudgetType('percentage'); setEditBudgetValue(''); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
                                 style={[
-                                  { flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 },
-                                  editBudgetType === 'percentage' && { backgroundColor: 'rgba(255,255,255,0.9)' }
+                                  { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+                                  editBudgetType === 'percentage' && { backgroundColor: pocketColor }
                                 ]}
                               >
-                                <Percent size={13} color={editBudgetType === 'percentage' ? pocketColor : '#FFF'} strokeWidth={2.5} />
-                                <Text style={{ fontSize: 13, fontWeight: '800', color: editBudgetType === 'percentage' ? pocketColor : '#FFF' }}>% del ingreso</Text>
+                                <Percent size={16} color={editBudgetType === 'percentage' ? '#FFF' : 'rgba(255,255,255,0.7)'} strokeWidth={2.5} />
                               </TouchableOpacity>
                             </View>
 
@@ -928,17 +1164,14 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                             />
 
                             {/* Preview en tiempo real para el modo porcentaje */}
-                            {editBudgetType === 'percentage' && editBudgetValue ? (
-                              monthIncome > 0 ? (
-                                <Text style={{ fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.8)', marginBottom: 8 }}>
-                                  ≈ {formatCOP(Math.round(monthIncome * (parseInt(editBudgetValue) || 0) / 100))} del ingreso actual
-                                </Text>
-                              ) : (
-                                <Text style={{ fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.6)', marginBottom: 8 }}>
-                                  El monto se calculará con tu próximo ingreso
-                                </Text>
-                              )
-                            ) : <View style={{ marginBottom: 8 }} />}
+                            {editBudgetType === 'percentage' && editBudgetValue && monthIncome > 0 && (
+                              <Text style={{ fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.8)', marginBottom: 4 }}>
+                                ≈ {formatCOP(Math.round(monthIncome * (parseInt(editBudgetValue) || 0) / 100))} del ingreso actual
+                              </Text>
+                            )}
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 8 }}>
+                              Es tu meta — se hace plata real con tu próximo ingreso.
+                            </Text>
                           </>
                         )}
                         
@@ -976,10 +1209,10 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                         <View style={{ flexDirection: 'row', gap: 12, marginBottom: planAlloc > 0 ? 14 : 8 }}>
                           <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 14, padding: 14 }}>
                             <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-                              {selectedPocket.is_default_free ? 'DISPONIBLE' : 'PRESUPUESTO'}
+                              {selectedPocket.is_default_free ? 'DISPONIBLE' : (planAlloc > 0 ? 'TIENES' : (planVal ? 'META' : 'PRESUPUESTO'))}
                             </Text>
                             <Text style={{ fontSize: 20, fontWeight: '900', color: '#FFF', fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
-                              {planAlloc > 0 ? formatCOP(planAlloc) : 'Sin definir'}
+                              {planAlloc > 0 ? formatCOP(planAlloc) : (planVal ? formatPlanValue(planVal) : 'Sin definir')}
                             </Text>
                           </View>
                           <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 14, padding: 14 }}>
@@ -1129,7 +1362,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
                 )}
               </View>
             </ScrollView>
-          </KeyboardAvoidingView>
+          </View>
                   </>
                 );
               })()}
@@ -1177,13 +1410,16 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
 
                     <Text style={styles.fieldLabel}>Presupuesto mensual</Text>
                     <TextInput
-                      style={styles.fieldInput}
+                      style={[styles.fieldInput, { marginBottom: 4 }]}
                       placeholder="Ej. 500.000"
                       keyboardType="numeric"
                       value={newBudget ? Number(newBudget).toLocaleString(currencyConfig.locale) : ''}
                       onChangeText={v => setNewBudget(v.replace(/\D/g, ''))}
                       placeholderTextColor={theme.colors.onSurfaceVariant + '60'}
                     />
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.onSurfaceVariant, marginBottom: 20 }}>
+                      Es tu meta — se hace plata real con tu próximo ingreso.
+                    </Text>
 
                     <View style={styles.modalBtns}>
                       <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAddModalVisible(false); }} style={styles.btnCancel}>
@@ -1265,6 +1501,6 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, onTransferP
           </BlurView>
         </Modal>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 };
