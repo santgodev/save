@@ -536,7 +536,7 @@ export const Dashboard = ({
                 <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: theme.radius.full }}>
                   <Plus size={24} color={theme.colors.onPrimary} />
                 </View>
-                <Text style={{ ...theme.typography.h3, color: theme.colors.onPrimary }}>Registrar gasto</Text>
+                <Text style={{ ...theme.typography.h3, color: theme.colors.onPrimary }}>Registrar Gasto</Text>
               </TouchableOpacity>
             </TourStep>
           </View>

@@ -417,7 +417,14 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
         : fixedValue;
 
       const librePocket = pockets.find((p: any) => p.is_default_free);
-      const currentAllocated = selectedPocket.allocated_budget ?? 0;
+      // Leer allocated_budget fresco desde la BD para evitar calcular diff sobre
+      // un valor desactualizado (que generaría transferencias fantasma y descuadres).
+      const { data: freshPocket } = await supabase
+        .from('pockets')
+        .select('allocated_budget')
+        .eq('id', selectedPocket.id)
+        .single();
+      const currentAllocated = (freshPocket?.allocated_budget ?? selectedPocket.allocated_budget) ?? 0;
       const diff = targetPesos - currentAllocated;
       const hasIncome = monthIncome > 0;
 
@@ -513,7 +520,15 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
         return { ...tx, amount: isOut ? -Math.abs(tx.amount) : Math.abs(tx.amount) };
       }
       return tx;
-    }).sort((a, b) => new Date((b.date_string || b.created_at).split('T')[0] + 'T12:00:00').getTime() - new Date((a.date_string || a.created_at).split('T')[0] + 'T12:00:00').getTime());
+    }).sort((a, b) => {
+      const dateA = (a.date_string || a.created_at || '0').split('T')[0];
+      const dateB = (b.date_string || b.created_at || '0').split('T')[0];
+      if (dateA !== dateB) {
+        return new Date(dateB + 'T12:00:00').getTime() - new Date(dateA + 'T12:00:00').getTime();
+      }
+      // Mismo día: desempatar por created_at exacto (más reciente primero)
+      return new Date(b.created_at || '0').getTime() - new Date(a.created_at || '0').getTime();
+    });
     return limit ? all.slice(0, limit) : all;
   };
 

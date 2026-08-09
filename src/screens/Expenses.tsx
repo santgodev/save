@@ -176,7 +176,15 @@ export const Expenses = ({ transactions, onRefresh, isRefreshing = false, sessio
        tx.category.toLowerCase().includes(searchQuery.toLowerCase())) &&
       (!filterCategory || tx.category === filterCategory) &&
       (!showOnlyToday || (tx.date_string || tx.created_at || '').split('T')[0] === todayString)
-    ).sort((a, b) => new Date((b.date_string || b.created_at || '0').split('T')[0] + 'T12:00:00').getTime() - new Date((a.date_string || a.created_at || '0').split('T')[0] + 'T12:00:00').getTime());
+    ).sort((a, b) => {
+      const dateA = (a.date_string || a.created_at || '0').split('T')[0];
+      const dateB = (b.date_string || b.created_at || '0').split('T')[0];
+      if (dateA !== dateB) {
+        return new Date(dateB + 'T12:00:00').getTime() - new Date(dateA + 'T12:00:00').getTime();
+      }
+      // Mismo día: desempatar por created_at exacto (más reciente primero)
+      return new Date(b.created_at || '0').getTime() - new Date(a.created_at || '0').getTime();
+    });
   }, [cycleTransactions, searchQuery, filterCategory, showOnlyToday, todayString]);
 
   const totalSpent = useMemo(() => {

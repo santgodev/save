@@ -85,6 +85,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
   const [rules, setRules] = useState<any[]>(defaultRules);
   const [existingSourceId, setExistingSourceId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [lastIncomeAmount, setLastIncomeAmount] = useState<number | null>(null);
 
   // Estado para creación de bolsillo inline (sin cerrar la pantalla)
   const [showNewPocketInline, setShowNewPocketInline] = useState(false);
@@ -178,7 +179,9 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
         }
 
         if (!error && data && data.length > 0 && data[0].amount) {
-          setAmount(prev => prev ? prev : formatCurrency(data[0].amount));
+          const prevAmount = data[0].amount;
+          setLastIncomeAmount(prevAmount);
+          setAmount(prev => prev ? prev : formatCurrency(prevAmount));
         }
 
         // SYNC: Si el usuario editó el presupuesto del bolsillo en la pestaña Pockets,
@@ -536,7 +539,35 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
                   autoFocus
                 />
               </View>
+              {/* Sugerencia del último monto ingresado — solo si campo vacío y no editando */}
+              {!isEditing && lastIncomeAmount && !amount ? (
+                <TouchableOpacity
+                  onPress={() => {
+                    setAmount(formatCurrency(String(lastIncomeAmount)));
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  style={{
+                    marginTop: 12,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 6,
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    backgroundColor: theme.colors.primaryContainer,
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    borderColor: theme.colors.primary + '30',
+                    alignSelf: 'center',
+                  }}
+                >
+                  <RotateCcw size={13} color={theme.colors.primary} />
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.primary }}>
+                    Usar último: {formatMoney(lastIncomeAmount)}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
+
 
             <View style={styles.sectionContainer}>
               <Text style={styles.sectionTitle}>¿De dónde viene?</Text>

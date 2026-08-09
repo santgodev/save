@@ -167,6 +167,7 @@ const baseCategoryColors: Record<string, string> = {
   'Mascotas': '#A1887F',  // Brown
   'Varios': '#9E9E9E',    // Grey
   'Otros': '#9E9E9E',
+  'Libre': '#9E9E9E',
 };
 
 // Auto-generates container (light) and text (dark) pairs for any category
@@ -198,6 +199,7 @@ const generatedCategoryColors: Record<string, [string, string]> = {
   'Hogar': ['#B9E2A2', '#A3CF8C'],
   'Transporte': ['#8BD6DE', '#69CDE2'],
   'Otros': ['#D5DEE0', '#B9C5C8'],
+  'Libre': ['#D5DEE0', '#B9C5C8'],
   'Varios': ['#D5DEE0', '#B9C5C8'],
   'Ingreso': ['#A5D6A7', '#86B988']
 };

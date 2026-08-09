@@ -324,12 +324,23 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   }, [initialMode]);
 
   const availableCategories = useMemo(() => {
-    const defaultCats = ['Comida', 'Transporte', 'Ocio', 'Ahorros', 'Otros'];
-    if (!pockets || pockets.length === 0) return defaultCats;
-
+    if (!pockets || pockets.length === 0) {
+      return ['Comida', 'Transporte', 'Ocio', 'Ahorros'];
+    }
     // Get unique categories from pockets
     const pocketCats = pockets.map(p => p.category).filter(Boolean);
     return Array.from(new Set(pocketCats));
+  }, [pockets]);
+
+  // Mapa category -> display name (usa p.name para mostrar 'Libre' en lugar de 'Otros')
+  const categoryDisplayName = useMemo(() => {
+    const map: Record<string, string> = {};
+    if (pockets) {
+      pockets.forEach(p => {
+        if (p.category) map[p.category] = p.name || p.category;
+      });
+    }
+    return map;
   }, [pockets]);
 
   const [selectedCategory, setSelectedCategory] = useState(availableCategories[0]);
@@ -666,7 +677,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
                           onPress={() => setSelectedCategory(cat)}
                           style={[styles.catChip, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outlineVariant }, selectedCategory === cat && styles.catChipActive]}
                         >
-                          <Text style={[styles.catText, selectedCategory === cat && styles.catTextActive]}>{cat}</Text>
+                          <Text style={[styles.catText, selectedCategory === cat && styles.catTextActive]}>{categoryDisplayName[cat] || cat}</Text>
                         </TouchableOpacity>
                       ))}
                     </ScrollView>
