@@ -27,6 +27,7 @@ import { ResetPassword } from '../src/screens/ResetPassword';
 import { Onboarding } from '../src/screens/Onboarding';
 import { AddIncome } from '../src/screens/AddIncome';
 import { PocketTransfer } from '../src/screens/PocketTransfer';
+import { IntroTour } from '../src/screens/IntroTour';
 import { Camera, X, Repeat, TrendingUp, Sparkles, Zap } from 'lucide-react-native';
 import { TourProvider, useTour } from '../src/components/tour/TourContext';
 import { TourStep } from '../src/components/tour/TourStep';
@@ -507,12 +508,17 @@ function MainApp() {
       }
       if (pkRes.data) {
         setPockets(pkRes.data);
-        // ROUTING LOGIC: If new user (no pockets), go to onboarding. Else, dashboard (only if no screen is already set by deep link).
+        // ROUTING LOGIC: If new user (no pockets), go to onboarding or intro tour. Else, dashboard (only if no screen is already set by deep link).
         if (pkRes.data.length === 0) {
-          setCurrentScreen('onboarding');
+          const introDone = await AsyncStorage.getItem('@save_intro_tour_completed');
+          if (introDone === 'true') {
+            setCurrentScreen('onboarding');
+          } else {
+            setCurrentScreen('intro_tour');
+          }
         } else {
           setCurrentScreen((prev) => {
-            if (!prev || prev === 'onboarding') return 'dashboard';
+            if (!prev || prev === 'onboarding' || prev === 'intro_tour') return 'dashboard';
             return prev; // Preserve 'scanner' or other screens if set by deep link
           });
         }
@@ -591,6 +597,13 @@ function MainApp() {
 
   const [showPocketTransfer, setShowPocketTransfer] = useState(false);
 
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('force_show_intro_tour', () => {
+      setCurrentScreen('intro_tour');
+    });
+    return () => sub.remove();
+  }, []);
+
   const triggerTransfer = (params: { fromId?: string, toId?: string, amount?: number }) => {
     setTransferParams(params);
     setShowPocketTransfer(true);
@@ -598,7 +611,7 @@ function MainApp() {
 
     const renderScreen = () => {
     switch (currentScreen) {
-      case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('quick_expense')} onOpenScannerDemo={() => setCurrentScreen('demo_scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} onDevPreviewPurchaseConfirmation={__DEV__ ? () => setJustSubscribedPlan('annual') : undefined} onRefresh={handleGlobalRefresh} isLoading={isRefreshing} />;
+      case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('quick_expense')} onOpenScannerDemo={() => setCurrentScreen('demo_scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} onDevPreviewPurchaseConfirmation={__DEV__ ? () => setJustSubscribedPlan('annual') : undefined} onRefresh={handleGlobalRefresh} isLoading={isRefreshing} onAddIncome={() => setCurrentScreen('add_income')} />;
       case 'scanner': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="camera" />;
       case 'quick_expense': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="manual" />;
       case 'demo_scanner': return <Scanner onGoBack={async () => { await AsyncStorage.removeItem('@save_demo_in_progress'); setCurrentScreen('dashboard'); }} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('dashboard'); }} initialMode="demo" />;
@@ -619,7 +632,8 @@ function MainApp() {
       case 'profile_details': return <Profile session={session} transactions={transactions} pockets={pockets} onRefresh={() => loadUserData(session!.user.id)} onBack={() => setCurrentScreen('dashboard')} />;
       case 'add_income':
         return <AddIncome pockets={pockets} session={session} onCancel={() => setCurrentScreen('dashboard')} onSaveSuccess={async () => { await loadUserData(session!.user.id); setCurrentScreen('dashboard'); setEditIncomeTx(null); }} editTransaction={editIncomeTx} />;
-      default: return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} onRefresh={handleGlobalRefresh} isLoading={isRefreshing} />;
+      case 'intro_tour': return <IntroTour onComplete={async () => { await AsyncStorage.setItem('@save_intro_tour_completed', 'true'); setCurrentScreen('onboarding'); }} userName={session?.user?.user_metadata?.full_name} />;
+      default: return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} onRefresh={handleGlobalRefresh} isLoading={isRefreshing} onAddIncome={() => setCurrentScreen('add_income')} />;
     }
   };
 
@@ -702,7 +716,7 @@ function MainApp() {
         {renderScreen()}
       </View>
 
-      {currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'add_income' && (
+      {currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'add_income' && currentScreen !== 'intro_tour' && currentScreen !== 'onboarding' && (
         <BottomNav activeScreen={currentScreen} setScreen={(s: any) => setCurrentScreen(s)} onAddPress={() => toggleActionMenu(true)} onAddLongPress={() => setCurrentScreen('scanner')} />
       )}
 

@@ -84,10 +84,11 @@ export const Onboarding = ({ session, onComplete }: { session: any; onComplete: 
       if (profileError) throw new Error('No se pudo inicializar tu perfil.');
 
       const pocketsToInsert = [
-        { user_id: session.user.id, name: 'Libre', category: 'Otros', allocated_budget: 0, icon: 'Wind', is_default_free: true },
+        { user_id: session.user.id, name: 'Libre', category: 'Otros', allocated_budget: 0, planned_budget: remainingCascade > 0 ? remainingCascade : 0, icon: 'Wind', is_default_free: true },
         ...selectedCats.map(id => {
           const cat = CATEGORIES.find(c => c.id === id);
-          return { user_id: session.user.id, name: id === 'Ahorros' ? 'Ahorro Seguro' : (cat?.name || id), category: id, allocated_budget: 0, icon: cat?.icon || 'Tag', is_default_free: false };
+          const plannedValue = preview[id] || 0;
+          return { user_id: session.user.id, name: id === 'Ahorros' ? 'Ahorro Seguro' : (cat?.name || id), category: id, allocated_budget: 0, planned_budget: plannedValue, icon: cat?.icon || 'Tag', is_default_free: false };
         }),
       ];
 
@@ -95,17 +96,6 @@ export const Onboarding = ({ session, onComplete }: { session: any; onComplete: 
       if (pocketsError || !insertedPockets) throw new Error('No se pudieron crear tus bolsillos.');
 
       if (incomeNum > 0) {
-        const finalDistribution: Record<string, number> = {};
-        selectedCats.forEach(id => {
-          const val = preview[id] || 0;
-          if (val > 0) { const p = insertedPockets.find(pocket => pocket.category === id); if (p) finalDistribution[p.id] = val; }
-        });
-        const librePocket = insertedPockets.find(p => p.is_default_free);
-        if (librePocket && remainingCascade > 0) finalDistribution[librePocket.id] = remainingCascade;
-
-        const { error: rpcError } = await supabase.rpc('register_income', { p_user_id: session.user.id, p_amount: incomeNum, p_distribution: finalDistribution, p_mode: 'manual', p_merchant: 'Saldo Inicial', p_cycle_mode: 'start_fresh' });
-        if (rpcError) throw new Error('No se pudo asentar tu saldo inicial.');
-
         const dbRules = selectedCats.map((id, idx) => {
           const rule = rules[id] || { type: 'fixed', value: 0 };
           const p = insertedPockets.find(pocket => pocket.category === id);
@@ -113,7 +103,7 @@ export const Onboarding = ({ session, onComplete }: { session: any; onComplete: 
           return null;
         }).filter(Boolean);
 
-        await supabase.from('income_sources').insert({ user_id: session.user.id, name: 'Ingreso Principal', amount: incomeNum, frequency: 'monthly', next_date: new Date().toISOString().split('T')[0], distribution_rules: dbRules, is_active: true, metadata: { income_type: 'fixed' } });
+        await supabase.from('income_sources').insert({ user_id: session.user.id, name: 'Sueldo', amount: incomeNum, frequency: 'monthly', next_date: new Date().toISOString().split('T')[0], distribution_rules: dbRules, is_active: true, metadata: { income_type: 'fixed' } });
       }
 
       await AsyncStorage.setItem('@save_magic_tour_pending', 'true');
@@ -260,7 +250,7 @@ export const Onboarding = ({ session, onComplete }: { session: any; onComplete: 
             <View>
               {/* --- AMOUNT HERO --- */}
               <View style={{ alignItems: 'center', marginTop: 10, marginBottom: 32 }}>
-                <Text style={{ fontSize: 12, color: theme.colors.primary, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' }}>¿Cuánta plata vas a ingresar?</Text>
+                <Text style={{ fontSize: 12, color: theme.colors.primary, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' }}>¿Cuánto planeas ganar este mes?</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
                   <Text style={{ fontSize: 24, fontWeight: '700', color: theme.colors.onSurface, marginRight: 4 }}>{symbol}</Text>
                   <TextInput
@@ -290,7 +280,7 @@ export const Onboarding = ({ session, onComplete }: { session: any; onComplete: 
                 {remainingCascade < 0 && (
                   <View style={[S.errorBanner, { backgroundColor: theme.colors.errorContainer, marginTop: -8, marginBottom: 16 }]}>
                      <Info size={16} color={theme.colors.error} />
-                     <Text style={[S.errorText, { color: theme.colors.onErrorContainer }]}>No puedes repartir más plata de la que ingresaste.</Text>
+                     <Text style={[S.errorText, { color: theme.colors.onErrorContainer }]}>Tus metas superan tu ingreso planeado.</Text>
                   </View>
                 )}
               </View>

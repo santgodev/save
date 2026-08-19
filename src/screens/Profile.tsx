@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Animated, Dimensions, Image, Platform, ActivityIndicator, LayoutAnimation, UIManager, Linking
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Animated, Dimensions, Image, Platform, ActivityIndicator, LayoutAnimation, UIManager, Linking, DeviceEventEmitter
 } from 'react-native';
 import {
   Settings, LogOut, Trash2, Bell, ShieldCheck,
@@ -20,6 +20,7 @@ import type { Session } from '@supabase/supabase-js';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 
@@ -520,9 +521,39 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
               setActiveModal('logout');
            }}
          >
-            <LogOut size={18} color={theme.colors.error} />
+            <LogOut size={20} color={theme.colors.error} strokeWidth={2.5} />
             <Text style={styles.dangerText}>Cerrar sesión</Text>
          </TouchableOpacity>
+
+         {__DEV__ && (
+           <>
+             <TouchableOpacity 
+               activeOpacity={0.7}
+               style={[styles.dangerAction, { borderColor: theme.colors.primary, backgroundColor: theme.colors.primaryContainer }]} 
+               onPress={async () => {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  await AsyncStorage.setItem('@dev_force_welcome_card', 'true');
+                  alert("Tarjeta de bienvenida activada. Ve a la pestaña 'Resumen' para verla.");
+               }}
+             >
+               <Sparkles size={20} color={theme.colors.primary} strokeWidth={2.5} />
+               <Text style={[styles.dangerText, { color: theme.colors.primary }]}>[DEV] Ver Tarjeta de Bienvenida</Text>
+             </TouchableOpacity>
+
+             <TouchableOpacity 
+               activeOpacity={0.7}
+               style={[styles.dangerAction, { borderColor: (theme.colors as any).pastel.lavender, backgroundColor: (theme.colors as any).pastel.lavender + '30', marginTop: 12 }]} 
+               onPress={() => {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  DeviceEventEmitter.emit('force_show_intro_tour');
+               }}
+             >
+               <TrendingUp size={20} color={(theme.colors as any).pastel.lavender} strokeWidth={2.5} />
+               <Text style={[styles.dangerText, { color: (theme.colors as any).pastel.lavender }]}>[DEV] Ver Intro (SAVE)</Text>
+             </TouchableOpacity>
+           </>
+         )}
+
          <Text style={styles.versionLabel}>SAVE v{Constants.expoConfig?.version ?? '—'} • PREMIUM EDITION</Text>
       </View>
     </ScrollView>

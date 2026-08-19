@@ -191,7 +191,9 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
             const pocket = pockets.find(p => p.id === rule.pocket_id);
             if (pocket && !pocket.is_default_free) {
               // Si el usuario edita el presupuesto a 0, queremos que la regla también sea 0.
-              const plan = typeof pocket.allocated_budget === 'number' ? pocket.allocated_budget : rule.value;
+              const plan = (pocket.planned_budget !== null && pocket.planned_budget !== undefined) 
+                ? Number(pocket.planned_budget) 
+                : (typeof pocket.allocated_budget === 'number' ? pocket.allocated_budget : rule.value);
               return { ...rule, value: plan };
             }
           }
@@ -205,7 +207,9 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
         pockets.forEach(p => {
           if (!p.is_default_free && !pocketsInRules.has(p.id)) {
             maxPriority += 1;
-            const plan = p.allocated_budget && p.allocated_budget > 0 ? p.allocated_budget : 0;
+            const plan = (p.planned_budget !== null && p.planned_budget !== undefined) 
+              ? Number(p.planned_budget) 
+              : (p.allocated_budget && p.allocated_budget > 0 ? p.allocated_budget : 0);
             dbRules.push({
               pocket_id: p.id,
               priority: maxPriority,

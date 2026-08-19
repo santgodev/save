@@ -74,24 +74,18 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
   // Regla de reparto recurrente (income_sources.distribution_rules) -- ahí
   // viven las metas en % ("Ahorro siempre el 10%"), no en pockets.planned_budget
   // (que solo guarda pesos fijos). Mismo query que usa AddIncome.tsx.
-  const [incomeSource, setIncomeSource] = useState<{ id: string | null; amount: number; rules: any[] }>({ id: null, amount: 0, rules: [] });
-  const [isIncomeSourceLoading, setIsIncomeSourceLoading] = useState(true);
+  const [incomeSource, setIncomeSource] = useState<{ id: string | null; rules: any[] }>({ id: null, rules: [] });
 
   useEffect(() => {
     (async () => {
-      try {
-        const { data } = await supabase
-          .from('income_sources')
-          .select('id, amount, distribution_rules')
-          .eq('user_id', session.user.id)
-          .eq('is_active', true)
-          .order('created_at', { ascending: false })
-          .limit(1);
-        if (data && data[0]) {
-          setIncomeSource({ id: data[0].id, amount: data[0].amount || 0, rules: data[0].distribution_rules || [] });
-        }
-      } finally {
-        setIsIncomeSourceLoading(false);
+      const { data } = await supabase
+        .from('income_sources')
+        .select('id, distribution_rules')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (data && data[0]) {
+        setIncomeSource({ id: data[0].id, rules: data[0].distribution_rules || [] });
       }
     })();
   }, [session.user.id]);
@@ -328,19 +322,6 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
 
       if (insertError) throw insertError;
 
-      if (planned > 0 && newPocket) {
-        const librePocket = pockets.find((p: any) => p.is_default_free);
-        if (librePocket && monthIncome > 0) {
-          const { error: transferError } = await supabase.rpc('transfer_between_pockets', {
-            p_user_id: session.user.id,
-            p_from_id: librePocket.id,
-            p_to_id: newPocket.id,
-            p_amount: planned,
-          });
-          if (transferError) throw transferError;
-        }
-      }
-
       setNewName('');
       setNewBudget('');
       setNewIcon('tag');
@@ -389,7 +370,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
         metadata: { income_type: 'fixed' },
       }).select().single();
       if (error) throw error;
-      setIncomeSource({ id: data.id, amount: data.amount, rules });
+      setIncomeSource({ id: data.id, rules });
       return;
     }
     setIncomeSource(prev => ({ ...prev, rules }));
@@ -416,33 +397,6 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
       const isPercentMode = editBudgetType === 'percentage';
       const pctValue = isPercentMode ? (parseInt(editBudgetValue.replace(/\D/g, '')) || 0) : 0;
       const fixedValue = !isPercentMode ? (parseInt(editBudgetValue.replace(/\D/g, '')) || 0) : 0;
-      // Equivalente en pesos -- solo se usa para reconciliar la plata REAL
-      // ya asignada (transfer_between_pockets), nunca para decidir qué se guarda.
-      const targetPesos = isPercentMode
-        ? (incomeSource.amount > 0 ? Math.round(incomeSource.amount * pctValue / 100) : 0)
-        : fixedValue;
-
-      const librePocket = pockets.find((p: any) => p.is_default_free);
-      // Leer allocated_budget fresco desde la BD para evitar calcular diff sobre
-      // un valor desactualizado (que generaría transferencias fantasma y descuadres).
-      const { data: freshPocket } = await supabase
-        .from('pockets')
-        .select('allocated_budget')
-        .eq('id', selectedPocket.id)
-        .single();
-      const currentAllocated = (freshPocket?.allocated_budget ?? selectedPocket.allocated_budget) ?? 0;
-      const diff = targetPesos - currentAllocated;
-      const hasIncome = incomeSource.amount > 0;
-
-      if (hasIncome && diff !== 0 && librePocket && librePocket.id !== selectedPocket.id) {
-        const { error: transferError } = await supabase.rpc('transfer_between_pockets', {
-          p_user_id: session.user.id,
-          p_from_id: diff > 0 ? librePocket.id : selectedPocket.id,
-          p_to_id: diff > 0 ? selectedPocket.id : librePocket.id,
-          p_amount: Math.abs(diff),
-        });
-        if (transferError) throw transferError;
-      }
 
       const updates: any = {
         name: capitalizedName,
@@ -462,7 +416,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
 
       // Optimistic update: refleja el cambio de inmediato en la UI
       // antes de que el refetch del servidor termine.
-      const optimisticPocket = { ...selectedPocket, ...updates, allocated_budget: targetPesos };
+      const optimisticPocket = { ...selectedPocket, ...updates };
       setSelectedPocket(optimisticPocket);
       // Guardar override para cuando el usuario cierre y vuelva a abrir el bolsillo
       setLocalPocketOverrides(prev => ({ ...prev, [selectedPocket.id]: optimisticPocket }));
@@ -544,22 +498,9 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
   // OJO: para el TOTAL de ingresos del mes usamos monthState.income_month
   // (la fuente única). incomeTransactions queda solo para listar los
   // registros individuales.
-  const totalInvoicedIncome = monthState?.income_month || 0;
-
-  // NUEVO: Calcular el total planeado sumando el planned_budget y reglas porcentuales de todos los bolsillos
-  const getAbsolutePocketPlan = (p: any): number => {
-    if (p.planned_budget > 0) return parseFloat(p.planned_budget as any);
-    const pct = incomeSource.rules.find((r: any) => r.pocket_id === p.id && r.type === 'percentage')?.value;
-    if (pct > 0 && incomeSource.amount > 0) {
-      return Math.round(incomeSource.amount * (pct / 100));
-    }
-    return 0;
-  };
-
-  const totalPlanned = pockets.reduce((acc, p) => acc + getAbsolutePocketPlan(p), 0);
+  const totalInvoicedIncome = monthIncome;
 
   const freePocketData = monthState?.pockets?.find(p => p.is_default_free);
-  const freeAmountAvailable = freePocketData?.available ?? 0;
 
   const openPocket = (pocket: any) => {
     // Fusionar con override local si existe (edición reciente antes de que el servidor responda)
@@ -694,6 +635,15 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
     return mp?.allocated ?? p.allocated_budget ?? 0;
   };
 
+  // "Libre" = ingreso total menos lo asignado a bolsillos con nombre.
+  // Se calcula AQUÍ, después de getPocketReal, porque lo necesita.
+  const assignedToNamedPockets = pockets
+    .filter(p => !p.is_default_free)
+    .reduce((acc, p) => acc + getPocketReal(p), 0);
+  const freeBalance = Math.max(0, totalInvoicedIncome - assignedToNamedPockets);
+  // Alias usado en el income card y en la tarjeta del bolsillo Libre.
+  const freeAmountAvailable = freeBalance;
+
   // Meta configurada por el usuario -- NO es plata real, solo referencia.
   // Fija (pesos, en pockets.planned_budget) O porcentaje (en
   // income_sources.distribution_rules) -- nunca las dos a la vez.
@@ -706,7 +656,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
 
   const formatPlanValue = (plan: PocketPlan) => plan.type === 'fixed'
     ? formatCOP(plan.value)
-    : `${plan.value}%${incomeSource.amount > 0 ? ` (${formatCOP(Math.round(incomeSource.amount * plan.value / 100))})` : ''}`;
+    : `${plan.value}%${monthIncome > 0 ? ` (${formatCOP(Math.round(monthIncome * plan.value / 100))})` : ''}`;
 
   // Sort: libre siempre último, el resto por % gastado (más lleno primero)
   // IMPORTANTE: Se usa la asignación real de la BD para el orden, de forma que al 
@@ -790,7 +740,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
   return (
     <View style={styles.container}>
         <View style={{ flex: 1 }}>
-          {((isMonthlyLoading && !monthState) || isIncomeSourceLoading) ? (
+          {isMonthlyLoading || pockets.length === 0 ? (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
               <ActivityIndicator size="large" color={theme.colors.primary} />
             </View>
@@ -872,7 +822,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
                     <View style={{ flex: 1, alignItems: 'center', backgroundColor: theme.colors.primary + '12', borderRadius: 14, paddingVertical: 12 }}>
                       <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.primary, letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 4 }}>Libre</Text>
                       <Text style={{ fontSize: 16, fontWeight: '900', color: theme.colors.primary, fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
-                        {formatCOP(pockets.find(p => p.is_default_free) ? getPocketReal(pockets.find(p => p.is_default_free)!) : 0)}
+                        {formatCOP(freeBalance)}
                       </Text>
                     </View>
                   </TourStep>
@@ -884,63 +834,18 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
               </View>
             )}
 
-          {/* METAS PLANEADAS */}
-          {totalPlanned > 0 && (
-              <View style={{ marginBottom: 24, marginTop: totalInvoicedIncome > 0 ? 0 : 20 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>Metas planeadas</Text>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: (theme.colors as any).pastel.teal }}>
-                    {formatCOP(totalPlanned)} en total
-                  </Text>
-                </View>
-              <View style={{ height: 14, backgroundColor: theme.colors.surfaceContainerHighest, borderRadius: 7, flexDirection: 'row', overflow: 'hidden' }}>
-                {sorted.map((p, i) => {
-                  const plan = getAbsolutePocketPlan(p);
-                  if (plan <= 0) return null;
-                  const pct = Math.min((plan / totalPlanned) * 100, 100);
-                  
-                  const premiumColors = theme.colors.chartColors as string[];
-                  const color = p.is_default_free ? theme.colors.primary : premiumColors[i % premiumColors.length];
-                  
-                  return (
-                    <View key={`plan-${p.id}`} style={{ width: `${pct}%`, height: '100%', backgroundColor: color, borderRightWidth: 1, borderRightColor: theme.colors.background }} />
-                  )
-                })}
-              </View>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
-                {sorted.filter(p => getAbsolutePocketPlan(p) > 0).map((p) => {
-                  const i = sorted.indexOf(p);
-                  const premiumColors = theme.colors.chartColors as string[];
-                  const color = p.is_default_free ? theme.colors.primary : premiumColors[i % premiumColors.length];
-
-                  return (
-                    <View 
-                      key={`plan-legend-${p.id}`} 
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 }}
-                    >
-                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
-                      <Text style={{ fontSize: 10, color: theme.colors.onSurfaceVariant, fontWeight: '700' }}>
-                        {p.name}
-                      </Text>
-                    </View>
-                  )
-                })}
-              </View>
-            </View>
-          )}
-
-          {/* Budget Distribution Bar (Dinero Real) */}
+          {/* Budget Distribution Bar */}
           {totalInvoicedIncome > 0 && (
               <View style={{ marginBottom: 24 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
-                  <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>Distribución del presupuesto</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>Dinero real asignado</Text>
                   <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
                     {formatCOP(sorted.filter(p => !p.is_default_free).reduce((acc, p) => acc + getPocketReal(p), 0))} asignados
                   </Text>
                 </View>
               <View style={{ height: 14, backgroundColor: theme.colors.surfaceContainerHighest, borderRadius: 7, flexDirection: 'row', overflow: 'hidden' }}>
                 {sorted.map((p, i) => {
-                  const alloc = getPocketReal(p);
+                  const alloc = p.is_default_free ? freeBalance : getPocketReal(p);
                   if (alloc <= 0) return null;
                   const pct = Math.min((alloc / totalInvoicedIncome) * 100, 100);
                   
@@ -956,8 +861,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
                 })}
               </View>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
-                {sorted.filter(p => getPocketReal(p) > 0).map((p) => {
-                  const alloc = getPocketReal(p);
+                {sorted.filter(p => (p.is_default_free ? freeBalance : getPocketReal(p)) > 0).map((p) => {
+                  const alloc = p.is_default_free ? freeBalance : getPocketReal(p);
                   const i = sorted.indexOf(p);
                   const premiumColors = theme.colors.chartColors as string[];
                   const color = p.is_default_free ? theme.colors.primary : premiumColors[i % premiumColors.length];
@@ -983,6 +888,56 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
             </View>
           )}
 
+          {/* Planned Budget Distribution Bar */}
+          {(() => {
+            const pocketsWithPlan = sorted.filter(p => !p.is_default_free && getPocketPlan(p));
+            const totalPlanned = pocketsWithPlan.reduce((acc, p) => acc + (getPocketPlan(p)?.value || 0), 0);
+            if (totalPlanned <= 0) return null;
+            
+            return (
+              <View style={{ marginBottom: 24 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>Metas planeadas</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
+                    {formatCOP(totalPlanned)} en total
+                  </Text>
+                </View>
+                <View style={{ height: 14, backgroundColor: theme.colors.surfaceContainerHighest, borderRadius: 7, flexDirection: 'row', overflow: 'hidden' }}>
+                  {pocketsWithPlan.map((p, i) => {
+                    const plan = getPocketPlan(p)?.value || 0;
+                    if (plan <= 0) return null;
+                    const pct = Math.min((plan / totalPlanned) * 100, 100);
+                    
+                    const premiumColors = theme.colors.chartColors as string[];
+                    const color = premiumColors[sorted.indexOf(p) % premiumColors.length];
+                    
+                    return (
+                      <View key={p.id} style={{ width: `${pct}%`, height: '100%', backgroundColor: color, borderRightWidth: 1, borderRightColor: theme.colors.background }} />
+                    )
+                  })}
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 }}>
+                  {pocketsWithPlan.map((p) => {
+                    const plan = getPocketPlan(p)?.value || 0;
+                    if (plan <= 0) return null;
+                    const i = sorted.indexOf(p);
+                    const premiumColors = theme.colors.chartColors as string[];
+                    const color = premiumColors[i % premiumColors.length];
+
+                    return (
+                      <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 }}>
+                        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }} />
+                        <Text style={{ fontSize: 10, color: theme.colors.onSurfaceVariant, fontWeight: '700' }}>
+                          {p.name}
+                        </Text>
+                      </View>
+                    )
+                  })}
+                </View>
+              </View>
+            );
+          })()}
+
           {/* Banner de diferencia eliminado de aquí */}
           {/* El bloque de adjustActions se movió al final de la grilla */}
 
@@ -1006,6 +961,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
               // (típico: la persona presupuestó antes de registrar ingreso).
               // No es "Libre" -- Libre siempre es plata real por definición.
               const isPlanOnly = !p.is_default_free && allocated <= 0 && !!plan;
+              const needsFunding = !!plan && allocated < (plan.value || 0);
               const premiumColors = theme.colors.chartColors as string[];
               const flatColor = p.is_default_free ? theme.colors.primary : premiumColors[i % premiumColors.length];
               const cardBg = isOver ? theme.colors.error : flatColor + 'E6';
@@ -1018,26 +974,34 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
                         <TouchableOpacity
                           style={{ flex: 1 }}
                           activeOpacity={0.88}
-                          onPress={() => openPocket(p)}
+                          onPress={() => {
+                            if (isMonthlyLoading) return;
+                            openPocket(p);
+                          }}
                         >
-                          <View style={[styles.card, { backgroundColor: cardBg, padding: 18, paddingTop: 20, paddingBottom: 22, minHeight: 150 }]}>
+                          <View style={[styles.card, { backgroundColor: cardBg, padding: 16, height: 200, overflow: 'hidden' }]}>
+                            
                             <View style={{ marginBottom: 12 }}>
                               <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}>
                                 <CategoryIcon iconName={p.icon} size={16} color="#FFF" />
                               </View>
                             </View>
                             <Text style={{ fontSize: 18, fontWeight: '900', color: '#FFF', marginBottom: 2 }} numberOfLines={1}>{p.name}</Text>
-                            <Text style={{ fontSize: 24, fontWeight: '900', color: '#FFF', marginBottom: 6, letterSpacing: -0.5 }}>
-                              {formatCOP(Math.abs(remaining))}
-                            </Text>
-                            <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 20 }} numberOfLines={1}>
+                            {/* Para Libre: mostramos ingreso sin asignar, no un allocated ficticio */}
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 12 }}>
                               Sin asignar
                             </Text>
                             <View style={{ marginTop: 'auto' }}>
-                              <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={6} />
+                              {/* Barra de progreso: qué % del ingreso libre ya se gastó sin bolsillo */}
+                              <AnimatedProgressBar
+                                percent={totalInvoicedIncome > 0 ? Math.min(100, ((totalInvoicedIncome - freeBalance) / totalInvoicedIncome) * 100) : 0}
+                                color="#FFF"
+                                bgColor="rgba(255,255,255,0.25)"
+                                height={8}
+                              />
                               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
                                 <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>DISPONIBLE</Text>
-                                <Text style={{ fontSize: 15, fontWeight: '900', color: 'transparent' }} numberOfLines={1} adjustsFontSizeToFit>$0</Text>
+                                <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }} numberOfLines={1} adjustsFontSizeToFit>{formatCOP(freeBalance)}</Text>
                               </View>
                             </View>
                           </View>
@@ -1050,33 +1014,50 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
                     <TouchableOpacity
                       style={styles.cardWrap}
                       activeOpacity={0.88}
-                      onPress={() => openPocket(p)}
+                      onPress={() => {
+                        if (isMonthlyLoading) return;
+                        openPocket(p);
+                      }}
                     >
-                      <View style={[styles.card, { backgroundColor: cardBg, padding: 18, paddingTop: 20, paddingBottom: 22, minHeight: 150, opacity: isPlanOnly ? 0.7 : 1 }]}>
+                      <View style={[styles.card, { backgroundColor: cardBg, padding: 16, height: 200, overflow: 'hidden' }]}>
+                        
                         <View style={{ marginBottom: 12 }}>
                           <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}>
                             <CategoryIcon iconName={p.icon} size={16} color="#FFF" />
                           </View>
                         </View>
-                        <Text style={{ fontSize: 18, fontWeight: '900', color: '#FFF', marginBottom: 2 }} numberOfLines={1}>{p.name}</Text>
+                        <Text style={{ fontSize: 16, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 2 }} numberOfLines={1}>{p.name}</Text>
                         
-                        <Text style={{ fontSize: 24, fontWeight: '900', color: '#FFF', marginBottom: 6, letterSpacing: -0.5 }}>
-                          {formatCOP(Math.abs(remaining))}
-                        </Text>
-                        {plan ? (
-                          <View style={{ alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.25)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginBottom: 20 }}>
-                            <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFF', letterSpacing: 0.5 }}>META {formatPlanValue(plan)}</Text>
-                          </View>
-                        ) : (
-                          <Text style={{ fontSize: 12, fontWeight: '800', color: 'rgba(255,255,255,0.9)', marginBottom: 20 }}>
-                            Asignado: {formatCOP(allocated)}
+                        <View style={{ marginBottom: 12 }}>
+                          <Text style={{ fontSize: 20, fontWeight: '900', color: '#FFF', marginBottom: 4 }} adjustsFontSizeToFit numberOfLines={1}>
+                            {allocated > 0 ? formatCOP(allocated) : '$0'}
                           </Text>
-                        )}
+                          {plan && (
+                            <View style={{ backgroundColor: 'rgba(0,0,0,0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, alignSelf: 'flex-start' }}>
+                              <Text style={{ fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.95)', letterSpacing: 0.5 }} numberOfLines={1}>
+                                META {formatPlanValue(plan)}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+
                         <View style={{ marginTop: 'auto' }}>
-                          <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={6} />
+                          <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={8} />
                           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
-                            <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>{remaining < 0 ? 'EXCESO' : 'TE QUEDA'}</Text>
-                            <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }} numberOfLines={1} adjustsFontSizeToFit>{formatCOP(Math.abs(remaining))}</Text>
+                            {needsFunding && allocated <= 0 ? (
+                              <>
+                                <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>ESPERANDO</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                  <Clock size={13} color="#FFF" strokeWidth={2.5} />
+                                  <Text style={{ fontSize: 13, fontWeight: '900', color: '#FFF' }} numberOfLines={1}>asignación</Text>
+                                </View>
+                              </>
+                            ) : (
+                              <>
+                                <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>{remaining < 0 ? 'EXCESO' : 'TE QUEDA'}</Text>
+                                <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }} numberOfLines={1} adjustsFontSizeToFit>{formatCOP(Math.abs(remaining))}</Text>
+                              </>
+                            )}
                           </View>
                         </View>
                       </View>
@@ -1116,15 +1097,11 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
                 const isOver = available < 0;
                 const pctUsed = planAlloc > 0 ? Math.min((spent / planAlloc) * 100, 100) : 0;
                 const pocketColor = isOver ? theme.colors.error : flatColor;
-                // Sin plata real todavía pero con una meta puesta -- se lo
-                // decimos claro en vez de mostrar "$0" o mezclar los dos.
                 const headerSubtitle = selectedPocket.is_default_free
                   ? `Disponible sin asignar: ${formatCOP(planAlloc)}`
-                  : planAlloc > 0
-                    ? `Tienes: ${formatCOP(planAlloc)}`
-                    : planVal
-                      ? `Meta: ${formatPlanValue(planVal)} · sin fondear`
-                      : 'Sin presupuesto';
+                  : planVal
+                    ? `Meta: ${formatPlanValue(planVal)} • Asignado: ${formatCOP(planAlloc)}`
+                    : `Asignado: ${formatCOP(planAlloc)}`;
 
                 return (
                   <>
@@ -1276,13 +1253,13 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
                       </View>
                     ) : (
                       <>
-                        <View style={{ flexDirection: 'row', gap: 12, marginBottom: planAlloc > 0 ? 14 : 8 }}>
+                        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 14 }}>
                           <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 14, padding: 14 }}>
                             <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-                              {selectedPocket.is_default_free ? 'DISPONIBLE' : (planAlloc > 0 ? 'TIENES' : (planVal ? 'META' : 'PRESUPUESTO'))}
+                              {selectedPocket.is_default_free ? 'DISPONIBLE' : 'ASIGNADO'}
                             </Text>
                             <Text style={{ fontSize: 20, fontWeight: '900', color: '#FFF', fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
-                              {planAlloc > 0 ? formatCOP(planAlloc) : (planVal ? formatPlanValue(planVal) : 'Sin definir')}
+                              {formatCOP(planAlloc)}
                             </Text>
                           </View>
                           <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 14, padding: 14 }}>
@@ -1293,17 +1270,13 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
                           </View>
                         </View>
 
-                        {planAlloc > 0 && (
-                          <>
-                            <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" />
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
-                              <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)' }}>
-                                {isOver ? `Excediste por ${formatCOP(Math.abs(available))}` : `Te queda ${formatCOP(available)}`}
-                              </Text>
-                              <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)' }}>{Math.round(pctUsed)}%</Text>
-                            </View>
-                          </>
-                        )}
+                        <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" />
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)' }}>
+                            {isOver ? `Excediste por ${formatCOP(Math.abs(available))}` : `Te queda ${formatCOP(available)}`}
+                          </Text>
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)' }}>{Math.round(pctUsed)}%</Text>
+                        </View>
                         
                         {isOver && (
                           <TouchableOpacity
@@ -1326,6 +1299,20 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
                         )}
 
                         <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
+                          {!selectedPocket.is_default_free && (
+                            <TouchableOpacity
+                              style={{ flex: 1.5, paddingVertical: 14, backgroundColor: '#FFF', borderRadius: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+                              onPress={() => {
+                                closePocket(true);
+                                const libre = pockets.find((p: any) => p.is_default_free);
+                                setTimeout(() => onTransferPress({ fromId: libre?.id, toId: selectedPocket.id }), 250);
+                              }}
+                            >
+                              <Plus size={16} color={pocketColor} strokeWidth={2.5} />
+                              <Text style={{ fontSize: 15, fontWeight: '900', color: pocketColor }}>Asignar plata</Text>
+                            </TouchableOpacity>
+                          )}
+                          
                           <TouchableOpacity
                             style={{ flex: 1, paddingVertical: 14, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
                             onPress={() => {
@@ -1334,16 +1321,15 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
                             }}
                           >
                             <ArrowRight size={16} color="#FFF" />
-                            <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }}>Transferir</Text>
+                            <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }}>Retirar</Text>
                           </TouchableOpacity>
 
                           {!selectedPocket.is_default_free && (
                             <TouchableOpacity
-                              style={{ flex: 1, paddingVertical: 14, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 14, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+                              style={{ width: 50, paddingVertical: 14, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}
                               onPress={startEditPocket}
                             >
                               <Pencil size={16} color="#FFF" />
-                              <Text style={{ fontSize: 15, fontWeight: '900', color: '#FFF' }}>Editar</Text>
                             </TouchableOpacity>
                           )}
                         </View>

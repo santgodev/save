@@ -37,9 +37,9 @@ interface DashboardProps {
   onOpenChat?: (initialMessage?: string) => void;
   userProfile?: { full_name: string; streak?: number };
   onRefresh?: () => void;
-  isLoading?: boolean;
   /** Solo __DEV__ -- ver el botón "PROBAR CONFIRMACIÓN" más abajo. */
   onDevPreviewPurchaseConfirmation?: () => void;
+  onAddIncome?: () => void;
 }
 
 export const Dashboard = ({
@@ -55,14 +55,28 @@ export const Dashboard = ({
   onRefresh,
   isLoading = false,
   onDevPreviewPurchaseConfirmation,
+  onAddIncome,
 }: DashboardProps) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
+  const [showWelcomeCard, setShowWelcomeCard] = useState(true);
+  const [devForceWelcomeCard, setDevForceWelcomeCard] = useState(false);
   const [selectedTx, setSelectedTx] = useState<any>(null);
-  const { startTour } = useTour();
 
   const isFocused = useIsFocused();
+  const { startTour } = useTour();
+
+  useEffect(() => {
+    if (isFocused) {
+      AsyncStorage.getItem('@dev_force_welcome_card').then(val => {
+        if (val === 'true') {
+          setDevForceWelcomeCard(true);
+          AsyncStorage.removeItem('@dev_force_welcome_card');
+        }
+      });
+    }
+  }, [isFocused]);
 
   const TOUR_STEPS: TourStepType[] = [
     {
@@ -368,6 +382,66 @@ export const Dashboard = ({
               >
                 <Text style={{ fontSize: 10, fontFamily: theme.fonts.headline, fontWeight: '800', color: theme.colors.primary }}>▶ TUTORIAL</Text>
               </TouchableOpacity>
+            )}
+
+            {/* WELCOME CARD FOR NEW USERS */}
+            {(devForceWelcomeCard || (showWelcomeCard && transactions.filter(t => !(t as any).metadata?.is_demo).length === 0)) && (
+              <View style={{ backgroundColor: theme.colors.surface, borderRadius: 32, padding: 20, paddingVertical: 28, marginBottom: 24, alignItems: 'center', borderWidth: 1, borderColor: theme.colors.divider, ...theme.shadows.sm }}>
+                <Text style={{ fontSize: 24, fontWeight: '900', color: theme.colors.onSurface, marginBottom: 6, textAlign: 'center', letterSpacing: -0.5 }}>¡Tus bolsillos están listos!</Text>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: theme.colors.onSurfaceVariant, marginBottom: 24, textAlign: 'center' }}>Completa estos pasos para dominar tus finanzas.</Text>
+                
+                {/* Paso 1 */}
+                <View style={{ alignItems: 'center', marginBottom: 6 }}>
+                  <View style={{ backgroundColor: (theme.colors as any).pastel.teal + '20', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10, marginBottom: 12 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '900', color: (theme.colors as any).pastel.teal, letterSpacing: 1 }}>PASO 1</Text>
+                  </View>
+                  <View style={{ width: 64, height: 64, borderRadius: 24, backgroundColor: (theme.colors as any).pastel.teal, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                    <Plus size={28} color="#FFF" />
+                  </View>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 12 }}>Ingresa tu primer sueldo</Text>
+                  
+                  {/* Using the new onAddIncome prop */}
+                  <TouchableOpacity 
+                    activeOpacity={0.8}
+                    onPress={() => onAddIncome && onAddIncome()}
+                    style={{ backgroundColor: (theme.colors as any).pastel.teal, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 16 }}
+                  >
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: '#FFF' }}>Hacerlo ahora</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Line 1 */}
+                <View style={{ width: 1.5, height: 18, backgroundColor: theme.colors.divider, marginVertical: 8 }} />
+
+                {/* Paso 2 */}
+                <View style={{ alignItems: 'center', marginBottom: 6 }}>
+                  <View style={{ backgroundColor: theme.colors.surfaceContainerHighest, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10, marginBottom: 12 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.onSurfaceVariant, letterSpacing: 1 }}>PASO 2</Text>
+                  </View>
+                  <View style={{ width: 64, height: 64, borderRadius: 24, backgroundColor: theme.colors.surfaceContainerHighest, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                    <Coins size={28} color={theme.colors.onSurfaceVariant} strokeWidth={2} />
+                  </View>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>Se distribuye solo</Text>
+                </View>
+
+                {/* Line 2 */}
+                <View style={{ width: 1.5, height: 18, backgroundColor: theme.colors.divider, marginVertical: 8 }} />
+
+                {/* Paso 3 */}
+                <View style={{ alignItems: 'center', marginBottom: 24 }}>
+                  <View style={{ backgroundColor: theme.colors.surfaceContainerHighest, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10, marginBottom: 12 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.onSurfaceVariant, letterSpacing: 1 }}>PASO 3</Text>
+                  </View>
+                  <View style={{ width: 64, height: 64, borderRadius: 24, backgroundColor: theme.colors.surfaceContainerHighest, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                    <Activity size={28} color={theme.colors.onSurfaceVariant} strokeWidth={2} />
+                  </View>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>Empieza a gastar</Text>
+                </View>
+
+                <TouchableOpacity onPress={() => setShowWelcomeCard(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: (theme.colors as any).pastel.teal, textDecorationLine: 'underline' }}>Omitir por ahora</Text>
+                </TouchableOpacity>
+              </View>
             )}
 
             {/* HEADER PREMIUM — BALANCE & BUDGET HEALTH */}
