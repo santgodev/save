@@ -443,6 +443,18 @@ function MainApp() {
         setIsDataReady(false);
         setIsFetchingData(false);
         setCurrentScreen('dashboard');
+
+        // Clear local flags so new logins start fresh
+        AsyncStorage.multiRemove([
+          '@save_intro_tour_completed',
+          '@save_magic_tour_pending',
+          '@save_demo_in_progress',
+          '@save_demo_dashboard_tour_seen',
+          'tour_dashboard_done',
+          'tour_action_menu_done',
+          'tour_scanner_done',
+          'tour_addincome_toggle_done'
+        ]).catch(() => {});
       }
     });
 
@@ -666,13 +678,16 @@ function MainApp() {
   }
 
   // 1. GATE DE ONBOARDING: Bloqueo absoluto si no hay bolsillos.
-  // El usuario no podrá ver nada más (ni deep links, ni dashboard, ni navbar)
-  if (pockets.length === 0) {
+  // Excepción: si currentScreen es 'intro_tour', dejamos pasar al IntroTour
+  // para que se muestre ANTES del onboarding en una instalación nueva.
+  if (pockets.length === 0 && currentScreen !== 'intro_tour') {
     return <Onboarding session={session} onComplete={() => loadUserData(session?.user?.id)} />;
   }
 
   // 2. GATE DE PAYWALL: Aparece DESPUÉS del Onboarding y DESPUÉS del tutorial.
-  if (!subLoading && !isSubscribed && !devPaywallBypass && !tourFlowPending && !tourActive) {
+  // También bloqueamos mientras estamos en 'demo_scanner' para evitar que el
+  // paywall aparezca antes de que el usuario termine el tutorial de bienvenida.
+  if (!subLoading && !isSubscribed && !devPaywallBypass && !tourFlowPending && !tourActive && currentScreen !== 'demo_scanner') {
     return (
       <Paywall
         onSubscribed={(plan) => setJustSubscribedPlan(plan)}
@@ -695,7 +710,7 @@ function MainApp() {
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <StatusBar style={theme.isDark ? 'light' : 'dark'} />
-      {currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'demo_scanner' && currentScreen !== 'add_income' && (
+      {currentScreen !== 'scanner' && currentScreen !== 'quick_expense' && currentScreen !== 'demo_scanner' && currentScreen !== 'add_income' && currentScreen !== 'intro_tour' && (
         <TopBar
           title={currentScreen === 'dashboard' ? 'Save' : currentScreen === 'expenses' ? 'Movimientos' : currentScreen === 'pockets' ? 'Bolsillos' : 'Perfil'}
           userName={session.user?.user_metadata?.full_name || session.user?.user_metadata?.name}

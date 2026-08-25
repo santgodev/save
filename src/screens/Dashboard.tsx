@@ -40,6 +40,7 @@ interface DashboardProps {
   /** Solo __DEV__ -- ver el botón "PROBAR CONFIRMACIÓN" más abajo. */
   onDevPreviewPurchaseConfirmation?: () => void;
   onAddIncome?: () => void;
+  isLoading?: boolean;
 }
 
 export const Dashboard = ({

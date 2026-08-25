@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
-  View, Text, Image, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, TextInput, Dimensions, Platform, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Animated
+  View, Text, Image, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet, TextInput, Dimensions, Platform, TouchableWithoutFeedback, Keyboard, KeyboardAvoidingView, Animated, DeviceEventEmitter
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -202,39 +202,40 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   const DEMO_TOUR_STEPS: TourStepType[] = useMemo(() => [
     {
       name: 'scanner_amount',
-      title: 'Monto identificado',
-      description: 'Save extrajo el total exacto de tu recibo en segundos sin que teclearas nada.',
+      title: '¡La IA leyó tu factura!',
+      description: 'Save extrajo el monto, el comercio y la categoría en segundos. Sin teclear nada.',
       iconName: 'Sparkles',
-      order: 1
-    },
-    {
-      name: 'scanner_merchant',
-      title: 'Comercio identificado',
-      description: 'Reconoció el lugar de tu compra automáticamente.',
-      iconName: 'Store',
-      order: 2
-    },
-    {
-      name: 'scanner_pocket',
-      title: 'Bolsillo identificado',
-      description: 'Detectó que es una compra de comida y te sugiere descontarlo del bolsillo correcto.',
-      iconName: 'PieChart',
-      order: 3
-    },
-    {
-      name: 'scanner_save',
-      title: '¡Pruébalo tú mismo!',
-      description: 'Dale a "Guardar gasto" para ver cómo se registra en tus finanzas.',
-      iconName: 'Check',
-      order: 4,
-      // FIX: antes se podía cerrar este paso con "Entendido" sin tocar el
-      // botón real -- a diferencia del paso equivalente en Bolsillos
-      // (borrar la transacción de prueba), que sí obliga a tocar el
-      // elemento real. Ahora se exige el toque real: se oculta "Entendido"
-      // y se deja pasar el toque hasta el botón "Guardar gasto" debajo.
+      order: 1,
+      // Permite tocar el botón "Guardar gasto" para ir al paywall
       allowTouches: true,
       hideNextButton: true
-    }
+    },
+    // ── Los siguientes pasos están desactivados temporalmente ──
+    // Puedes reactivarlos quitando los comentarios cuando quieras.
+    //
+    // {
+    //   name: 'scanner_merchant',
+    //   title: 'Comercio identificado',
+    //   description: 'Reconoció el lugar de tu compra automáticamente.',
+    //   iconName: 'Store',
+    //   order: 2
+    // },
+    // {
+    //   name: 'scanner_pocket',
+    //   title: 'Bolsillo identificado',
+    //   description: 'Detectó que es una compra de comida y te sugiere descontarlo del bolsillo correcto.',
+    //   iconName: 'PieChart',
+    //   order: 3
+    // },
+    // {
+    //   name: 'scanner_save',
+    //   title: '¡Pruébalo tú mismo!',
+    //   description: 'Dale a "Guardar gasto" para ver cómo se registra en tus finanzas.',
+    //   iconName: 'Check',
+    //   order: 4,
+    //   allowTouches: true,
+    //   hideNextButton: true
+    // }
   ], []);
 
   React.useEffect(() => {
@@ -477,11 +478,20 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
 
   const saveToSupabase = async () => {
     if (isSaving) return;
-    // FIX: si venimos del tour demo (allowTouches deja pasar el toque real
-    // hasta este botón), hay que cerrar el overlay del tour aquí mismo --
-    // si no, se queda "vivo" (isActive=true) apuntando a un botón que ya no
-    // existe cuando la pantalla cambie a Dashboard después de guardar.
-    if (initialMode === 'demo') stopTour();
+
+    // MODO DEMO: en vez de guardar en DB, cerramos el tour y abrimos el paywall.
+    // No se crea ninguna transacción real. El resto del flujo (supabase RPC)
+    // queda intacto para el modo normal.
+    if (initialMode === 'demo') {
+      stopTour();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      // Señalamos que el demo terminó para que tourFlowPending pase a false
+      // y el gate del paywall pueda abrirse al volver.
+      DeviceEventEmitter.emit('demo_completed');
+      onGoBack(); // Vuelve a index.tsx → el gate del paywall lo intercepta
+      return;
+    }
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setIsSaving(true);
     try {
@@ -505,7 +515,6 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
         p_category: selectedCategory,
         p_icon: iconMap[selectedCategory] || 'receipt-text',
         p_date_string: today,
-        p_metadata: initialMode === 'demo' ? { is_demo: true } : undefined
       });
 
       if (error) throw error;
@@ -513,15 +522,13 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       setIsSaving(false);
       setSaved(true);
 
-      // Reproducir sonido "ding" eliminado a petición del usuario
-
       Animated.sequence([
         Animated.timing(scaleAnim, {
           toValue: 1,
-          duration: 150, // Instantáneo y rápido
+          duration: 150,
           useNativeDriver: true,
         }),
-        Animated.delay(600), // Se queda un momento
+        Animated.delay(600),
         Animated.timing(scaleAnim, {
           toValue: 0,
           duration: 200,
