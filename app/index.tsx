@@ -255,10 +255,17 @@ function MainApp() {
   const [justSubscribedPlan, setJustSubscribedPlan] = useState<'annual' | 'monthly' | null>(null);
 
   useEffect(() => {
-    if (!session?.user?.id || pockets.length === 0) {
+    // Si no hay sesión, no hay nada que bloquear.
+    // IMPORTANTE: cuando pockets.length === 0 NO ponemos tourFlowPending=false
+    // porque el gate de onboarding ya bloquea el paywall en ese caso. Si lo
+    // ponemos en false aquí, cuando los bolsillos aparecen hay un render
+    // fugaz con tourFlowPending=false (antes de que el effect corra de nuevo)
+    // y el paywall se cuela justo al terminar el onboarding.
+    if (!session?.user?.id) {
       setTourFlowPending(false);
       return;
     }
+    if (pockets.length === 0) return; // El gate de onboarding ya se encarga
     // Bloquea el paywall por defecto apenas hay bolsillos -- si no, queda
     // en el valor (probablemente false) que tenía de la rama de arriba
     // hasta que el check async de abajo resuelva, y en esa ventana el

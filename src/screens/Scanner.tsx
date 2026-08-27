@@ -202,40 +202,36 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   const DEMO_TOUR_STEPS: TourStepType[] = useMemo(() => [
     {
       name: 'scanner_amount',
-      title: '¡La IA leyó tu factura!',
-      description: 'Save extrajo el monto, el comercio y la categoría en segundos. Sin teclear nada.',
+      title: 'Monto identificado',
+      description: 'Save extrajo el total exacto de tu recibo en segundos sin que teclearas nada.',
       iconName: 'Sparkles',
-      order: 1,
-      // Permite tocar el botón "Guardar gasto" para ir al paywall
+      order: 1
+    },
+    {
+      name: 'scanner_merchant',
+      title: 'Comercio identificado',
+      description: 'Reconoció el lugar de tu compra automáticamente.',
+      iconName: 'Store',
+      order: 2
+    },
+    {
+      name: 'scanner_pocket',
+      title: 'Bolsillo identificado',
+      description: 'Detectó que es una compra de comida y te sugiere descontarlo del bolsillo correcto.',
+      iconName: 'PieChart',
+      order: 3
+    },
+    {
+      name: 'scanner_save',
+      title: '¡Pruébalo tú mismo!',
+      description: 'Dale a "Guardar gasto" para ver cómo se registra en tus finanzas.',
+      iconName: 'Check',
+      order: 4,
+      // El toque real del botón es requerido (oculta "Siguiente").
+      // saveToSupabase en modo demo redirige al paywall en vez de guardar.
       allowTouches: true,
       hideNextButton: true
-    },
-    // ── Los siguientes pasos están desactivados temporalmente ──
-    // Puedes reactivarlos quitando los comentarios cuando quieras.
-    //
-    // {
-    //   name: 'scanner_merchant',
-    //   title: 'Comercio identificado',
-    //   description: 'Reconoció el lugar de tu compra automáticamente.',
-    //   iconName: 'Store',
-    //   order: 2
-    // },
-    // {
-    //   name: 'scanner_pocket',
-    //   title: 'Bolsillo identificado',
-    //   description: 'Detectó que es una compra de comida y te sugiere descontarlo del bolsillo correcto.',
-    //   iconName: 'PieChart',
-    //   order: 3
-    // },
-    // {
-    //   name: 'scanner_save',
-    //   title: '¡Pruébalo tú mismo!',
-    //   description: 'Dale a "Guardar gasto" para ver cómo se registra en tus finanzas.',
-    //   iconName: 'Check',
-    //   order: 4,
-    //   allowTouches: true,
-    //   hideNextButton: true
-    // }
+    }
   ], []);
 
   React.useEffect(() => {
