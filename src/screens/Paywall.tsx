@@ -278,8 +278,16 @@ const BenefitsAndPricingStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallPr
   const { offering, purchasePackage, restorePurchases, isSubscribed } = useSubscription();
   const [selected, setSelected] = useState<'annual' | 'monthly'>('annual');
   const [isPurchasing, setIsPurchasing] = useState(false);
+  // Guard: evita que onSubscribed se llame más de una vez si el componente
+  // re-renderiza con isSubscribed=true (ej. después de restaurar compra).
+  const hasNotified = React.useRef(false);
 
-  useEffect(() => { if (isSubscribed) onSubscribed(selected); }, [isSubscribed]);
+  useEffect(() => {
+    if (isSubscribed && !hasNotified.current) {
+      hasNotified.current = true;
+      onSubscribed(selected);
+    }
+  }, [isSubscribed]);
 
   const monthlyPkg = offering?.availablePackages.find(p => p.product.identifier === PRODUCT_IDS.monthly);
   const annualPkg  = offering?.availablePackages.find(p => p.product.identifier === PRODUCT_IDS.annual);

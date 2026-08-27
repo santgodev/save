@@ -305,7 +305,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
 
         // Start the specialized DEMO tour after a brief pause to let them see the results
         setTimeout(() => {
-          startTour(DEMO_TOUR_STEPS, undefined, { step: 1, total: 6 });
+          startTour(DEMO_TOUR_STEPS, undefined, { step: 1, total: 4 });
         }, 600);
 
       }, 2500);

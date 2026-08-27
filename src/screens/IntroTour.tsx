@@ -70,9 +70,9 @@ export function IntroTour({ onComplete, userName = 'Usuario' }: IntroTourProps) 
             <View style={{ width: 64, height: 64, borderRadius: 24, backgroundColor: pastel.teal, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
               <Receipt size={28} color="#FFF" strokeWidth={2} />
             </View>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Escanea tu factura</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Escanea la factura</Text>
             <Text style={{ fontSize: 13, fontWeight: '500', color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
-              La IA detecta el gasto y lo clasifica solo
+              Apunta la cámara y la IA lee monto, comercio y categoría en segundos
             </Text>
           </View>
 
@@ -91,9 +91,9 @@ export function IntroTour({ onComplete, userName = 'Usuario' }: IntroTourProps) 
                 <Utensils size={28} color="#FFF" strokeWidth={2} />
               </View>
             </View>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Tus bolsillos</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Se guarda automático</Text>
             <Text style={{ fontSize: 13, fontWeight: '500', color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
-              Cada gasto sale del bolsillo correcto automáticamente
+              El gasto sale del bolsillo correcto sin que muevas un dedo
             </Text>
           </View>
 
@@ -107,16 +107,16 @@ export function IntroTour({ onComplete, userName = 'Usuario' }: IntroTourProps) 
             <View style={{ width: 64, height: 64, borderRadius: 24, backgroundColor: pastel.lavender, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
               <DollarSign size={28} color="#FFF" strokeWidth={2.5} />
             </View>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Tu total a fin de mes</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Revisa tu total</Text>
             <Text style={{ fontSize: 13, fontWeight: '500', color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
-              Siempre sabes cuánto te queda disponible
+              Ve cuánto te queda antes de gastar de más
             </Text>
           </View>
 
           {/* CTA Button */}
           <TouchableOpacity onPress={handleComplete} activeOpacity={0.85} style={{ width: '100%', height: 52, borderRadius: 20, overflow: 'hidden' }}>
             <LinearGradient
-              colors={[pastel.teal || theme.colors.primary, pastel.lavender || theme.colors.secondary]}
+              colors={[theme.colors.primary, pastel.teal || '#8AD6CE']}
               start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
               style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
             >
