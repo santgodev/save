@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
-import { Bell, X, Sparkles, Send, Target, Trash2, AlertTriangle, RotateCcw } from 'lucide-react-native';
+import { Bell, X, Sparkles, Send, Target, Trash2, AlertTriangle, RotateCcw, MessageSquare } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
 import { supabase } from '../lib/supabase';
@@ -678,22 +678,21 @@ export const TopBar = ({
         <KeyboardAvoidingView style={styles.chatContainer} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={{ flex: 1 }}>
 
-              {/* Header */}
+              {/* Header — mismo estilo que el ChatMockup del Paywall */}
               <View style={[styles.chatHeader, { paddingTop: Math.max(insets.top, 20) + 16 }]}>
                 <View style={styles.chatHeaderLeft}>
-                  <View style={[styles.sageAvatar, { backgroundColor: theme.colors.primaryContainer }]}>
-                    <Sparkles size={22} color={theme.colors.primary} />
+                  {/* Avatar: círculo primario con MessageSquare, igual al mockup */}
+                  <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center' }}>
+                    <MessageSquare size={18} color={theme.colors.onPrimary} />
                   </View>
                   <View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                      <Text style={{ fontSize: 18, fontWeight: '900', color: theme.colors.primary, letterSpacing: 0.5 }}>SAVE</Text>
-                      <View style={{ backgroundColor: theme.colors.primary, borderRadius: 4, paddingHorizontal: 4, paddingVertical: 2, marginLeft: 6 }}>
-                        <Text style={{ fontSize: 9, fontWeight: '900', color: theme.colors.onPrimary, letterSpacing: 1 }}>IA</Text>
-                      </View>
+                    {/* Nombre + punto verde en la misma fila, igual al mockup */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={{ fontSize: 15, fontWeight: '800', color: theme.colors.onSurface, fontFamily: theme.fonts.headline }}>Save IA</Text>
+                      <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#4CAF50' }} />
+                      <Text style={{ fontSize: 11, color: theme.colors.onSurfaceVariant }}>en línea</Text>
                     </View>
-                    <Text style={styles.chatSubtitle}>
-                      Tu asistente financiero
-                    </Text>
+                    <Text style={styles.chatSubtitle}>Tu asistente financiero</Text>
                   </View>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -727,17 +726,14 @@ export const TopBar = ({
                     {messages.map((msg, idx) => (
                       <View key={idx} style={[styles.bubbleWrap, msg.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant]}>
                         {msg.role === 'assistant' && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 4 }}>
                             {msg.isError ? (
                               <>
                                 <AlertTriangle size={12} color={theme.colors.error} />
                                 <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.error, letterSpacing: 0.8 }}>NO SE PUDO ENVIAR</Text>
                               </>
                             ) : (
-                              <>
-                                <Sparkles size={12} color={theme.colors.primary} />
-                                <Text style={{ fontSize: 10, fontWeight: '900', color: theme.colors.primary, letterSpacing: 0.8 }}>SAVE AI</Text>
-                              </>
+                              <Text style={{ fontSize: 11, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>Save IA</Text>
                             )}
                           </View>
                         )}

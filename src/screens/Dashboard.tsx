@@ -110,13 +110,6 @@ export const Dashboard = ({
       iconName: 'PlusCircle',
       order: 1
     },
-    {
-      name: 'dashboard_quick_add',
-      title: 'Conviértelo en hábito',
-      description: 'Regístralos todos. Solo así verás a dónde va tu plata.',
-      iconName: 'Zap',
-      order: 2
-    }
   ];
 
   useEffect(() => {
@@ -729,8 +722,14 @@ export const Dashboard = ({
               activeOpacity={0.8}
               style={{ width: '100%', backgroundColor: theme.colors.primary, paddingVertical: 22, borderRadius: 28, alignItems: 'center', ...theme.shadows.lg }}
               onPress={async () => {
-                await AsyncStorage.removeItem('@save_magic_tour_pending');
+                // IMPORTANT: set demo_in_progress FIRST, then remove magic_tour_pending.
+                // The tourFlowPending poller in index.tsx runs every 1500ms and reads
+                // both flags. If we removed magic_tour_pending first, the poller could
+                // fire between the two ops and see both as null → tourFlowPending=false
+                // → paywall appears mid-tutorial. By setting demo_in_progress first,
+                // the poller always sees at least one flag as 'true'.
                 await AsyncStorage.setItem('@save_demo_in_progress', 'true');
+                await AsyncStorage.removeItem('@save_magic_tour_pending');
                 setShowWelcomeModal(false);
                 if (onOpenScannerDemo) {
                   setTimeout(() => {

@@ -692,9 +692,13 @@ function MainApp() {
   }
 
   // 2. GATE DE PAYWALL: Aparece DESPUÉS del Onboarding y DESPUÉS del tutorial.
-  // También bloqueamos mientras estamos en 'demo_scanner' para evitar que el
-  // paywall aparezca antes de que el usuario termine el tutorial de bienvenida.
-  if (!subLoading && !isSubscribed && !devPaywallBypass && !tourFlowPending && !tourActive && currentScreen !== 'demo_scanner') {
+  // También bloqueamos mientras estamos en 'demo_scanner', 'intro_tour' u
+  // 'onboarding' para evitar que el paywall aparezca antes de que el usuario
+  // termine cualquier parte del flujo de bienvenida. Esto es defensa en
+  // profundidad: tourFlowPending ya debería cubrirlo, pero si hay algún
+  // race condition donde se resuelve a false prematuramente, estas exclusiones
+  // de pantalla son la última línea de defensa.
+  if (!subLoading && !isSubscribed && !devPaywallBypass && !tourFlowPending && !tourActive && currentScreen !== 'demo_scanner' && currentScreen !== 'intro_tour' && currentScreen !== 'onboarding') {
     return (
       <Paywall
         onSubscribed={(plan) => setJustSubscribedPlan(plan)}

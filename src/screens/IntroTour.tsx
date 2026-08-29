@@ -70,9 +70,9 @@ export function IntroTour({ onComplete, userName = 'Usuario' }: IntroTourProps) 
             <View style={{ width: 64, height: 64, borderRadius: 24, backgroundColor: pastel.teal, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
               <Receipt size={28} color="#FFF" strokeWidth={2} />
             </View>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Escanea la factura</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Tómale foto al recibo</Text>
             <Text style={{ fontSize: 13, fontWeight: '500', color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
-              Apunta la cámara y la IA lee monto, comercio y categoría en segundos
+              Apunta la cámara y la app saca el total y el lugar en un segundo
             </Text>
           </View>
 
@@ -91,9 +91,9 @@ export function IntroTour({ onComplete, userName = 'Usuario' }: IntroTourProps) 
                 <Utensils size={28} color="#FFF" strokeWidth={2} />
               </View>
             </View>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Se guarda automático</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Todo se organiza solo</Text>
             <Text style={{ fontSize: 13, fontWeight: '500', color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
-              El gasto sale del bolsillo correcto sin que muevas un dedo
+              La plata sale del bolsillo que es, sin que tengas que hacer nada
             </Text>
           </View>
 
@@ -107,9 +107,9 @@ export function IntroTour({ onComplete, userName = 'Usuario' }: IntroTourProps) 
             <View style={{ width: 64, height: 64, borderRadius: 24, backgroundColor: pastel.lavender, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
               <DollarSign size={28} color="#FFF" strokeWidth={2.5} />
             </View>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Revisa tu total</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Revisa tus cuentas</Text>
             <Text style={{ fontSize: 13, fontWeight: '500', color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
-              Ve cuánto te queda antes de gastar de más
+              Mira cuánta plata te queda para que no gastes de más
             </Text>
           </View>
 
