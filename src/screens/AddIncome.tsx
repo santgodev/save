@@ -256,7 +256,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
     },
     scannerBadgeText: { color: theme.colors.primary, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.5 },
     
-    scroll: { paddingHorizontal: 24, paddingBottom: 180 },
+    scroll: { paddingHorizontal: 24, paddingBottom: 24 },
     
     // --- Premium Amount Box ---
     premiumAmountBox: { alignItems: 'center', marginTop: 10, marginBottom: 32 },
@@ -314,7 +314,7 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
     previewResultTag: { backgroundColor: theme.colors.primaryContainer, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 14 },
     previewResultTxt: { color: theme.colors.primary, fontSize: 14, fontWeight: '800' },
     
-    footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 24, paddingBottom: 40 },
+    footer: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 24), backgroundColor: theme.colors.background, borderTopWidth: 1, borderTopColor: theme.colors.divider },
     premiumConfirmBtn: { borderRadius: 20, overflow: 'hidden', height: 60, backgroundColor: theme.colors.primary, ...theme.shadows.premium },
     btnInner: { flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 },
     premiumConfirmBtnText: { color: theme.colors.onPrimary, fontWeight: '900', fontSize: 16 },

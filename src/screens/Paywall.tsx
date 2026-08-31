@@ -89,7 +89,7 @@ const PaywallCTA = ({ label, onPress, icon, disabled, theme }: { label: string; 
 );
 
 const PaywallFooter = ({ children, theme, insets }: { children: React.ReactNode; theme: any; insets: any }) => (
-  <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: theme.colors.background, paddingHorizontal: PAYWALL_HPADDING, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 24), borderTopWidth: 1, borderTopColor: theme.colors.divider }}>
+  <View style={{ backgroundColor: theme.colors.background, paddingHorizontal: PAYWALL_HPADDING, paddingTop: 14, paddingBottom: Math.max(insets.bottom, 24), borderTopWidth: 1, borderTopColor: theme.colors.divider }}>
     {children}
   </View>
 );
@@ -230,7 +230,7 @@ const HookStep = ({
   const { theme } = useTheme();
 
   const S = StyleSheet.create({
-    scroll: { paddingHorizontal: PAYWALL_HPADDING, paddingTop: 10, paddingBottom: 220, flexGrow: 1 },
+    scroll: { paddingHorizontal: PAYWALL_HPADDING, paddingTop: 10, paddingBottom: 24, flexGrow: 1 },
     topSection: { alignItems: 'center', marginTop: 20, marginBottom: 36 },
     midSection: { gap: 20 },
   });
@@ -315,7 +315,7 @@ const BenefitsAndPricingStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallPr
 
   const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: theme.colors.background },
-    scroll: { paddingHorizontal: PAYWALL_HPADDING, paddingTop: 8, paddingBottom: 260, flexGrow: 1 },
+    scroll: { paddingHorizontal: PAYWALL_HPADDING, paddingTop: 8, paddingBottom: 24, flexGrow: 1 },
 
 
     benefitsCard: { backgroundColor: theme.colors.surface, borderRadius: 20, padding: 8, borderWidth: 1, borderColor: theme.colors.outlineVariant, marginBottom: 16, marginTop: 20 },

@@ -792,6 +792,11 @@ function MainApp() {
            onSaveSuccess={() => { setTransferParams(null); setShowPocketTransfer(false); loadUserData(session!.user.id); }}
          />
        )}
+
+       {/* TourOverlay va aquí dentro -- así SOLO renderiza cuando el main app
+           está activo. Si está fuera (en App()), se dibuja encima de TODO:
+           Paywall, Auth, Onboarding -- causando el tour encima del Paywall. */}
+       <TourOverlay />
     </View>
   );
 }
@@ -814,7 +819,6 @@ export default function App() {
           <SubscriptionProvider userId={session?.user?.id}>
             <TourProvider>
               <MainApp />
-              <TourOverlay />
             </TourProvider>
           </SubscriptionProvider>
         </CurrencyProvider>

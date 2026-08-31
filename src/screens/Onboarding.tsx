@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Animated, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
@@ -33,6 +34,7 @@ const CatIcon = ({ id, color, size = 20 }: { id: string; color: string; size?: n
 export const Onboarding = ({ session, onComplete }: { session: any; onComplete: () => void }) => {
   const { theme } = useTheme();
   const { currency, symbol, formatMoney, formatInput } = useCurrency();
+  const insets = useSafeAreaInsets();
   const [step, setStep]     = useState(1);
   const [loading, setLoading] = useState(false);
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -126,7 +128,7 @@ export const Onboarding = ({ session, onComplete }: { session: any; onComplete: 
     <KeyboardAvoidingView style={[S.container, { backgroundColor: theme.colors.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
 
       {/* ── HEADER ── */}
-      <View style={[S.header, { paddingTop: Platform.OS === 'ios' ? 60 : 40 }]}>
+      <View style={[S.header, { paddingTop: Math.max(insets.top, 16) + 16 }]}>
         {/* Indicador de pasos premium (Pills expandidas) */}
         <View style={S.progressRow}>
           {Array.from({ length: totalSteps }).map((_, i) => (
@@ -364,7 +366,7 @@ export const Onboarding = ({ session, onComplete }: { session: any; onComplete: 
       </Animated.View>
 
       {/* ── NAV ── */}
-      <View style={[S.nav, { borderTopColor: theme.colors.divider }]}>
+      <View style={[S.nav, { borderTopColor: theme.colors.divider, paddingBottom: Math.max(insets.bottom, 20) }]}>
         {step > 1 && (
           <TouchableOpacity
             style={[S.btnBack, { backgroundColor: theme.colors.surfaceContainerHighest }]}
@@ -441,7 +443,7 @@ const S = StyleSheet.create({
   rulePrefix:  { fontSize: 24, fontWeight: '800' },
   ruleInput:   { flex: 1, fontSize: 24, fontWeight: '900' },
 
-  nav:      { padding: 20, paddingBottom: 32, flexDirection: 'row', gap: 12, borderTopWidth: 1 },
+  nav:      { padding: 20, flexDirection: 'row', gap: 12, borderTopWidth: 1 },
   btnBack:  { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
   btnNext:  { flex: 1, height: 58, borderRadius: 29, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   btnNextTxt: { fontWeight: '800', fontSize: 17, letterSpacing: -0.3 },
