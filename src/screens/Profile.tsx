@@ -24,7 +24,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 
-export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: { session: Session, transactions: any[], pockets: any[], onRefresh: () => void, onBack?: () => void }) => {
+export const Profile = ({ session, transactions, pockets, onRefresh, onBack, onOpenPaywall }: { session: Session, transactions: any[], pockets: any[], onRefresh: () => void, onBack?: () => void, onOpenPaywall?: () => void }) => {
   const insets = useSafeAreaInsets();
   const { theme, mode, setThemePreference } = useTheme();
 
@@ -435,6 +435,23 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack }: {
                      <Lock size={18} color={theme.colors.onSurfaceVariant} />
                   </View>
                   <Text style={styles.settingText}>Cambiar contraseña</Text>
+               </View>
+               <ChevronRight size={18} color={theme.colors.onSurfaceVariant} />
+            </TouchableOpacity>
+
+            <View style={{ height: 1, backgroundColor: theme.colors.divider, marginLeft: 52 }} />
+
+            <TouchableOpacity
+              style={[styles.settingRow, { paddingVertical: 14 }]}
+              onPress={() => {
+                if (onOpenPaywall) onOpenPaywall();
+              }}
+            >
+               <View style={styles.settingTitleCol}>
+                  <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: theme.colors.primaryContainer, alignItems: 'center', justifyContent: 'center' }}>
+                     <Sparkles size={18} color={theme.colors.primary} />
+                  </View>
+                  <Text style={[styles.settingText, { color: theme.colors.primary }]}>Suscripción PRO</Text>
                </View>
                <ChevronRight size={18} color={theme.colors.onSurfaceVariant} />
             </TouchableOpacity>

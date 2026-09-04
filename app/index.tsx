@@ -254,6 +254,10 @@ function MainApp() {
   // solo se dispara al pasar por el gate de abajo.
   const [justSubscribedPlan, setJustSubscribedPlan] = useState<'annual' | 'monthly' | null>(null);
 
+  // Bandera para abrir el paywall manualmente desde Configuración / Perfil,
+  // ignorando la suscripción actual o el estado de los tutoriales.
+  const [forceShowPaywall, setForceShowPaywall] = useState(false);
+
   useEffect(() => {
     // Si no hay sesión, no hay nada que bloquear.
     // IMPORTANTE: cuando pockets.length === 0 NO ponemos tourFlowPending=false
@@ -648,7 +652,7 @@ function MainApp() {
         />;
       case 'pockets': return <Pockets session={session} pockets={pockets} transactions={transactions} onRefresh={handleGlobalRefresh} isRefreshing={isRefreshing} onTransferPress={triggerTransfer} />;
       case 'history': return <HistoryScreen onRefresh={handleGlobalRefresh} isRefreshing={isRefreshing} />;
-      case 'profile_details': return <Profile session={session} transactions={transactions} pockets={pockets} onRefresh={() => loadUserData(session!.user.id)} onBack={() => setCurrentScreen('dashboard')} />;
+      case 'profile_details': return <Profile session={session} transactions={transactions} pockets={pockets} onRefresh={() => loadUserData(session!.user.id)} onBack={() => setCurrentScreen('dashboard')} onOpenPaywall={() => setForceShowPaywall(true)} />;
       case 'add_income':
         return <AddIncome pockets={pockets} session={session} onCancel={() => setCurrentScreen('dashboard')} onSaveSuccess={async () => { await loadUserData(session!.user.id); setCurrentScreen('dashboard'); setEditIncomeTx(null); }} editTransaction={editIncomeTx} />;
       case 'intro_tour': return <IntroTour onComplete={async () => { await AsyncStorage.setItem('@save_intro_tour_completed', 'true'); setCurrentScreen('onboarding'); }} userName={session?.user?.user_metadata?.full_name} />;
@@ -698,12 +702,13 @@ function MainApp() {
   // profundidad: tourFlowPending ya debería cubrirlo, pero si hay algún
   // race condition donde se resuelve a false prematuramente, estas exclusiones
   // de pantalla son la última línea de defensa.
-  if (!subLoading && !isSubscribed && !devPaywallBypass && !tourFlowPending && !tourActive && currentScreen !== 'demo_scanner' && currentScreen !== 'intro_tour' && currentScreen !== 'onboarding') {
+  if (forceShowPaywall || (!subLoading && !isSubscribed && !devPaywallBypass && !tourFlowPending && !tourActive && currentScreen !== 'demo_scanner' && currentScreen !== 'intro_tour' && currentScreen !== 'onboarding')) {
     return (
       <Paywall
-        onSubscribed={(plan) => setJustSubscribedPlan(plan)}
+        onSubscribed={(plan) => { setJustSubscribedPlan(plan); setForceShowPaywall(false); }}
         onLogout={async () => { await supabase.auth.signOut(); }}
-        onDevSkip={__DEV__ ? () => setDevPaywallBypass(true) : undefined}
+        onDevSkip={__DEV__ ? () => { setDevPaywallBypass(true); setForceShowPaywall(false); } : undefined}
+        onClose={forceShowPaywall ? () => setForceShowPaywall(false) : undefined}
       />
     );
   }

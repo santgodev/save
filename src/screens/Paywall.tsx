@@ -33,6 +33,7 @@ interface PaywallProps {
   onSubscribed: (plan: 'annual' | 'monthly') => void;
   onLogout?: () => void;
   onDevSkip?: () => void;
+  onClose?: () => void;
 }
 
 // =====================================================================
@@ -139,7 +140,7 @@ const Testimonial = ({ theme }: { theme: any }) => (
 // =====================================================================
 // COMPONENTE PRINCIPAL
 // =====================================================================
-export const Paywall = ({ onSubscribed, onLogout, onDevSkip }: PaywallProps) => {
+export const Paywall = ({ onSubscribed, onLogout, onDevSkip, onClose }: PaywallProps) => {
   const [step, setStep] = useState<1 | 2>(1);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const { theme } = useTheme();
@@ -156,9 +157,14 @@ export const Paywall = ({ onSubscribed, onLogout, onDevSkip }: PaywallProps) => 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <View style={{ paddingTop: Math.max(insets.top, 16) + 16, paddingBottom: 16, alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
-        {onDevSkip && (
+        {onDevSkip && !onClose && (
           <TouchableOpacity onPress={onDevSkip} style={{ position: 'absolute', top: Math.max(insets.top, 16) + 16, right: 20, zIndex: 20, opacity: 0.4 }}>
             <Text style={{ fontSize: 10, fontFamily: theme.fonts.headline, fontWeight: '800', color: theme.colors.warning }}>SALTAR DEV</Text>
+          </TouchableOpacity>
+        )}
+        {onClose && (
+          <TouchableOpacity onPress={onClose} style={{ position: 'absolute', top: Math.max(insets.top, 16) + 16, right: 20, zIndex: 20, width: 36, height: 36, borderRadius: 18, backgroundColor: theme.colors.surfaceContainerHighest, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 16, fontFamily: theme.fonts.headline, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>✕</Text>
           </TouchableOpacity>
         )}
         <SaveProLogo theme={theme} />
@@ -271,18 +277,21 @@ const HookStep = ({
 // PASO 2: Beneficios + Confianza + Precios -- todo en un scroll,
 // terminando en el botón real de compra. Sin bottom sheet intermedio.
 // =====================================================================
-const BenefitsAndPricingStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallProps) => {
+const BenefitsAndPricingStep = ({ onSubscribed, onLogout, onDevSkip, onClose }: PaywallProps) => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
 
   const { offering, purchasePackage, restorePurchases, isSubscribed } = useSubscription();
   const [selected, setSelected] = useState<'annual' | 'monthly'>('annual');
   const [isPurchasing, setIsPurchasing] = useState(false);
-  // Guard: evita que onSubscribed se llame más de una vez si el componente
-  // re-renderiza con isSubscribed=true (ej. después de restaurar compra).
+  const isInitialMount = React.useRef(true);
   const hasNotified = React.useRef(false);
 
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     if (isSubscribed && !hasNotified.current) {
       hasNotified.current = true;
       onSubscribed(selected);
@@ -345,7 +354,7 @@ const BenefitsAndPricingStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallPr
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} bounces={false}>
-      <View style={{ flex: 1, justifyContent: 'space-between' }}>
+      <View style={{ gap: 24 }}>
         <View>
           <PaywallHeadline theme={theme}>
             Todo lo que necesitas para ahorrar
@@ -408,9 +417,9 @@ const BenefitsAndPricingStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallPr
             </View>
           </View>
           <View style={styles.planRight}>
-            <Text style={[styles.planPrice, { color: selected === 'annual' ? theme.colors.primary : theme.colors.onSurface }]}>{annualMonthlyEquivalent}</Text>
-            <Text style={styles.planPriceSub}>al mes</Text>
-            <Text style={[styles.planPriceSub, { fontSize: 11, marginTop: 4 }]}>Cobro de {annualPrice}</Text>
+            <Text style={[styles.planPrice, { color: selected === 'annual' ? theme.colors.primary : theme.colors.onSurface }]}>{annualPrice}</Text>
+            <Text style={styles.planPriceSub}>al año</Text>
+            <Text style={[styles.planPriceSub, { fontSize: 11, marginTop: 4, fontWeight: '700' }]}>{annualMonthlyEquivalent} al mes</Text>
           </View>
           {selected === 'annual'
             ? <View style={[styles.checkDot, { backgroundColor: theme.colors.primary, marginLeft: 10 }]}><Check size={12} color="#FFF" strokeWidth={3} /></View>
@@ -465,7 +474,17 @@ const BenefitsAndPricingStep = ({ onSubscribed, onLogout, onDevSkip }: PaywallPr
           <TouchableOpacity onPress={() => Linking.openURL('https://eveenia.com/es/save/privacy')}>
             <Text style={styles.link}>Privacidad</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => restorePurchases()}>
+          <TouchableOpacity onPress={async () => {
+            const result = await restorePurchases();
+            if (result.success) {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              onSubscribed(selected);
+            } else if (result.error) {
+              notify.error(result.error);
+            } else {
+              notify.error('No se encontró una suscripción activa.');
+            }
+          }}>
             <Text style={styles.link}>Restaurar compra</Text>
           </TouchableOpacity>
         </View>
