@@ -578,7 +578,7 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack, onO
     <ConfirmModal
         visible={activeModal === 'delete'}
         title="Eliminar cuenta"
-        message="El 48% de la población mantiene deudas constantes y sufre estrés por falta de control financiero. Renunciar ahora es volver al desorden. Esta acción borrará todos tus datos financieros de forma permanente."
+        message="Esta acción es irreversible. Se borrarán todos tus datos financieros, bolsillos y movimientos de forma permanente."
         confirmText={isDeleting ? "Borrando..." : "Eliminar Todo"}
         requireInputToConfirm="ELIMINAR"
         cancelText="Cancelar"

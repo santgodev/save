@@ -16,7 +16,6 @@ import { normalize, getDeterministicColor } from '../theme/theme';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { AnimatedProgressBar } from '../components/AnimatedProgressBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useIsFocused } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { useCycleState, useUserCycles } from '../lib/useCycleState';
 import { formatMoney } from '../lib/format';
@@ -35,7 +34,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
-  const isFocused = useIsFocused();
+  const isFocused = true;
   const { formatMoney: formatMoneyCurrency, config: currencyConfig } = useCurrency();
 
   const [selectedPocket, setSelectedPocket] = useState<any | null>(null);
@@ -328,18 +327,8 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
 
       if (insertError) throw insertError;
 
-      if (planned > 0 && newPocket) {
-        const librePocket = pockets.find((p: any) => p.is_default_free);
-        if (librePocket && monthIncome > 0) {
-          const { error: transferError } = await supabase.rpc('transfer_between_pockets', {
-            p_user_id: session.user.id,
-            p_from_id: librePocket.id,
-            p_to_id: newPocket.id,
-            p_amount: planned,
-          });
-          if (transferError) throw transferError;
-        }
-      }
+      // Se eliminó la transferencia automática. Crear un bolsillo con presupuesto 
+      // solo guarda la meta (plan), no mueve dinero real de Libre automáticamente.
 
       setNewName('');
       setNewBudget('');
@@ -416,33 +405,6 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
       const isPercentMode = editBudgetType === 'percentage';
       const pctValue = isPercentMode ? (parseInt(editBudgetValue.replace(/\D/g, '')) || 0) : 0;
       const fixedValue = !isPercentMode ? (parseInt(editBudgetValue.replace(/\D/g, '')) || 0) : 0;
-      // Equivalente en pesos -- solo se usa para reconciliar la plata REAL
-      // ya asignada (transfer_between_pockets), nunca para decidir qué se guarda.
-      const targetPesos = isPercentMode
-        ? (incomeSource.amount > 0 ? Math.round(incomeSource.amount * pctValue / 100) : 0)
-        : fixedValue;
-
-      const librePocket = pockets.find((p: any) => p.is_default_free);
-      // Leer allocated_budget fresco desde la BD para evitar calcular diff sobre
-      // un valor desactualizado (que generaría transferencias fantasma y descuadres).
-      const { data: freshPocket } = await supabase
-        .from('pockets')
-        .select('allocated_budget')
-        .eq('id', selectedPocket.id)
-        .single();
-      const currentAllocated = (freshPocket?.allocated_budget ?? selectedPocket.allocated_budget) ?? 0;
-      const diff = targetPesos - currentAllocated;
-      const hasIncome = incomeSource.amount > 0;
-
-      if (hasIncome && diff !== 0 && librePocket && librePocket.id !== selectedPocket.id) {
-        const { error: transferError } = await supabase.rpc('transfer_between_pockets', {
-          p_user_id: session.user.id,
-          p_from_id: diff > 0 ? librePocket.id : selectedPocket.id,
-          p_to_id: diff > 0 ? selectedPocket.id : librePocket.id,
-          p_amount: Math.abs(diff),
-        });
-        if (transferError) throw transferError;
-      }
 
       const updates: any = {
         name: capitalizedName,
@@ -462,7 +424,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
 
       // Optimistic update: refleja el cambio de inmediato en la UI
       // antes de que el refetch del servidor termine.
-      const optimisticPocket = { ...selectedPocket, ...updates, allocated_budget: targetPesos };
+      const optimisticPocket = { ...selectedPocket, ...updates };
       setSelectedPocket(optimisticPocket);
       // Guardar override para cuando el usuario cierre y vuelva a abrir el bolsillo
       setLocalPocketOverrides(prev => ({ ...prev, [selectedPocket.id]: optimisticPocket }));
@@ -640,12 +602,12 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
     cardWrap: { width: (width - (14 * 2 + 12)) / 2, borderRadius: theme.radius.xl, overflow: 'hidden', ...theme.shadows.md },
     
     // Tarjeta plana (sin gradiente)
-    card: { flex: 1, padding: 18, borderRadius: theme.radius.xl, borderWidth: 1, borderColor: theme.colors.divider },
-    cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+    card: { flex: 1, paddingHorizontal: 16, paddingVertical: 14, borderRadius: theme.radius.xl, borderWidth: 1, borderColor: theme.colors.divider },
+    cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
     iconBox: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.3)' },
     
     pocketName: { fontSize: 16, fontWeight: '900', color: '#FFF', marginBottom: 2 },
-    pocketBudget: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.75)', marginBottom: 14 },
+    pocketBudget: { fontSize: 12, fontWeight: '700', color: 'rgba(255,255,255,0.75)', marginBottom: 8 },
 
     remainingLbl: { fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.7)', letterSpacing: 0.5, marginBottom: 4 },
     remainingAmt: { fontSize: 16, fontWeight: '900', color: '#FFF' },
@@ -654,7 +616,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
     adjustInput: { backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 7, fontSize: 15, fontWeight: '900', color: '#FFF', marginBottom: 10, textAlign: 'center' },
 
     // Tarjeta de agregar
-    addCard: { width: (width - (14 * 2 + 12)) / 2, borderRadius: theme.radius.xl, minHeight: 150, justifyContent: 'center', alignItems: 'center', gap: 8, backgroundColor: theme.colors.glassWhite, borderWidth: 1.5, borderStyle: 'dashed', borderColor: theme.colors.primary + '50', padding: 16, ...theme.shadows.sm },
+    addCard: { width: (width - (14 * 2 + 12)) / 2, borderRadius: theme.radius.xl, minHeight: 95, justifyContent: 'center', alignItems: 'center', gap: 8, backgroundColor: theme.colors.glassWhite, borderWidth: 1.5, borderStyle: 'dashed', borderColor: theme.colors.primary + '50', padding: 14, ...theme.shadows.sm },
     addTxt: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },
 
     // BottomSheet
@@ -1033,7 +995,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
                           activeOpacity={0.88}
                           onPress={() => openPocket(p)}
                         >
-                          <View style={[styles.card, { backgroundColor: cardBg, padding: 18, paddingTop: 20, paddingBottom: 22, minHeight: 150 }]}>
+                          <View style={[styles.card, { backgroundColor: cardBg, padding: 14, paddingTop: 14, paddingBottom: 16, minHeight: 118 }]}>
                             <View style={{ marginBottom: 12 }}>
                               <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}>
                                 <CategoryIcon iconName={p.icon} size={16} color="#FFF" />
@@ -1065,7 +1027,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
                       activeOpacity={0.88}
                       onPress={() => openPocket(p)}
                     >
-                      <View style={[styles.card, { backgroundColor: cardBg, padding: 18, paddingTop: 20, paddingBottom: 22, minHeight: 150, opacity: isPlanOnly ? 0.7 : 1 }]}>
+                      <View style={[styles.card, { backgroundColor: cardBg, padding: 14, paddingTop: 14, paddingBottom: 16, minHeight: 118, opacity: isPlanOnly ? 0.7 : 1 }]}>
                         <View style={{ marginBottom: 12 }}>
                           <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center' }}>
                             <CategoryIcon iconName={p.icon} size={16} color="#FFF" />

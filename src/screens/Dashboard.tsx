@@ -3,7 +3,6 @@ import {
   View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity, Platform, ActivityIndicator, RefreshControl, SafeAreaView, Modal, DeviceEventEmitter
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useIsFocused } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowUpRight, TrendingUp, Sparkles, Tag, ShoppingBag, ShieldCheck, Zap, PlusCircle, Activity, AlertTriangle, Coins, Plus, Wallet, Target, Flame, Clock, History, LayoutGrid, ChevronRight, Pointer, Lock, ArrowRight, Play, Map, Rocket } from 'lucide-react-native';
@@ -65,7 +64,7 @@ export const Dashboard = ({
   const [devForceWelcomeCard, setDevForceWelcomeCard] = useState(false);
   const [selectedTx, setSelectedTx] = useState<any>(null);
 
-  const isFocused = useIsFocused();
+  const isFocused = true;
   const { startTour } = useTour();
 
   useEffect(() => {
