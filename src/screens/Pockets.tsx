@@ -513,6 +513,15 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
   const getPocketTransactions = (category: string, pocketId: string, limit?: number) => {
     const all = transactions.filter(tx => {
       if (tx.cycle_id !== selectedCycleId) return false;
+      
+      // Fix visual duplication of transfers
+      if (tx.metadata?.type === 'internal_transfer_out') {
+        return tx.metadata.from_id === pocketId;
+      }
+      if (tx.metadata?.type === 'internal_transfer_in') {
+        return tx.metadata.to_id === pocketId;
+      }
+      
       if (tx.category === category) return true;
       if (tx.category === 'Ingreso' && tx.metadata?.distribution?.[pocketId] > 0) return true;
       if (tx.category === 'Traslado' && (tx.metadata?.from_pocket === pocketId || tx.metadata?.to_pocket === pocketId)) return true;
@@ -520,6 +529,10 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
     }).map(tx => {
       if (tx.category === 'Ingreso') {
         return { ...tx, amount: tx.metadata.distribution[pocketId], merchant: 'Ingreso: ' + (tx.merchant || 'General') };
+      }
+      if (tx.metadata?.type === 'internal_transfer_out' || tx.metadata?.type === 'internal_transfer_in') {
+        const isOut = tx.metadata?.type === 'internal_transfer_out';
+        return { ...tx, amount: isOut ? -Math.abs(tx.amount) : Math.abs(tx.amount) };
       }
       if (tx.category === 'Traslado') {
         const isOut = tx.metadata?.from_pocket === pocketId;
@@ -1036,7 +1049,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
                             <View style={{ marginTop: 'auto' }}>
                               <AnimatedProgressBar percent={pctUsed} color="#FFF" bgColor="rgba(255,255,255,0.25)" height={6} />
                               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
-                                <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>DISPONIBLE</Text>
+                                <Text style={{ fontSize: 9, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 0.5, marginBottom: 2 }}>{remaining < 0 ? 'EXCESO' : 'DISPONIBLE'}</Text>
                                 <Text style={{ fontSize: 15, fontWeight: '900', color: 'transparent' }} numberOfLines={1} adjustsFontSizeToFit>$0</Text>
                               </View>
                             </View>
@@ -1279,7 +1292,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
                         <View style={{ flexDirection: 'row', gap: 12, marginBottom: planAlloc > 0 ? 14 : 8 }}>
                           <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 14, padding: 14 }}>
                             <Text style={{ fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-                              {selectedPocket.is_default_free ? 'DISPONIBLE' : (planAlloc > 0 ? 'TIENES' : (planVal ? 'META' : 'PRESUPUESTO'))}
+                              {selectedPocket.is_default_free ? (available < 0 ? 'EXCESO' : 'DISPONIBLE') : (planAlloc > 0 ? 'TIENES' : (planVal ? 'META' : 'PRESUPUESTO'))}
                             </Text>
                             <Text style={{ fontSize: 20, fontWeight: '900', color: '#FFF', fontFamily: theme.fonts.headline }} numberOfLines={1} adjustsFontSizeToFit>
                               {planAlloc > 0 ? formatCOP(planAlloc) : (planVal ? formatPlanValue(planVal) : 'Sin definir')}
