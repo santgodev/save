@@ -23,6 +23,7 @@ export interface Pocket {
   name: string;
   category: string;
   allocated_budget?: number;
+  planned_budget?: number | null;
   icon?: string;
   is_default_free?: boolean;
 }

@@ -72,7 +72,9 @@ export const calculateFinancialProfile = (
   const hormigaPct = (hormigaCount / (expenses.length || 1)) * 100;
 
   // 2. Budget Overflow
-  // Usamos allocated_budget (el plan) para comparar contra el gasto total.
+  // Usamos allocated_budget (dinero REAL asignado) para comparar contra el
+  // gasto total. Esto mide si el usuario gastó más de lo que realmente tenía,
+  // no contra la meta/plan.
   const totalBudget = budgets.reduce((acc, b) => acc + (b.allocated_budget ?? 0), 0);
   const budgetOverflow = totalSpent > totalBudget ? (totalSpent - totalBudget) / (totalBudget || 1) : 0;
 

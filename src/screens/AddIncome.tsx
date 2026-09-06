@@ -55,10 +55,11 @@ export const AddIncome = ({ pockets, session, onCancel, onSaveSuccess, editTrans
     let priority = 0;
     pockets.forEach(p => {
       if (p.is_default_free) return;
-      // El plan que la persona definió a mano (editar bolsillo) manda como
-      // sugerencia. Si nunca puso uno, cae al dinero que ya tiene asignado
-      // de un ingreso anterior -- mismo comportamiento que antes de que
-      // existiera planned_budget.
+      // Prioridad de sugerencia para el monto a asignar:
+      // 1. planned_budget (meta que el usuario configuró manualmente) → preferida
+      // 2. allocated_budget (lo que se le asignó en el último ingreso) → fallback
+      //    razonable si nunca configuró una meta explícita
+      // Esto solo pre-llena el campo; el usuario siempre puede editarlo.
       const suggested = (p.planned_budget && p.planned_budget > 0) ? p.planned_budget : p.allocated_budget;
       if (suggested && suggested > 0) {
         priority += 1;
