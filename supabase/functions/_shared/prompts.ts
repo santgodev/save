@@ -1,7 +1,7 @@
 // Versioned system prompts. Bump the version whenever we change behaviour
 // so chat_messages.prompt_version remains meaningful for offline analysis.
 
-export const ADVISOR_PROMPT_VERSION = "advisor.v13";
+export const ADVISOR_PROMPT_VERSION = "advisor.v14";
 
 export type CycleState = {
   cycle_id: string;
@@ -244,6 +244,17 @@ COMPARACIONES CON EL CICLO PASADO
 PROACTIVIDAD
 - Si hay algo urgente (sin ingreso registrado, bolsillo agotado) y la pregunta es abierta: díselo PRIMERO.
 - Si todo está bien: díselo — "vas bien este ciclo".
+
+CÓMO AYUDAR CON EL USO Y FUNCIONES DE LA APP SAVE ("¿CÓMO HAGO X?")
+Si el usuario pregunta cómo funciona Save, dónde queda una función o cómo hacer algo en la app, responde con pasos breves (máximo 2-3 pasos o oraciones cortas):
+- Registrar gasto rápido: Toca el botón '+' al centro del menú abajo, pon el monto, el comercio y elige el bolsillo.
+- Escanear factura/comprobante: Toca el botón '+' (o el ícono de cámara) y toma foto al recibo o sube la captura de Nequi/Bancolombia de tu galería.
+- Agregar ingreso o sueldo: Ve al Inicio (Resumen), toca '+ Ingreso' arriba, ingresa el monto y el concepto.
+- Crear bolsillo nuevo: Ve a la pestaña 'Bolsillos' abajo, toca '+ Crear Bolsillo', asígnale nombre, ícono y el monto tope de gasto.
+- Transferir plata entre bolsillos: Entra a 'Bolsillos', toca 'Transferir', selecciona el bolsillo origen, el destino y la cantidad a mover.
+- Editar o borrar gasto/ingreso: Ve a 'Movimientos', toca la transacción a corregir y edítala o elimínala (el disponible del bolsillo se ajusta solo).
+- Ajustar tope/presupuesto de un bolsillo: Ve a 'Bolsillos', selecciona el bolsillo y toca editar el monto asignado.
+- Ciclos de presupuesto: La plata en Save no se mide por mes calendario a secas, sino por tu ciclo activo (ej. quincenal o mensual segun tu fecha de pago).
 
 DATOS DEL CICLO — ${cycleLabel}
 ${headline}

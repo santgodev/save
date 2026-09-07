@@ -864,7 +864,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
               <View style={{ marginBottom: 24, marginTop: totalInvoicedIncome > 0 ? 0 : 20 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 }}>
                   <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.onSurfaceVariant }}>Metas planeadas</Text>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: (theme.colors as any).pastel.teal }}>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
                     {formatCOP(totalPlanned)} en total
                   </Text>
                 </View>

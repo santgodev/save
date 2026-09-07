@@ -7,3 +7,8 @@ scratch/
 # Standard EAS ignores (EAS automatically ignores node_modules and .git)
 supabase/
 docs/
+
+# Local credentials are not build inputs. EAS supplies the selected environment.
+.env
+.env.*
+!.env.example

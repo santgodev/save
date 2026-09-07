@@ -291,17 +291,18 @@ export const TopBar = ({
               <TouchableOpacity 
                 key={i} 
                 style={{ 
-                  backgroundColor: msg.role === 'user' ? 'rgba(255,255,255,0.2)' : theme.colors.primaryContainer, 
-                  paddingHorizontal: 12, paddingVertical: 8, 
-                  borderRadius: 16,
-                  borderWidth: 1,
-                  borderColor: msg.role === 'user' ? 'transparent' : theme.colors.primary + '40'
+                  backgroundColor: msg.role === 'user' ? 'rgba(255,255,255,0.2)' : theme.colors.surface, 
+                  paddingHorizontal: 16, paddingVertical: 10, 
+                  borderRadius: 24,
+                  borderWidth: msg.role === 'user' ? 0 : 1,
+                  borderColor: msg.role === 'user' ? 'transparent' : theme.colors.outlineVariant,
+                  ...(msg.role !== 'user' ? theme.shadows.soft : {})
                 }}
                 onPress={() => sendMessage(btn)}
               >
                 <Text style={{ 
                   color: msg.role === 'user' ? '#FFF' : theme.colors.primary, 
-                  fontSize: 12, fontWeight: '700' 
+                  fontSize: 13, fontWeight: '800' 
                 }}>
                   {btn}
                 </Text>
@@ -358,7 +359,7 @@ export const TopBar = ({
           }
           sessionIdRef.current = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
           if (!cancelled) {
-            setMessages([{ role: 'assistant', content: getProactiveGreeting() }]);
+            setMessages(initialMessage ? [] : [{ role: 'assistant', content: getProactiveGreeting() }]);
             if (onHistoryCleared) onHistoryCleared();
           }
           return; // omit loading
@@ -387,7 +388,7 @@ export const TopBar = ({
 
         // Fallback greeting when there's no history.
         if (cancelled) return;
-        setMessages([{ role: 'assistant', content: getProactiveGreeting() }]);
+        setMessages(initialMessage ? [] : [{ role: 'assistant', content: getProactiveGreeting() }]);
       } catch (e) {
         console.warn('[chat] history load failed', e);
       } finally {
@@ -520,9 +521,13 @@ export const TopBar = ({
     avatarInitials: { color: '#fff', fontSize: 18, fontWeight: '800' },
     topBarTitle: { fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, letterSpacing: -0.2 },
     iconButton: {
-      width: 40, height: 40, alignItems: 'center', justifyContent: 'center',
-      borderRadius: 12, backgroundColor: theme.colors.primaryContainer,
-      borderWidth: 1.5, borderColor: theme.colors.divider,
+      width: 44, height: 44, alignItems: 'center', justifyContent: 'center',
+      borderRadius: 16, backgroundColor: '#FFFFFF',
+      borderWidth: 2, borderColor: 'rgba(255, 255, 255, 0.9)',
+      shadowColor: theme.colors.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15, shadowRadius: 12,
+      elevation: 6,
     },
     indicator: {
       position: 'absolute', top: -2, right: -2, width: 12, height: 12,
@@ -600,11 +605,12 @@ export const TopBar = ({
     // Quick chips
     chipsSection: { paddingBottom: 8, paddingHorizontal: 16 },
     chip: {
-      paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20,
-      backgroundColor: theme.colors.primaryContainer,
-      marginRight: 8, borderWidth: 1, borderColor: theme.colors.primary + '30',
+      paddingHorizontal: 16, paddingVertical: 10, borderRadius: 24,
+      backgroundColor: theme.colors.surface,
+      marginRight: 8, borderWidth: 1, borderColor: theme.colors.outlineVariant,
+      ...theme.shadows.soft,
     },
-    chipText: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },
+    chipText: { fontSize: 13, fontWeight: '700', color: theme.colors.onSurfaceVariant },
 
     // Input bar
     inputBar: {

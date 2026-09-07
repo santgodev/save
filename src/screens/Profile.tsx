@@ -212,8 +212,6 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack, onO
       backgroundColor: theme.colors.errorContainer, 
       borderRadius: 24, 
       justifyContent: 'center', 
-      borderWidth: 1, 
-      borderColor: theme.colors.error + '25',
       marginTop: 16
     },
     dangerText: { fontSize: 16, fontWeight: '900', color: theme.colors.error },
@@ -520,7 +518,7 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack, onO
       <View style={[styles.section, { paddingBottom: 40 }]}>
          <TouchableOpacity 
            activeOpacity={0.7}
-           style={[styles.dangerAction, { marginBottom: 12, backgroundColor: theme.colors.errorContainer }]} 
+           style={[styles.dangerAction, { marginBottom: 12 }]} 
            onPress={() => {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
               setActiveModal('delete');
@@ -546,7 +544,7 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack, onO
            <>
              <TouchableOpacity 
                activeOpacity={0.7}
-               style={[styles.dangerAction, { borderColor: theme.colors.primary, backgroundColor: theme.colors.primaryContainer }]} 
+               style={[styles.dangerAction, { backgroundColor: theme.colors.primaryContainer }]} 
                onPress={async () => {
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                   await AsyncStorage.setItem('@dev_force_welcome_card', 'true');
@@ -559,7 +557,7 @@ export const Profile = ({ session, transactions, pockets, onRefresh, onBack, onO
 
              <TouchableOpacity 
                activeOpacity={0.7}
-               style={[styles.dangerAction, { borderColor: (theme.colors as any).pastel.lavender, backgroundColor: (theme.colors as any).pastel.lavender + '30', marginTop: 12 }]} 
+               style={[styles.dangerAction, { backgroundColor: (theme.colors as any).pastel.lavender + '30', marginTop: 12 }]} 
                onPress={() => {
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                   DeviceEventEmitter.emit('force_show_intro_tour');

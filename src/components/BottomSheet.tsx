@@ -32,7 +32,7 @@ export const BottomSheet = ({ visible, onClose, title, scrollable = false, child
 
   const styles = useMemo(() => StyleSheet.create({
     overlay: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       justifyContent: 'center',
       alignItems: 'center',
       padding: 24,

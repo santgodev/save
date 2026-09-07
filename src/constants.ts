@@ -1,4 +1,5 @@
 import { Transaction, Pocket } from './types';
+import Constants from 'expo-constants';
 
 export const INITIAL_TRANSACTIONS: Transaction[] = [
   { id: '1', merchant: 'Starbucks', amount: -5.50, date: 'Hoy • 08:45 AM', category: 'Comida', icon: 'Coffee' },
@@ -21,6 +22,11 @@ export const INITIAL_POCKETS: Pocket[] = [
 // They are now injected as Edge Function secrets and accessed only from
 // Supabase Functions (chat-advisor, ocr-receipt). Do not re-add them here.
 // -----------------------------------------------------------------------------
-export const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-export const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
-
+const testing = ['development', 'preview'].includes(Constants.expoConfig?.extra?.appVariant);
+// Dev never falls back to the production backend. Demo does not mount live screens.
+export const SUPABASE_URL = testing
+  ? Constants.expoConfig?.extra?.devBackendUrl || 'https://save-demo.invalid'
+  : process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+export const SUPABASE_ANON_KEY = testing
+  ? Constants.expoConfig?.extra?.devBackendKey || 'demo-mode-no-backend'
+  : process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';

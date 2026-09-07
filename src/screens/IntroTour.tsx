@@ -67,12 +67,17 @@ export function IntroTour({ onComplete, userName = 'Usuario' }: IntroTourProps) 
             <View style={{ backgroundColor: pastel.teal + '20', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10, marginBottom: 12 }}>
               <Text style={{ fontSize: 10, fontWeight: '900', color: pastel.teal, letterSpacing: 1 }}>PASO 1</Text>
             </View>
-            <View style={{ width: 64, height: 64, borderRadius: 24, backgroundColor: pastel.teal, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-              <Receipt size={28} color="#FFF" strokeWidth={2} />
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+              <View style={{ width: 64, height: 64, borderRadius: 24, backgroundColor: pastel.salmon, alignItems: 'center', justifyContent: 'center' }}>
+                <Home size={28} color="#FFF" strokeWidth={2} />
+              </View>
+              <View style={{ width: 64, height: 64, borderRadius: 24, backgroundColor: pastel.teal, alignItems: 'center', justifyContent: 'center' }}>
+                <Utensils size={28} color="#FFF" strokeWidth={2} />
+              </View>
             </View>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Tómale foto al recibo</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Crea tus bolsillos</Text>
             <Text style={{ fontSize: 13, fontWeight: '500', color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
-              Apunta la cámara y la app saca el total y el lugar en un segundo
+              Separa tu plata según lo que necesitas: comida, hogar, transporte y más.
             </Text>
           </View>
 
@@ -83,17 +88,12 @@ export function IntroTour({ onComplete, userName = 'Usuario' }: IntroTourProps) 
             <View style={{ backgroundColor: pastel.salmon + '20', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10, marginBottom: 12 }}>
               <Text style={{ fontSize: 10, fontWeight: '900', color: pastel.salmon, letterSpacing: 1 }}>PASO 2</Text>
             </View>
-            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
-              <View style={{ width: 64, height: 64, borderRadius: 24, backgroundColor: pastel.salmon, alignItems: 'center', justifyContent: 'center' }}>
-                <Home size={28} color="#FFF" strokeWidth={2} />
-              </View>
-              <View style={{ width: 64, height: 64, borderRadius: 24, backgroundColor: pastel.teal, alignItems: 'center', justifyContent: 'center' }}>
-                <Utensils size={28} color="#FFF" strokeWidth={2} />
-              </View>
+            <View style={{ width: 64, height: 64, borderRadius: 24, backgroundColor: pastel.salmon, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+              <Receipt size={28} color="#FFF" strokeWidth={2} />
             </View>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Todo se organiza solo</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Registra tus gastos</Text>
             <Text style={{ fontSize: 13, fontWeight: '500', color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
-              La plata sale del bolsillo que es, sin que tengas que hacer nada
+              Tómale una foto al recibo o agrega el gasto rápidamente.
             </Text>
           </View>
 
@@ -107,9 +107,9 @@ export function IntroTour({ onComplete, userName = 'Usuario' }: IntroTourProps) 
             <View style={{ width: 64, height: 64, borderRadius: 24, backgroundColor: pastel.lavender, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
               <DollarSign size={28} color="#FFF" strokeWidth={2.5} />
             </View>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Revisa tus cuentas</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.onSurface, marginBottom: 4 }}>Ten tus cuentas claras</Text>
             <Text style={{ fontSize: 13, fontWeight: '500', color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
-              Mira cuánta plata te queda para que no gastes de más
+              Mira cuánto gastaste, cuánto te queda y en qué se fue tu plata.
             </Text>
           </View>
 

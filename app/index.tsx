@@ -38,6 +38,10 @@ import { SubscriptionProvider, useSubscription } from '../src/lib/SubscriptionCo
 import { ensureDailyReminders } from '../src/lib/notifications';
 import { Paywall } from '../src/screens/Paywall';
 import { PurchaseConfirmation } from '../src/screens/PurchaseConfirmation';
+import { WidgetDemoScreen, WidgetsScreen } from '../src/screens/Widgets';
+import { WidgetSync } from '../src/widgets/WidgetSync';
+import { APP_SCHEME, IS_WIDGET_DEMO, WIDGET_REFRESH_REQUESTED } from '../src/widgets/storage';
+import { parseWidgetDestination } from '../src/widgets/model';
 
 const { width, height } = Dimensions.get('window');
 
@@ -188,6 +192,7 @@ function MainApp() {
   
   // Changed initial state to null to prevent flashing Dashboard on slow loads/first login
   const [currentScreen, setCurrentScreen] = useState<Screen | null>(null);
+  const [widgetPocketId, setWidgetPocketId] = useState<string | undefined>();
   const [transferParams, setTransferParams] = useState<{ fromId?: string, toId?: string, amount?: number } | null>(null);
   const [editIncomeTx, setEditIncomeTx] = useState<any | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -396,6 +401,13 @@ function MainApp() {
     const handleUrl = (url: string | null) => {
       if (!url) return;
 
+      const destination = parseWidgetDestination(url, APP_SCHEME);
+      if (destination) {
+        setWidgetPocketId(destination.pocketId);
+        setCurrentScreen(destination.screen);
+        return;
+      }
+
       if (url.includes('scanner')) {
         setCurrentScreen('scanner');
       } else if (url.includes('quick_expense')) {
@@ -551,6 +563,7 @@ function MainApp() {
       }
 
       setIsDataReady(true);
+      DeviceEventEmitter.emit(WIDGET_REFRESH_REQUESTED);
     } catch (error) {
       console.error('Data load error:', error);
       setIsDataReady(true);
@@ -634,9 +647,10 @@ function MainApp() {
 
     const renderScreen = () => {
     switch (currentScreen) {
+      case 'widgets': return <WidgetsScreen userId={session.user.id} onBack={() => setCurrentScreen('profile_details')} />;
       case 'dashboard': return <Dashboard transactions={transactions} pockets={pockets} session={session} isDataReady={isDataReady} onOpenScanner={() => setCurrentScreen('quick_expense')} onOpenScannerDemo={() => setCurrentScreen('demo_scanner')} onViewAll={() => setCurrentScreen('expenses')} onOpenChat={openChatWithContext} onDevPreviewPurchaseConfirmation={__DEV__ ? () => setJustSubscribedPlan('annual') : undefined} onRefresh={handleGlobalRefresh} isLoading={isRefreshing} onAddIncome={() => setCurrentScreen('add_income')} />;
       case 'scanner': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="camera" />;
-      case 'quick_expense': return <Scanner onGoBack={() => setCurrentScreen('dashboard')} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="manual" />;
+      case 'quick_expense': return <Scanner key={widgetPocketId || 'manual'} initialPocketId={widgetPocketId} onGoBack={() => { setWidgetPocketId(undefined); setCurrentScreen('dashboard'); }} session={session} pockets={pockets} onSaveSuccess={() => { setWidgetPocketId(undefined); loadUserData(session?.user?.id); setCurrentScreen('expenses'); }} initialMode="manual" />;
       case 'demo_scanner': return <Scanner onGoBack={async () => { await AsyncStorage.removeItem('@save_demo_in_progress'); setCurrentScreen('dashboard'); }} session={session} pockets={pockets} onSaveSuccess={() => { loadUserData(session?.user?.id); setCurrentScreen('dashboard'); }} initialMode="demo" />;
       case 'expenses':
         return <Expenses
@@ -650,9 +664,9 @@ function MainApp() {
             setCurrentScreen('add_income');
           }}
         />;
-      case 'pockets': return <Pockets session={session} pockets={pockets} transactions={transactions} onRefresh={handleGlobalRefresh} isRefreshing={isRefreshing} onTransferPress={triggerTransfer} />;
+      case 'pockets': return <Pockets initialPocketId={widgetPocketId} onInitialPocketHandled={() => setWidgetPocketId(undefined)} session={session} pockets={pockets} transactions={transactions} onRefresh={handleGlobalRefresh} isRefreshing={isRefreshing} onTransferPress={triggerTransfer} />;
       case 'history': return <HistoryScreen onRefresh={handleGlobalRefresh} isRefreshing={isRefreshing} />;
-      case 'profile_details': return <Profile session={session} transactions={transactions} pockets={pockets} onRefresh={() => loadUserData(session!.user.id)} onBack={() => setCurrentScreen('dashboard')} onOpenPaywall={() => setForceShowPaywall(true)} />;
+      case 'profile_details': return <Profile session={session} transactions={transactions} pockets={pockets} onRefresh={() => loadUserData(session!.user.id)} onBack={() => setCurrentScreen('dashboard')} onOpenPaywall={() => setForceShowPaywall(true)} onOpenWidgets={() => setCurrentScreen('widgets')} />;
       case 'add_income':
         return <AddIncome pockets={pockets} session={session} onCancel={() => setCurrentScreen('dashboard')} onSaveSuccess={async () => { await loadUserData(session!.user.id); setCurrentScreen('dashboard'); setEditIncomeTx(null); }} editTransaction={editIncomeTx} />;
       case 'intro_tour': return <IntroTour onComplete={async () => { await AsyncStorage.setItem('@save_intro_tour_completed', 'true'); setCurrentScreen('onboarding'); }} userName={session?.user?.user_metadata?.full_name} />;
@@ -806,7 +820,7 @@ function MainApp() {
   );
 }
 
-export default function App() {
+function LiveApp() {
   const [session, setSession] = useState<any>(null);
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: currentSession } }) => setSession(currentSession));
@@ -820,6 +834,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider userId={session?.user?.id}>
+        <WidgetSync userId={session?.user?.id} />
         <CurrencyProvider userId={session?.user?.id}>
           <SubscriptionProvider userId={session?.user?.id}>
             <TourProvider>
@@ -832,13 +847,18 @@ export default function App() {
   );
 }
 
+export default function App() {
+  if (IS_WIDGET_DEMO) return <SafeAreaProvider><ThemeProvider><WidgetDemoScreen /></ThemeProvider></SafeAreaProvider>;
+  return <LiveApp />;
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   mainArea: { flex: 1 },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   loadingText: { marginTop: 16, fontWeight: '800', textAlign: 'center' },
-  actionMenu: { ...StyleSheet.absoluteFillObject, zIndex: 1000 },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  actionMenu: { ...StyleSheet.absoluteFill, zIndex: 1000 },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.5)' },
   menuContent: {
     position: 'absolute',
     bottom: 0,
