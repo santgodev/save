@@ -583,8 +583,8 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
           ) : <View style={{ width: 44 }} />}
           <View style={{ flex: 1 }} />
           {initialMode === 'demo' ? (
-            <View style={[styles.scannerBadge, { backgroundColor: theme.colors.tertiaryContainer, borderColor: theme.colors.tertiary + '30' }]}>
-              <Text style={[styles.scannerBadgeText, { color: theme.colors.tertiary, fontWeight: '900' }]}>MODO DE PRUEBA</Text>
+            <View style={[styles.scannerBadge, { backgroundColor: (theme.colors as any).warningContainer || '#FFF3E0', borderColor: ((theme.colors as any).warning || '#ED6C02') + '30' }]}>
+              <Text style={[styles.scannerBadgeText, { color: (theme.colors as any).warning || '#ED6C02', fontWeight: '900' }]}>MODO DE PRUEBA</Text>
             </View>
           ) : (
             <View style={[styles.scannerBadge, { backgroundColor: theme.colors.primaryContainer, borderColor: theme.colors.primary + '30' }]}>
