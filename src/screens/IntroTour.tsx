@@ -52,7 +52,7 @@ export function IntroTour({ onComplete, userName = 'Usuario' }: IntroTourProps) 
         {/* GREETING */}
         <View style={{ marginBottom: 24 }}>
           <Text style={{ fontSize: 28, fontWeight: '900', color: theme.colors.onBackground, letterSpacing: -0.5, fontFamily: theme.fonts.headline, marginBottom: 6 }}>
-            Hola, {userName.split(' ')[0]}
+            Hola, {(userName || 'Usuario').split(' ')[0]}
           </Text>
           <Text style={{ fontSize: 15, fontWeight: '600', color: theme.colors.onSurfaceVariant, lineHeight: 22 }}>
             Mira cómo Save organiza tu plata.

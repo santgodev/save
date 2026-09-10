@@ -8,10 +8,27 @@ const plist = require('@expo/plist');
 module.exports = function withWidgetFonts(config) {
   return withXcodeProject(config, config => {
     const project = config.modResults;
-    const target = project.pbxTargetByName('ExpoWidgetsTarget');
-    if (!target) throw new Error('expo-widgets must run before with-widget-fonts.');
-    const targetEntry = Object.entries(project.pbxNativeTargetSection()).find(([, value]) => value === target);
-    if (!targetEntry) throw new Error('Widget target UUID not found.');
+    let target = project.pbxTargetByName('ExpoWidgetsTarget');
+    let targetEntry;
+    if (target) {
+      targetEntry = Object.entries(project.pbxNativeTargetSection()).find(([, value]) => value === target);
+    } else {
+      const nativeTargets = project.pbxNativeTargetSection() || {};
+      targetEntry = Object.entries(nativeTargets).find(([key, value]) => {
+        if (typeof value !== 'object' || !value || key.endsWith('_comment')) return false;
+        const name = (value.name || '').replace(/"/g, '');
+        const productName = (value.productName || '').replace(/"/g, '');
+        return name === 'ExpoWidgetsTarget' || productName === 'ExpoWidgetsTarget' || name.includes('Widgets');
+      });
+      if (targetEntry) target = targetEntry[1];
+    }
+    if (!targetEntry) {
+      const targetsList = Object.entries(project.pbxNativeTargetSection() || {})
+        .filter(([k, v]) => typeof v === 'object' && v && !k.endsWith('_comment'))
+        .map(([k, v]) => v.name || v.productName)
+        .join(', ');
+      throw new Error(`Widget target not found! Available: ${targetsList}`);
+    }
     const targetId = targetEntry[0];
     const root = config.modRequest.projectRoot;
     const directory = path.join(config.modRequest.platformProjectRoot, 'ExpoWidgetsTarget');

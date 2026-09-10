@@ -33,20 +33,22 @@ module.exports = () => {
     plugins: [
       ...base.plugins,
       ['expo-dev-client', { addGeneratedScheme: variant === 'development' }],
-      ['expo-widgets', {
-        bundleIdentifier: `${bundleIdentifier}.widgets`,
-        groupIdentifier: `group.${bundleIdentifier}.widgets`,
-        widgets: [
-          { name: 'SavePocket', displayName: 'Mi bolsillo', description: 'Tu dinero disponible, justo cuando lo necesitas.',
-            supportedFamilies: ['systemSmall', 'systemMedium'],
-            configuration: { title: 'Mi bolsillo', parameters: {
-              hideAmounts: { title: 'Ocultar montos', type: 'boolean', default: false },
-            } } },
-          { name: 'SaveScanner', displayName: 'Escanear factura', description: 'Abre el escáner de Save desde tu pantalla bloqueada.',
-            supportedFamilies: ['accessoryCircular', 'accessoryRectangular', 'accessoryInline'] },
-        ],
-      }],
-      './plugins/with-widget-fonts',
+      ...(variant === 'development' ? [
+        ['expo-widgets', {
+          bundleIdentifier: `${bundleIdentifier}.widgets`,
+          groupIdentifier: `group.${bundleIdentifier}.widgets`,
+          widgets: [
+            { name: 'SavePocket', displayName: 'Mi bolsillo', description: 'Tu dinero disponible, justo cuando lo necesitas.',
+              supportedFamilies: ['systemSmall', 'systemMedium'],
+              configuration: { title: 'Mi bolsillo', parameters: {
+                hideAmounts: { title: 'Ocultar montos', type: 'boolean', default: false },
+              } } },
+            { name: 'SaveScanner', displayName: 'Escanear factura', description: 'Abre el escáner de Save desde tu pantalla bloqueada.',
+              supportedFamilies: ['accessoryCircular', 'accessoryRectangular', 'accessoryInline'] },
+          ],
+        }],
+        './plugins/with-widget-fonts',
+      ] : []),
     ],
   };
 };
