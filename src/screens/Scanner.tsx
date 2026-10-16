@@ -26,7 +26,7 @@ import type { Session } from '@supabase/supabase-js';
 
 const { width, height } = Dimensions.get('window');
 
-export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode = 'camera', initialPocketId }: { onGoBack: () => void; onSaveSuccess: () => void; session?: Session; pockets?: any[]; initialMode?: 'camera' | 'manual' | 'demo'; initialPocketId?: string }) => {
+export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode = 'camera' }: { onGoBack: () => void; onSaveSuccess: () => void; session?: Session; pockets?: any[]; initialMode?: 'camera' | 'manual' | 'demo' }) => {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const { symbol, currency } = useCurrency();
@@ -341,15 +341,6 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
   }, [pockets]);
 
   const [selectedCategory, setSelectedCategory] = useState(availableCategories[0]);
-  const appliedWidgetPocket = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    if (!initialPocketId || appliedWidgetPocket.current === initialPocketId) return;
-    const target = pockets?.find(p => p.id === initialPocketId);
-    if (target?.category) {
-      setSelectedCategory(target.category);
-      appliedWidgetPocket.current = initialPocketId;
-    }
-  }, [initialPocketId, pockets]);
 
   // isValidTransaction eliminada: la decisión manual/automático ahora viene
   // del campo `needs_review` del Edge Function ocr-receipt v5.
@@ -558,7 +549,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
       <KeyboardAvoidingView style={[styles.scannerContainer, { backgroundColor: theme.colors.background }]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
 
         {image && (
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }]}>
+          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }]}>
             <Image source={{ uri: image }} style={{ width: '100%', height: '100%', opacity: 0.6 }} resizeMode="contain" />
           </View>
         )}
@@ -583,8 +574,8 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
           ) : <View style={{ width: 44 }} />}
           <View style={{ flex: 1 }} />
           {initialMode === 'demo' ? (
-            <View style={[styles.scannerBadge, { backgroundColor: (theme.colors as any).warningContainer || '#FFF3E0', borderColor: ((theme.colors as any).warning || '#ED6C02') + '30' }]}>
-              <Text style={[styles.scannerBadgeText, { color: (theme.colors as any).warning || '#ED6C02', fontWeight: '900' }]}>MODO DE PRUEBA</Text>
+            <View style={[styles.scannerBadge, { backgroundColor: theme.colors.tertiaryContainer, borderColor: theme.colors.tertiary + '30' }]}>
+              <Text style={[styles.scannerBadgeText, { color: theme.colors.tertiary, fontWeight: '900' }]}>MODO DE PRUEBA</Text>
             </View>
           ) : (
             <View style={[styles.scannerBadge, { backgroundColor: theme.colors.primaryContainer, borderColor: theme.colors.primary + '30' }]}>
@@ -595,7 +586,7 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
 
         <ScrollView contentContainerStyle={{ flexGrow: 1, paddingTop: Math.max(insets.top, 16) + 80, paddingBottom: Math.max(insets.bottom, 24) + 20 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           {(image && progress > 0 && progress < 100) ? (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }]}>
+            <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }]}>
                <BlurView intensity={20} tint="dark" style={{ padding: 40, borderRadius: 32, alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: theme.colors.divider }}>
                  <ActivityIndicator size="large" color={theme.colors.primary} style={{ marginBottom: 24 }} />
                  <Text style={{ color: '#FFF', fontSize: 20, fontWeight: '900', marginBottom: 12, textAlign: 'center' }}>
@@ -713,8 +704,8 @@ export const Scanner = ({ onGoBack, onSaveSuccess, session, pockets, initialMode
         </ScrollView>
 
         {saved && (
-          <View style={[StyleSheet.absoluteFill, { zIndex: 1000, alignItems: 'center', justifyContent: 'center' }]}>
-            <BlurView intensity={Platform.OS === 'ios' ? 80 : 100} tint="dark" style={StyleSheet.absoluteFill} />
+          <View style={[StyleSheet.absoluteFillObject, { zIndex: 1000, alignItems: 'center', justifyContent: 'center' }]}>
+            <BlurView intensity={Platform.OS === 'ios' ? 80 : 100} tint="dark" style={StyleSheet.absoluteFillObject} />
             <Animated.View style={{
               transform: [
                 { translateY: scaleAnim.interpolate({ inputRange: [0, 1], outputRange: [200, 0] }) },

@@ -70,7 +70,7 @@ const ConfettiLayer = () => {
   }, []);
 
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
       {pieces.map((p) => <ConfettiPieceView key={p.id} piece={p} />)}
     </View>
   );

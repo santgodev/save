@@ -15,15 +15,9 @@
 // vuelve a preguntar en cada apertura.
 // =====================================================================
 
+import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-let Notifications: any = null;
-try {
-  Notifications = require('expo-notifications');
-} catch (error) {
-  console.warn('expo-notifications no está disponible en este entorno (ej. Expo Go en Android SDK 53).');
-}
 
 const SETUP_DONE_KEY = '@save_notifications_setup_done';
 
@@ -43,18 +37,16 @@ const EVENING_MESSAGES: { weekday: number; body: string }[] = [
   { weekday: 7, body: 'Jesús guarda tu vida; nosotros, tu bolsillo.' },
 ];
 
-if (Notifications) {
-  // Sin esto, una notificación que llega con la app abierta no se muestra
-  // -- queremos que sí se vea aunque el usuario esté adentro.
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: false,
-      shouldSetBadge: false,
-    }),
-  });
-}
+// Sin esto, una notificación que llega con la app abierta no se muestra
+// -- queremos que sí se vea aunque el usuario esté adentro.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
 
 /**
  * Pide permiso de notificaciones y programa los recordatorios fijos.
@@ -62,11 +54,6 @@ if (Notifications) {
  * importar cuántas veces se llame ni si el usuario negó el permiso.
  */
 export async function ensureDailyReminders(): Promise<void> {
-  if (!Notifications) {
-    console.log('Omitiendo ensureDailyReminders porque expo-notifications no está disponible.');
-    return;
-  }
-
   const alreadySetUp = await AsyncStorage.getItem(SETUP_DONE_KEY);
   if (alreadySetUp === 'true') return;
 
