@@ -22,7 +22,6 @@
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/images/logo.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
