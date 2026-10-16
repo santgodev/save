@@ -837,8 +837,8 @@ const styles = StyleSheet.create({
   mainArea: { flex: 1 },
   loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   loadingText: { marginTop: 16, fontWeight: '800', textAlign: 'center' },
-  actionMenu: { ...StyleSheet.absoluteFillObject, zIndex: 1000 },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  actionMenu: { ...StyleSheet.absoluteFill, zIndex: 1000 },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.5)' },
   menuContent: {
     position: 'absolute',
     bottom: 0,

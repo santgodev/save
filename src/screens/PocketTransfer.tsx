@@ -242,7 +242,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
         </ScrollView>
 
         {saved && (
-          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: theme.colors.background, zIndex: 9999, alignItems: 'center', justifyContent: 'center' }]}>
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.background, zIndex: 9999, alignItems: 'center', justifyContent: 'center' }]}>
             <Animated.View style={{
               transform: [{ scale: scaleAnim }],
               alignItems: 'center',
@@ -272,7 +272,7 @@ export const PocketTransfer = ({ pockets, session, onCancel, onSaveSuccess, init
         )}
 
         {showErrorModal && (
-          <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, alignItems: 'center', justifyContent: 'center', padding: 24 }]}>
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 9999, alignItems: 'center', justifyContent: 'center', padding: 24 }]}>
             <Animated.View style={{ backgroundColor: theme.colors.surface, borderRadius: 32, padding: 32, width: '100%', alignItems: 'center', ...theme.shadows.premium, transform: [{ scale: 1 }] }}>
               <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: theme.colors.errorContainer, alignItems: 'center', justifyContent: 'center', marginBottom: 24 }}>
                 <AlertTriangle size={40} color={theme.colors.error} strokeWidth={2} />

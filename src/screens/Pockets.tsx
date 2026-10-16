@@ -620,7 +620,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
     addTxt: { fontSize: 13, fontWeight: '800', color: theme.colors.primary },
 
     // BottomSheet
-    backdrop: { ...StyleSheet.absoluteFillObject },
+    backdrop: { ...StyleSheet.absoluteFill },
     backdropTint: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
     sheet: { position: 'absolute', bottom: 0, left: 0, right: 0, height: height * 0.72, borderTopLeftRadius: 36, borderTopRightRadius: 36, paddingTop: 28, paddingHorizontal: 28, backgroundColor: theme.colors.background, borderTopWidth: 1, borderColor: theme.colors.divider, ...theme.shadows.premium },
     sheetHandle: { width: 40, height: 4, backgroundColor: theme.colors.outlineVariant, borderRadius: 2, alignSelf: 'center', marginBottom: 24 },
@@ -1074,7 +1074,7 @@ export const Pockets = ({ pockets, transactions, session, onRefresh, isRefreshin
           )}
 
         {selectedPocket && (
-          <View style={StyleSheet.absoluteFillObject} pointerEvents="box-none">
+          <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
             <Pressable style={styles.backdrop} onPress={isTourActive ? undefined : () => closePocket()} />
             <Animated.View style={[styles.backdropTint, { opacity: sheetAnim.interpolate({ inputRange: [0, height], outputRange: [1, 0] }) }]} pointerEvents="none" />
             <Animated.View style={[styles.sheet, { paddingHorizontal: 0, paddingTop: 0, transform: [{ translateY: Animated.add(sheetAnim, keyboardOffset) }] }]}>
